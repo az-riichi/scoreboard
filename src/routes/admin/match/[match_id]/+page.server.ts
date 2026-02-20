@@ -240,6 +240,17 @@ export const actions: Actions = {
       .maybeSingle();
     if (matchRes.error || !matchRes.data) return fail(400, { message: 'Match not found.' });
 
+    const participantRes = await locals.supabase
+      .from('match_results')
+      .select('player_id')
+      .eq('match_id', match_id)
+      .eq('player_id', player_id)
+      .maybeSingle();
+    if (participantRes.error) return fail(400, { message: participantRes.error.message });
+    if (!participantRes.data) {
+      return fail(400, { message: 'Penalty player must be one of the entered players in this match.' });
+    }
+
     const reason = `${CHOMBO_PREFIX}:${match_id}:${reason_code}`;
 
     const duplicateRes = await locals.supabase

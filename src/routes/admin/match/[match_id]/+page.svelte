@@ -26,6 +26,18 @@
   const playerLabelById = new Map<string, string>();
   for (const p of data.players ?? []) playerLabelById.set(p.id, p.label);
 
+  const penaltyPlayers = (() => {
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const r of data.results ?? []) {
+      const id = String(r?.player_id ?? '').trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+    return ids.map((id) => ({ id, label: playerLabelById.get(id) ?? id.slice(0, 8) }));
+  })();
+
   const lifetimeRatingByPlayer = new Map<string, { rate: number; games_played: number }>();
   for (const row of data.lifetimeRatings ?? []) {
     lifetimeRatingByPlayer.set(row.player_id, {
@@ -382,16 +394,23 @@
         <div class="muted" style="margin-top:8px;">
           Penalties adjust Season Points (SP) only. They do not change Rating (R).
         </div>
+        <div class="muted" style="margin-top:4px;">
+          Penalty target list is limited to players already entered in this match.
+        </div>
 
         <form method="POST" action="?/addPenalty" style="display:grid; gap:10px; margin-top:10px;">
           <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
             <div style="display:grid; gap:4px;">
               <label for="penalty_player">Player</label>
               <select id="penalty_player" name="player_id" required style="min-width:220px;">
-                <option value="" disabled selected>Select player</option>
-                {#each data.players as p}
-                  <option value={p.id}>{p.label}</option>
-                {/each}
+                {#if penaltyPlayers.length === 0}
+                  <option value="" disabled selected>Enter and save results first</option>
+                {:else}
+                  <option value="" disabled selected>Select player</option>
+                  {#each penaltyPlayers as p}
+                    <option value={p.id}>{p.label}</option>
+                  {/each}
+                {/if}
               </select>
             </div>
 
@@ -405,7 +424,7 @@
               <input id="penalty_reason" name="reason_code" type="text" placeholder="CHOMBO" required style="width:170px;" />
             </div>
 
-            <button class="btn" type="submit">Add penalty</button>
+            <button class="btn" type="submit" disabled={penaltyPlayers.length === 0}>Add penalty</button>
           </div>
         </form>
 

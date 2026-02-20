@@ -10,6 +10,12 @@
   let show_display_name = data.player.show_display_name ?? true;
   let show_real_first_name = data.player.show_real_first_name ?? false;
   let show_real_last_name = data.player.show_real_last_name ?? false;
+
+  function fmtFixed2(x: number | null | undefined) {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '0.00';
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -79,6 +85,16 @@
 {#if !data.seasonId}
   <div class="card">No active season found.</div>
 {:else}
+  <div class="card" style="margin-bottom:12px;">
+    <div class="muted">Current Rating (R)</div>
+    <div style="font-size:2rem; font-weight:750; line-height:1.1; margin-top:4px;">
+      {fmtFixed2(data.currentRating?.rate)}
+    </div>
+    <div class="muted" style="margin-top:4px;">
+      Lifetime games: {data.currentRating?.games_played ?? 0}
+    </div>
+  </div>
+
   <div class="grid2" style="margin-bottom:12px;">
     <div class="card">
       <div style="font-size:1.05rem; font-weight:650;">Season snapshot</div>
@@ -100,7 +116,7 @@
       </div>
 
       <div style="margin-top:12px;">
-        <div class="muted">Avg placement: {fmtNum(data.stats?.avg_placement, 2)}</div>
+        <div class="muted">Avg placement: {fmtFixed2(data.stats?.avg_placement)}</div>
         <div class="muted">Avg SP: {fmtNum(data.stats?.avg_points, 2)}</div>
         <div class="muted">Top2% (rentai): {fmtPct(data.stats?.top2_rate)}</div>
         <div class="muted">#1/#2/#3/#4: {data.stats?.firsts ?? 0}/{data.stats?.seconds ?? 0}/{data.stats?.thirds ?? 0}/{data.stats?.fourths ?? 0}</div>
@@ -109,29 +125,29 @@
 
     <div class="card">
       <div style="font-size:1.05rem; font-weight:650;">Best / worst</div>
-      <div class="muted">Best and worst match by Season Points (SP).</div>
+      <div class="muted">Best and worst match by raw score.</div>
 
       <div style="margin-top:12px; display:grid; gap:10px;">
         <div class="card" style="border-radius:14px;">
           <div class="muted">Best</div>
           <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-            <div style="font-size:1.1rem; font-weight:700;">{fmtNum(data.stats?.best_points, 2)}</div>
-            {#if data.stats?.best_match_id}
-              <a class="btn" href={`/match/${data.stats.best_match_id}`} style="text-decoration:none;">View match</a>
+            <div style="font-size:1.1rem; font-weight:700;">{data.bestRawMatch?.raw_points ?? '-'}</div>
+            {#if data.bestRawMatch?.match_id}
+              <a class="btn" href={`/match/${data.bestRawMatch.match_id}`} style="text-decoration:none;">View match</a>
             {/if}
           </div>
-          <div class="muted">{data.stats?.best_played_at ? fmtDateTime(data.stats.best_played_at) : ''}</div>
+          <div class="muted">{data.bestRawMatch?.played_at ? fmtDateTime(data.bestRawMatch.played_at) : ''}</div>
         </div>
 
         <div class="card" style="border-radius:14px;">
           <div class="muted">Worst</div>
           <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-            <div style="font-size:1.1rem; font-weight:700;">{fmtNum(data.stats?.worst_points, 2)}</div>
-            {#if data.stats?.worst_match_id}
-              <a class="btn" href={`/match/${data.stats.worst_match_id}`} style="text-decoration:none;">View match</a>
+            <div style="font-size:1.1rem; font-weight:700;">{data.worstRawMatch?.raw_points ?? '-'}</div>
+            {#if data.worstRawMatch?.match_id}
+              <a class="btn" href={`/match/${data.worstRawMatch.match_id}`} style="text-decoration:none;">View match</a>
             {/if}
           </div>
-          <div class="muted">{data.stats?.worst_played_at ? fmtDateTime(data.stats.worst_played_at) : ''}</div>
+          <div class="muted">{data.worstRawMatch?.played_at ? fmtDateTime(data.worstRawMatch.played_at) : ''}</div>
         </div>
       </div>
     </div>
@@ -151,20 +167,22 @@
               <th style="width:80px;">Seat</th>
               <th style="width:100px;">Place</th>
               <th style="width:120px;">SP Δ</th>
+              <th style="width:120px;">ΔR</th>
             </tr>
           </thead>
           <tbody>
             {#each data.matchHistory as r}
               <tr>
                 <td>{fmtDateTime(r.played_at)}</td>
-                <td><a href={`/match/${r.match_id}`} style="text-decoration:none;">{r.match_id.slice(0,8)}</a></td>
+                <td><a href={`/match/${r.match_id}`} style="text-decoration:none;">{r.match_label}</a></td>
                 <td>{r.seat}</td>
                 <td>{r.placement}</td>
                 <td>{fmtNum(r.club_points, 2)}</td>
+                <td>{r.rating_delta == null ? '—' : fmtNum(r.rating_delta, 2)}</td>
               </tr>
             {/each}
             {#if data.matchHistory.length === 0}
-              <tr><td colspan="5" class="muted">No matches recorded.</td></tr>
+              <tr><td colspan="6" class="muted">No matches recorded.</td></tr>
             {/if}
           </tbody>
         </table>

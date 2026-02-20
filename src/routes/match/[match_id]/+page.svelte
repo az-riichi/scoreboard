@@ -62,7 +62,14 @@
           {#each results as r}
             <tr>
               <td>{r.seat}</td>
-              <td><a href={`/player/${r.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">{r.display_name}</a></td>
+              <td>
+                <a href={`/player/${r.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">
+                  {r.player_name_primary}
+                  {#if r.player_name_secondary}
+                    <span class="muted" style="margin-left:6px;">({r.player_name_secondary})</span>
+                  {/if}
+                </a>
+              </td>
               <td>{r.raw_points}</td>
               <td>{fmtNum(r.club_points, 2)}</td>
               <td>{displayPlaceBySeat.get(r.seat) ?? r.placement}</td>
@@ -90,7 +97,14 @@
         <tbody>
           {#each data.ratingDeltas as row}
             <tr>
-              <td><a href={`/player/${row.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">{row.display_name}</a></td>
+              <td>
+                <a href={`/player/${row.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">
+                  {row.player_name_primary}
+                  {#if row.player_name_secondary}
+                    <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
+                  {/if}
+                </a>
+              </td>
               <td>{displayPlaceByPlayer.get(row.player_id) ?? row.placement}</td>
               <td>{fmtNum(row.delta, 2)}</td>
               <td>{fmtNum(row.new_rate, 2)}</td>

@@ -36,7 +36,14 @@
           {#each data.standings as row}
             <tr>
               <td>{row.rank}</td>
-              <td><a href={`/player/${row.player_id}?season=${data.season.id}`} style="text-decoration:none;">{row.display_name}</a></td>
+              <td>
+                <a href={`/player/${row.player_id}?season=${data.season.id}`} style="text-decoration:none;">
+                  {row.player_name_primary}
+                  {#if row.player_name_secondary}
+                    <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
+                  {/if}
+                </a>
+              </td>
               <td>{fmtNum(row.total_points_with_adjustments, 2)}</td>
               <td>{row.games_played}</td>
               <td>{fmtNum(row.avg_placement, 2)}</td>

@@ -54,11 +54,20 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     .select('id, name, start_date')
     .order('start_date', { ascending: false });
 
+  const currentRatingRes = await locals.supabase
+    .from('rating_state')
+    .select('rate, games_played, updated_at')
+    .eq('is_lifetime', true)
+    .eq('player_id', player_id)
+    .maybeSingle();
+
   let stats = null;
   let standingsRow = null;
   let matchHistory: any[] = [];
   let pointHistory: any[] = [];
   let ratingHistory: any[] = [];
+  let bestRawMatch: any = null;
+  let worstRawMatch: any = null;
 
   if (seasonId) {
     const statsRes = await locals.supabase
@@ -103,6 +112,77 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       .order('played_at', { ascending: true })
       .limit(400);
     ratingHistory = rhRes.error ? [] : (rhRes.data ?? []);
+
+    const bestRawRes = await locals.supabase
+      .from('v_player_match_history')
+      .select('match_id, played_at, raw_points')
+      .eq('season_id', seasonId)
+      .eq('player_id', player_id)
+      .order('raw_points', { ascending: false })
+      .order('played_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    bestRawMatch = bestRawRes.error ? null : bestRawRes.data;
+
+    const worstRawRes = await locals.supabase
+      .from('v_player_match_history')
+      .select('match_id, played_at, raw_points')
+      .eq('season_id', seasonId)
+      .eq('player_id', player_id)
+      .order('raw_points', { ascending: true })
+      .order('played_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    worstRawMatch = worstRawRes.error ? null : worstRawRes.data;
+
+    const matchIds = Array.from(
+      new Set(
+        matchHistory
+          .map((m) => String(m?.match_id ?? '').trim())
+          .filter((id) => id.length > 0)
+      )
+    );
+
+    const ratingDeltaByMatch = new Map<string, number>();
+    if (matchIds.length > 0) {
+      const matchDeltasRes = await locals.supabase
+        .from('v_rating_history')
+        .select('match_id, delta')
+        .eq('is_lifetime', true)
+        .eq('player_id', player_id)
+        .in('match_id', matchIds);
+      if (!matchDeltasRes.error) {
+        for (const row of matchDeltasRes.data ?? []) {
+          const id = String(row.match_id ?? '').trim();
+          const delta = Number(row.delta);
+          if (id && Number.isFinite(delta)) ratingDeltaByMatch.set(id, delta);
+        }
+      }
+    }
+
+    const matchLabelById = new Map<string, string>();
+    if (matchIds.length > 0) {
+      const labelsRes = await locals.supabase
+        .from('matches')
+        .select('id, table_label, table_mode, game_number')
+        .in('id', matchIds);
+      if (!labelsRes.error) {
+        for (const m of labelsRes.data ?? []) {
+          const fallbackTable = m.table_mode && m.game_number ? `${m.table_mode}-${m.game_number}` : null;
+          const label = String(m.table_label ?? fallbackTable ?? m.id).trim();
+          if (m.id) matchLabelById.set(m.id, label);
+        }
+      }
+    }
+
+    matchHistory = matchHistory.map((m) => {
+      const match_id = String(m?.match_id ?? '');
+      return {
+        ...m,
+        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8),
+        rating_delta: ratingDeltaByMatch.get(match_id) ?? null
+      };
+    });
   }
 
   return {
@@ -110,11 +190,14 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     canEditDisplay,
     seasons: seasonsRes.error ? [] : (seasonsRes.data ?? []),
     seasonId,
+    currentRating: currentRatingRes.error ? null : currentRatingRes.data,
     stats,
     standingsRow,
     matchHistory,
     pointHistory,
-    ratingHistory
+    ratingHistory,
+    bestRawMatch,
+    worstRawMatch
   };
 };
 

@@ -1,5 +1,6 @@
 import { error as kitError } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { composeSeasonNameParts } from '$lib/player-name';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   const match_id = params.match_id;
@@ -24,9 +25,44 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .eq('match_id', match_id)
     .eq('is_lifetime', true);
 
+  const results = resultsRes.error ? [] : (resultsRes.data ?? []);
+  const ratingDeltas = deltasRes.error ? [] : (deltasRes.data ?? []);
+
+  const playerIds = Array.from(
+    new Set(
+      [...results, ...ratingDeltas]
+        .map((row: any) => row.player_id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+    )
+  );
+
+  let playerLabelById = new Map<string, ReturnType<typeof composeSeasonNameParts>>();
+  if (playerIds.length > 0) {
+    const playersRes = await locals.supabase
+      .from('players')
+      .select('id, display_name, real_first_name, real_last_name')
+      .in('id', playerIds);
+
+    if (!playersRes.error) {
+      playerLabelById = new Map(
+        (playersRes.data ?? []).map((p) => [p.id, composeSeasonNameParts(p)])
+      );
+    }
+  }
+
+  const withNameParts = (row: any) => {
+    const parts = playerLabelById.get(row.player_id);
+    const fallbackName = String(row.display_name ?? '').trim();
+    return {
+      ...row,
+      player_name_primary: parts?.primary ?? (fallbackName || 'Unnamed player'),
+      player_name_secondary: parts?.secondary ?? null
+    };
+  };
+
   return {
     match: matchRes.data,
-    results: resultsRes.error ? [] : (resultsRes.data ?? []),
-    ratingDeltas: deltasRes.error ? [] : (deltasRes.data ?? [])
+    results: results.map(withNameParts),
+    ratingDeltas: ratingDeltas.map(withNameParts)
   };
 };
