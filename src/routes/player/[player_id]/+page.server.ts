@@ -135,7 +135,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       .maybeSingle();
     worstRawMatch = worstRawRes.error ? null : worstRawRes.data;
 
-    const matchIds = Array.from(
+    const recentMatchIds = Array.from(
       new Set(
         matchHistory
           .map((m) => String(m?.match_id ?? '').trim())
@@ -144,13 +144,13 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     );
 
     const ratingDeltaByMatch = new Map<string, number>();
-    if (matchIds.length > 0) {
+    if (recentMatchIds.length > 0) {
       const matchDeltasRes = await locals.supabase
         .from('v_rating_history')
         .select('match_id, delta')
         .eq('is_lifetime', true)
         .eq('player_id', player_id)
-        .in('match_id', matchIds);
+        .in('match_id', recentMatchIds);
       if (!matchDeltasRes.error) {
         for (const row of matchDeltasRes.data ?? []) {
           const id = String(row.match_id ?? '').trim();
@@ -160,12 +160,21 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       }
     }
 
+    const historyMatchIds = Array.from(
+      new Set(
+        [...pointHistory, ...ratingHistory]
+          .map((m) => String(m?.match_id ?? '').trim())
+          .filter((id) => id.length > 0)
+      )
+    );
+    const labelMatchIds = Array.from(new Set([...recentMatchIds, ...historyMatchIds]));
+
     const matchLabelById = new Map<string, string>();
-    if (matchIds.length > 0) {
+    if (labelMatchIds.length > 0) {
       const labelsRes = await locals.supabase
         .from('matches')
         .select('id, table_label, table_mode, game_number')
-        .in('id', matchIds);
+        .in('id', labelMatchIds);
       if (!labelsRes.error) {
         for (const m of labelsRes.data ?? []) {
           const fallbackTable = m.table_mode && m.game_number ? `${m.table_mode}-${m.game_number}` : null;
@@ -181,6 +190,22 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
         ...m,
         match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8),
         rating_delta: ratingDeltaByMatch.get(match_id) ?? null
+      };
+    });
+
+    pointHistory = pointHistory.map((row) => {
+      const match_id = String(row?.match_id ?? '');
+      return {
+        ...row,
+        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8)
+      };
+    });
+
+    ratingHistory = ratingHistory.map((row) => {
+      const match_id = String(row?.match_id ?? '');
+      return {
+        ...row,
+        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8)
       };
     });
   }

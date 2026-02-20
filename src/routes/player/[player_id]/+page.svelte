@@ -11,11 +11,158 @@
   let show_real_first_name = data.player.show_real_first_name ?? false;
   let show_real_last_name = data.player.show_real_last_name ?? false;
 
+  type HistoryRange = '10' | '20' | '50' | 'all';
+  type ChartPoint = { row: any; x: number; y: number };
+  type GameTick = { key: string; ts: number; label: string; idx: number };
+
+  const historyRangeOptions: { key: HistoryRange; label: string }[] = [
+    { key: '10', label: 'Last 10' },
+    { key: '20', label: 'Last 20' },
+    { key: '50', label: 'Last 50' },
+    { key: 'all', label: 'All time' }
+  ];
+
+  let historyRange: HistoryRange = '20';
+  const chartWidth = 1280;
+  const chartHeight = 520;
+  const plot = { left: 64, right: 64, top: 18, bottom: 150 };
+
   function fmtFixed2(x: number | null | undefined) {
     const n = Number(x);
     if (!Number.isFinite(n)) return '0.00';
     return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+
+  function historySlice(rows: any[], range: HistoryRange) {
+    if (range === 'all') return rows;
+    const n = Number(range);
+    if (!Number.isFinite(n) || n <= 0) return rows;
+    return rows.slice(-n);
+  }
+
+  function toTime(value: unknown) {
+    const t = new Date(String(value ?? '')).getTime();
+    return Number.isFinite(t) ? t : null;
+  }
+
+  function seriesRange(values: number[], fallback: [number, number]): [number, number] {
+    if (values.length === 0) return fallback;
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    if (min === max) {
+      const bump = Math.max(Math.abs(min) * 0.05, 1);
+      min -= bump;
+      max += bump;
+    }
+    const pad = (max - min) * 0.08;
+    return [min - pad, max + pad];
+  }
+
+  function pathFrom(points: ChartPoint[]) {
+    if (points.length === 0) return '';
+    return points
+      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+      .join(' ');
+  }
+
+  function spPointTooltip(row: any) {
+    const label = String(row?.match_label ?? String(row?.match_id ?? '').slice(0, 8));
+    const date = row?.played_at ? fmtDateTime(row.played_at) : '';
+    return `${label}${date ? ` • ${date}` : ''}\nSP Δ ${fmtNum(row?.club_points, 2)} | Cum SP ${fmtNum(row?.cumulative_points, 2)}`;
+  }
+
+  function rPointTooltip(row: any) {
+    const label = String(row?.match_label ?? String(row?.match_id ?? '').slice(0, 8));
+    const date = row?.played_at ? fmtDateTime(row.played_at) : '';
+    return `${label}${date ? ` • ${date}` : ''}\nPlace ${row?.placement ?? '-'} | ΔR ${fmtNum(row?.delta, 2)} | R ${fmtNum(row?.new_rate, 2)}`;
+  }
+
+  $: spRows = historySlice(data.pointHistory ?? [], historyRange);
+  $: rRows = historySlice(data.ratingHistory ?? [], historyRange);
+  $: plotWidth = chartWidth - plot.left - plot.right;
+  $: plotHeight = chartHeight - plot.top - plot.bottom;
+  $: spRange = seriesRange(
+    spRows
+      .map((row: any) => Number(row?.cumulative_points))
+      .filter((v: number) => Number.isFinite(v)),
+    [0, 1]
+  );
+  $: rRange = seriesRange(
+    rRows
+      .map((row: any) => Number(row?.new_rate))
+      .filter((v: number) => Number.isFinite(v)),
+    [0, 1]
+  );
+
+  function rowGameKey(row: any) {
+    const matchId = String(row?.match_id ?? '').trim();
+    if (matchId) return matchId;
+    const ts = toTime(row?.played_at);
+    return `t-${ts ?? 'na'}-${String(row?.played_at ?? '')}`;
+  }
+
+  function xAtIndex(idx: number, total: number) {
+    if (total <= 1) return plot.left + plotWidth / 2;
+    return plot.left + (idx / (total - 1)) * plotWidth;
+  }
+
+  function ySp(value: number) {
+    const [yMin, yMax] = spRange;
+    if (yMax === yMin) return plot.top + plotHeight / 2;
+    return plot.top + (1 - (value - yMin) / (yMax - yMin)) * plotHeight;
+  }
+
+  function yR(value: number) {
+    const [yMin, yMax] = rRange;
+    if (yMax === yMin) return plot.top + plotHeight / 2;
+    return plot.top + (1 - (value - yMin) / (yMax - yMin)) * plotHeight;
+  }
+
+  $: xGameTicks = (() => {
+    const byMatch = new Map<string, { key: string; ts: number; label: string }>();
+    for (const row of [...spRows, ...rRows]) {
+      const ts = toTime(row?.played_at);
+      if (ts == null) continue;
+      const key = rowGameKey(row);
+      if (byMatch.has(key)) continue;
+      const fallbackLabel = String(row?.match_id ?? '').slice(0, 8) || 'Game';
+      const label = String(row?.match_label ?? fallbackLabel).trim();
+      byMatch.set(key, { key, ts, label });
+    }
+    return Array.from(byMatch.values())
+      .sort((a, b) => a.ts - b.ts)
+      .map((tick, idx) => ({ ...tick, idx }));
+  })();
+  $: xByGameKey = new Map<string, number>(
+    xGameTicks.map((tick) => [tick.key, xAtIndex(tick.idx, xGameTicks.length)])
+  );
+  $: xTickStride = Math.max(1, Math.ceil(xGameTicks.length / 28));
+  $: xAxisTicks = xGameTicks.filter((tick, i) => i % xTickStride === 0 || i === xGameTicks.length - 1);
+
+  $: spPoints = spRows
+    .map((row: any) => {
+      const value = Number(row?.cumulative_points);
+      if (!Number.isFinite(value)) return null;
+      const x = xByGameKey.get(rowGameKey(row));
+      if (x == null) return null;
+      return { row, x, y: ySp(value) };
+    })
+    .filter((p: ChartPoint | null): p is ChartPoint => p !== null);
+
+  $: rPoints = rRows
+    .map((row: any) => {
+      const value = Number(row?.new_rate);
+      if (!Number.isFinite(value)) return null;
+      const x = xByGameKey.get(rowGameKey(row));
+      if (x == null) return null;
+      return { row, x, y: yR(value) };
+    })
+    .filter((p: ChartPoint | null): p is ChartPoint => p !== null);
+
+  $: spPath = pathFrom(spPoints);
+  $: rPath = pathFrom(rPoints);
+  $: hasHistoryData = spPoints.length > 0 || rPoints.length > 0;
+  $: yGridYs = [0, 0.25, 0.5, 0.75, 1].map((t) => plot.top + plotHeight * t);
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -127,34 +274,36 @@
       <div style="font-size:1.05rem; font-weight:650;">Best / worst</div>
       <div class="muted">Best and worst match by raw score.</div>
 
-      <div style="margin-top:12px; display:grid; gap:10px;">
-        <div class="card" style="border-radius:14px;">
-          <div class="muted">Best</div>
-          <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-            <div style="font-size:1.1rem; font-weight:700;">{data.bestRawMatch?.raw_points ?? '-'}</div>
+      <div style="margin-top:10px;">
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; padding:8px 0; border-top:1px solid var(--table-border);">
+          <div>
+            <div class="muted">Best</div>
+            <div class="muted">{data.bestRawMatch?.played_at ? fmtDateTime(data.bestRawMatch.played_at) : ''}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="font-weight:700;">{data.bestRawMatch?.raw_points ?? '-'}</div>
             {#if data.bestRawMatch?.match_id}
-              <a class="btn" href={`/match/${data.bestRawMatch.match_id}`} style="text-decoration:none;">View match</a>
+              <a class="btn" href={`/match/${data.bestRawMatch.match_id}`} style="text-decoration:none;">View</a>
             {/if}
           </div>
-          <div class="muted">{data.bestRawMatch?.played_at ? fmtDateTime(data.bestRawMatch.played_at) : ''}</div>
         </div>
-
-        <div class="card" style="border-radius:14px;">
-          <div class="muted">Worst</div>
-          <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-            <div style="font-size:1.1rem; font-weight:700;">{data.worstRawMatch?.raw_points ?? '-'}</div>
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; padding:8px 0; border-top:1px solid var(--table-border);">
+          <div>
+            <div class="muted">Worst</div>
+            <div class="muted">{data.worstRawMatch?.played_at ? fmtDateTime(data.worstRawMatch.played_at) : ''}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="font-weight:700;">{data.worstRawMatch?.raw_points ?? '-'}</div>
             {#if data.worstRawMatch?.match_id}
-              <a class="btn" href={`/match/${data.worstRawMatch.match_id}`} style="text-decoration:none;">View match</a>
+              <a class="btn" href={`/match/${data.worstRawMatch.match_id}`} style="text-decoration:none;">View</a>
             {/if}
           </div>
-          <div class="muted">{data.worstRawMatch?.played_at ? fmtDateTime(data.worstRawMatch.played_at) : ''}</div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="grid2">
-    <div class="card">
+  <div class="card" style="margin-bottom:12px;">
       <div style="font-size:1.05rem; font-weight:650;">Recent matches</div>
       <div class="muted">Last 100 matches (most recent first).</div>
 
@@ -187,63 +336,151 @@
           </tbody>
         </table>
       </div>
-    </div>
+  </div>
 
-    <div class="card">
+  <div class="card">
       <div style="font-size:1.05rem; font-weight:650;">Histories</div>
-      <div class="muted">Season Points (SP) reset each season. Rating (R) is lifetime.</div>
+      <div class="muted">Composite line chart for Season Points (SP) and Rating (R). Click a point to open that match.</div>
 
-      <h4 style="margin:12px 0 8px;">Season Points (SP) history</h4>
-      <div style="overflow:auto; max-height: 240px;">
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th style="width:120px;">SP Δ</th>
-              <th style="width:160px;">Cumulative SP</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each data.pointHistory as row}
-              <tr>
-                <td><a href={`/match/${row.match_id}`} style="text-decoration:none;">{fmtDateTime(row.played_at)}</a></td>
-                <td>{fmtNum(row.club_points, 2)}</td>
-                <td>{fmtNum(row.cumulative_points, 2)}</td>
-              </tr>
-            {/each}
-            {#if data.pointHistory.length === 0}
-              <tr><td colspan="3" class="muted">No data.</td></tr>
-            {/if}
-          </tbody>
-        </table>
+      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;">
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          {#each historyRangeOptions as opt}
+            <button class="btn" class:primary={historyRange === opt.key} type="button" on:click={() => (historyRange = opt.key)}>
+              {opt.label}
+            </button>
+          {/each}
+        </div>
+
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <span class="muted" style="display:inline-flex; align-items:center; gap:6px; font-size:1.1rem;">
+            <span style="width:10px; height:10px; border-radius:999px; background:#3b82f6; display:inline-block;"></span>
+            SP (left axis)
+          </span>
+          <span class="muted" style="display:inline-flex; align-items:center; gap:6px; font-size:1.1rem;">
+            <span style="width:10px; height:10px; border-radius:999px; background:#f59e0b; display:inline-block;"></span>
+            R (right axis)
+          </span>
+        </div>
       </div>
 
-      <h4 style="margin:12px 0 8px;">Rating (R) history (lifetime)</h4>
-      <div style="overflow:auto; max-height: 240px;">
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th style="width:80px;">Place</th>
-              <th style="width:140px;">ΔR</th>
-              <th style="width:140px;">R</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each data.ratingHistory as row}
-              <tr>
-                <td><a href={`/match/${row.match_id}`} style="text-decoration:none;">{fmtDateTime(row.played_at)}</a></td>
-                <td>{row.placement}</td>
-                <td>{fmtNum(row.delta, 2)}</td>
-                <td>{fmtNum(row.new_rate, 2)}</td>
-              </tr>
+      <div style="margin-top:12px;">
+        {#if hasHistoryData}
+          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style="width:100%; height:auto; display:block;">
+            <rect
+              x={plot.left}
+              y={plot.top}
+              width={plotWidth}
+              height={plotHeight}
+              fill="none"
+              stroke="var(--table-border)"
+              stroke-width="1"
+            />
+
+            {#each yGridYs as y}
+              <line
+                x1={plot.left}
+                y1={y}
+                x2={plot.left + plotWidth}
+                y2={y}
+                stroke="var(--table-border)"
+                stroke-opacity="0.45"
+                stroke-dasharray="3 3"
+              />
             {/each}
-            {#if data.ratingHistory.length === 0}
-              <tr><td colspan="4" class="muted">No Rating (R) events yet.</td></tr>
+
+            {#each xAxisTicks as tick}
+              <line
+                x1={xAtIndex(tick.idx, xGameTicks.length)}
+                y1={plot.top}
+                x2={xAtIndex(tick.idx, xGameTicks.length)}
+                y2={plot.top + plotHeight}
+                stroke="var(--table-border)"
+                stroke-opacity="0.35"
+                stroke-dasharray="3 3"
+              />
+              <text
+                x={xAtIndex(tick.idx, xGameTicks.length)}
+                y={chartHeight - 24}
+                text-anchor="end"
+                transform={`rotate(-45 ${xAtIndex(tick.idx, xGameTicks.length)} ${chartHeight - 24})`}
+                font-size="16"
+                font-weight="650"
+                fill="var(--muted)"
+              >
+                {tick.idx + 1}
+              </text>
+            {/each}
+
+            {#if spPoints.length > 1}
+              <path d={spPath} fill="none" stroke="#3b82f6" stroke-width="2.4" />
             {/if}
-          </tbody>
-        </table>
+            {#if rPoints.length > 1}
+              <path d={rPath} fill="none" stroke="#f59e0b" stroke-width="2.4" />
+            {/if}
+
+            {#each spPoints as p}
+              <a href={`/match/${p.row.match_id}`}>
+                <circle cx={p.x} cy={p.y} r="4" fill="#3b82f6" stroke="var(--card-bg)" stroke-width="1.5">
+                  <title>{spPointTooltip(p.row)}</title>
+                </circle>
+              </a>
+            {/each}
+
+            {#each rPoints as p}
+              <a href={`/match/${p.row.match_id}`}>
+                <circle cx={p.x} cy={p.y} r="4" fill="#f59e0b" stroke="var(--card-bg)" stroke-width="1.5">
+                  <title>{rPointTooltip(p.row)}</title>
+                </circle>
+              </a>
+            {/each}
+
+            <text
+              x={plot.left - 8}
+              y={plot.top + 10}
+              text-anchor="end"
+              font-size="15"
+              font-weight="700"
+              fill="#3b82f6"
+            >
+              SP {fmtNum(spRange[1], 2)}
+            </text>
+            <text
+              x={plot.left - 8}
+              y={plot.top + plotHeight}
+              text-anchor="end"
+              dominant-baseline="ideographic"
+              font-size="15"
+              font-weight="700"
+              fill="#3b82f6"
+            >
+              SP {fmtNum(spRange[0], 2)}
+            </text>
+
+            <text
+              x={plot.left + plotWidth + 8}
+              y={plot.top + 10}
+              text-anchor="start"
+              font-size="15"
+              font-weight="700"
+              fill="#f59e0b"
+            >
+              R {fmtNum(rRange[1], 2)}
+            </text>
+            <text
+              x={plot.left + plotWidth + 8}
+              y={plot.top + plotHeight}
+              text-anchor="start"
+              dominant-baseline="ideographic"
+              font-size="15"
+              font-weight="700"
+              fill="#f59e0b"
+            >
+              R {fmtNum(rRange[0], 2)}
+            </text>
+          </svg>
+        {:else}
+          <div class="muted">No SP or Rating history yet.</div>
+        {/if}
       </div>
-    </div>
   </div>
 {/if}
