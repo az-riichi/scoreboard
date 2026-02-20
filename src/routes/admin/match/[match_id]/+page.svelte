@@ -26,14 +26,6 @@
   const playerLabelById = new Map<string, string>();
   for (const p of data.players ?? []) playerLabelById.set(p.id, p.label);
 
-  const seasonRatingByPlayer = new Map<string, { rate: number; games_played: number }>();
-  for (const row of data.seasonRatings ?? []) {
-    seasonRatingByPlayer.set(row.player_id, {
-      rate: asNum(row.rate, 1500),
-      games_played: asNum(row.games_played, 0)
-    });
-  }
-
   const lifetimeRatingByPlayer = new Map<string, { rate: number; games_played: number }>();
   for (const row of data.lifetimeRatings ?? []) {
     lifetimeRatingByPlayer.set(row.player_id, {
@@ -71,10 +63,7 @@
   }
 
   function ratingState(player_id: string) {
-    return (
-      seasonRatingByPlayer.get(player_id) ??
-      lifetimeRatingByPlayer.get(player_id) ?? { rate: 1500, games_played: 0 }
-    );
+    return lifetimeRatingByPlayer.get(player_id) ?? { rate: 1500, games_played: 0 };
   }
 
   function placeBasePoints(place: number) {
@@ -253,7 +242,7 @@
 </div>
 
 {#if form?.message}
-  <div class="card" style="border-color:#c7f0c2; background:#f2fff0; margin-bottom:12px;">
+  <div class="card alert alert-success">
     {form.message}
   </div>
 {/if}
@@ -341,7 +330,7 @@
 
     <div style="margin-top:14px;">
       <div style="font-size:1.02rem; font-weight:650;">Expected outcomes</div>
-      <div class="muted">Club points include ruleset return/divisor and tie-split UMA (OKA by placement). R preview uses season R with lifetime fallback.</div>
+      <div class="muted">Season Points (SP) include ruleset return/divisor and tie-split UMA (OKA by placement). Rating (R) preview is lifetime.</div>
 
       <div style="margin-top:10px; overflow:auto;">
         <table>
@@ -351,7 +340,7 @@
               <th>Player</th>
               <th style="width:120px;">Raw</th>
               <th style="width:90px;">Place</th>
-              <th style="width:130px;">Club</th>
+              <th style="width:130px;">SP Δ</th>
               <th style="width:120px;">ΔR</th>
               <th style="width:130px;">New R</th>
             </tr>
@@ -373,7 +362,7 @@
       </div>
 
       {#if !canProjectR}
-        <div class="muted" style="margin-top:8px;">Pick 4 distinct players to preview R gain/loss.</div>
+        <div class="muted" style="margin-top:8px;">Pick 4 distinct players to preview Rating (R) gain/loss.</div>
       {/if}
     </div>
   </div>
@@ -391,7 +380,7 @@
       <details class="card" style="border-radius:14px;">
         <summary style="cursor:pointer; font-weight:650;">Penalties / Chombo ({data.penalties.length})</summary>
         <div class="muted" style="margin-top:8px;">
-          Penalties adjust club standings only. They do not change R-rank.
+          Penalties adjust Season Points (SP) only. They do not change Rating (R).
         </div>
 
         <form method="POST" action="?/addPenalty" style="display:grid; gap:10px; margin-top:10px;">

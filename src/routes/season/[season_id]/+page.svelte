@@ -17,7 +17,7 @@
   <div class="card">
     <div>
       <div style="font-size:1.05rem; font-weight:650;">Standings</div>
-      <div class="muted">Ranked by total points (incl. adjustments).</div>
+      <div class="muted">Ranked by Season Points (SP), including adjustments. SP resets to 0 each season.</div>
     </div>
 
     <div style="margin-top:12px; overflow:auto;">
@@ -26,7 +26,7 @@
           <tr>
             <th style="width:70px;">Rank</th>
             <th>Player</th>
-            <th style="width:150px;">Total</th>
+            <th style="width:170px;">Season Points (SP)</th>
             <th style="width:110px;">Games</th>
             <th style="width:110px;">Avg place</th>
             <th style="width:110px;">Top2%</th>

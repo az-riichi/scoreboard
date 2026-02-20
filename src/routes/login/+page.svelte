@@ -11,7 +11,7 @@
   <p class="muted" style="margin-top:0;">Only admins can create players and enter results.</p>
 
   {#if form?.message}
-    <div class="card" style="border-color:#ffd08a; background:#fff8ed; margin-bottom:12px;">
+    <div class="card alert alert-warning">
       {form.message}
     </div>
   {/if}

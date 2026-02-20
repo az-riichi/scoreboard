@@ -34,7 +34,7 @@
 </div>
 
 {#if form?.message}
-  <div class="card" style="border-color:#c7f0c2; background:#f2fff0; margin-bottom:12px;">
+  <div class="card alert alert-success">
     {form.message}
   </div>
 {/if}
@@ -82,7 +82,7 @@
   <div class="grid2" style="margin-bottom:12px;">
     <div class="card">
       <div style="font-size:1.05rem; font-weight:650;">Season snapshot</div>
-      <div class="muted">Rank + totals in this season.</div>
+      <div class="muted">Rank + Season Points (SP) in this season.</div>
 
       <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px; margin-top:12px;">
         <div class="card" style="border-radius:14px;">
@@ -90,8 +90,8 @@
           <div style="font-size:1.3rem; font-weight:700;">{data.standingsRow?.rank ?? '-'}</div>
         </div>
         <div class="card" style="border-radius:14px;">
-          <div class="muted">Total</div>
-          <div style="font-size:1.3rem; font-weight:700;">{fmtNum(data.stats?.total_points, 2)}</div>
+          <div class="muted">Season Points (SP)</div>
+          <div style="font-size:1.3rem; font-weight:700;">{fmtNum(data.standingsRow?.total_points_with_adjustments ?? data.stats?.total_points, 2)}</div>
         </div>
         <div class="card" style="border-radius:14px;">
           <div class="muted">Games</div>
@@ -101,7 +101,7 @@
 
       <div style="margin-top:12px;">
         <div class="muted">Avg placement: {fmtNum(data.stats?.avg_placement, 2)}</div>
-        <div class="muted">Avg points: {fmtNum(data.stats?.avg_points, 2)}</div>
+        <div class="muted">Avg SP: {fmtNum(data.stats?.avg_points, 2)}</div>
         <div class="muted">Top2% (rentai): {fmtPct(data.stats?.top2_rate)}</div>
         <div class="muted">#1/#2/#3/#4: {data.stats?.firsts ?? 0}/{data.stats?.seconds ?? 0}/{data.stats?.thirds ?? 0}/{data.stats?.fourths ?? 0}</div>
       </div>
@@ -109,7 +109,7 @@
 
     <div class="card">
       <div style="font-size:1.05rem; font-weight:650;">Best / worst</div>
-      <div class="muted">Best and worst match by club points.</div>
+      <div class="muted">Best and worst match by Season Points (SP).</div>
 
       <div style="margin-top:12px; display:grid; gap:10px;">
         <div class="card" style="border-radius:14px;">
@@ -150,7 +150,7 @@
               <th>Match</th>
               <th style="width:80px;">Seat</th>
               <th style="width:100px;">Place</th>
-              <th style="width:120px;">Pts</th>
+              <th style="width:120px;">SP Δ</th>
             </tr>
           </thead>
           <tbody>
@@ -173,16 +173,16 @@
 
     <div class="card">
       <div style="font-size:1.05rem; font-weight:650;">Histories</div>
-      <div class="muted">Cumulative points and rating deltas (tables ready for charts).</div>
+      <div class="muted">Season Points (SP) reset each season. Rating (R) is lifetime.</div>
 
-      <h4 style="margin:12px 0 8px;">Cumulative points</h4>
+      <h4 style="margin:12px 0 8px;">Season Points (SP) history</h4>
       <div style="overflow:auto; max-height: 240px;">
         <table>
           <thead>
             <tr>
               <th>Date</th>
-              <th style="width:120px;">Delta</th>
-              <th style="width:160px;">Cumulative</th>
+              <th style="width:120px;">SP Δ</th>
+              <th style="width:160px;">Cumulative SP</th>
             </tr>
           </thead>
           <tbody>
@@ -200,7 +200,7 @@
         </table>
       </div>
 
-      <h4 style="margin:12px 0 8px;">R rating history</h4>
+      <h4 style="margin:12px 0 8px;">Rating (R) history (lifetime)</h4>
       <div style="overflow:auto; max-height: 240px;">
         <table>
           <thead>
@@ -221,7 +221,7 @@
               </tr>
             {/each}
             {#if data.ratingHistory.length === 0}
-              <tr><td colspan="4" class="muted">No rating events yet.</td></tr>
+              <tr><td colspan="4" class="muted">No Rating (R) events yet.</td></tr>
             {/if}
           </tbody>
         </table>

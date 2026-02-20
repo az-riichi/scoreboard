@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .from('v_rating_history')
     .select('player_id, display_name, delta, new_rate, placement, is_lifetime')
     .eq('match_id', match_id)
-    .eq('is_lifetime', false);
+    .eq('is_lifetime', true);
 
   return {
     match: matchRes.data,

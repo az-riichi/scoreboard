@@ -98,11 +98,10 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     const rhRes = await locals.supabase
       .from('v_rating_history')
       .select('*')
-      .eq('is_lifetime', false)
-      .eq('season_id', seasonId)
+      .eq('is_lifetime', true)
       .eq('player_id', player_id)
       .order('played_at', { ascending: true })
-      .limit(200);
+      .limit(400);
     ratingHistory = rhRes.error ? [] : (rhRes.data ?? []);
   }
 

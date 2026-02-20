@@ -1,21 +1,225 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
+  import { onMount } from 'svelte';
+
   export let data: import('./$types').LayoutData;
 
-  const navA = 'padding:6px 10px; border-radius:10px; text-decoration:none;';
-  const pill = 'display:inline-flex; gap:8px; align-items:center; padding:6px 10px; border-radius:999px; background:#f2f2f2;';
+  const navA =
+    'padding:6px 10px; border-radius:10px; text-decoration:none; border:1px solid var(--nav-border); background:var(--nav-bg);';
+  const pill =
+    'display:inline-flex; gap:8px; align-items:center; padding:6px 10px; border-radius:999px; border:1px solid var(--pill-border); background:var(--pill-bg);';
+  const THEME_KEY = 'azrm-theme';
+
+  type ThemePreference = 'system' | 'light' | 'dark';
+  let themePreference: ThemePreference = 'system';
+  let resolvedTheme: 'light' | 'dark' = 'light';
+
+  function normalizeTheme(value: string | null): ThemePreference {
+    if (value === 'light' || value === 'dark' || value === 'system') return value;
+    return 'system';
+  }
+
+  function applyThemePreference(pref: ThemePreference) {
+    if (!browser) return;
+    const root = document.documentElement;
+    if (pref === 'light' || pref === 'dark') {
+      root.setAttribute('data-theme', pref);
+      try {
+        localStorage.setItem(THEME_KEY, pref);
+      } catch {}
+      return;
+    }
+    root.removeAttribute('data-theme');
+    try {
+      localStorage.removeItem(THEME_KEY);
+    } catch {}
+  }
+
+  function getSystemTheme(): 'light' | 'dark' {
+    if (!browser) return 'light';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
+  function updateResolvedTheme() {
+    resolvedTheme = themePreference === 'system' ? getSystemTheme() : themePreference;
+  }
+
+  onMount(() => {
+    if (!browser) return;
+    let storedTheme: string | null = null;
+    try {
+      storedTheme = localStorage.getItem(THEME_KEY);
+    } catch {}
+    themePreference = normalizeTheme(storedTheme);
+    applyThemePreference(themePreference);
+    updateResolvedTheme();
+
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onMediaChange = () => updateResolvedTheme();
+    media.addEventListener('change', onMediaChange);
+    return () => media.removeEventListener('change', onMediaChange);
+  });
+
+  function setThemePreference(next: 'light' | 'dark') {
+    themePreference = themePreference === next ? 'system' : next;
+    applyThemePreference(themePreference);
+    updateResolvedTheme();
+  }
 </script>
 
 <svelte:head>
   <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    body { margin: 0; background: #fff; color: #111; }
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      --bg: #f5f7fb;
+      --text: #111827;
+      --muted: #5f6b7a;
+      --card-bg: #ffffff;
+      --card-border: #e2e8f0;
+      --btn-bg: #ffffff;
+      --btn-border: #cdd5df;
+      --btn-primary-bg: #111827;
+      --btn-primary-text: #f8fafc;
+      --field-bg: #ffffff;
+      --field-border: #cdd5df;
+      --table-border: #e2e8f0;
+      --table-head: #5f6b7a;
+      --nav-bg: #ffffff;
+      --nav-border: #dbe3ec;
+      --pill-bg: #eef2f7;
+      --pill-border: #dbe3ec;
+      --alert-success-bg: #ecfdf3;
+      --alert-success-border: #86efac;
+      --alert-success-text: #14532d;
+      --alert-warning-bg: #fff7ed;
+      --alert-warning-border: #fdba74;
+      --alert-warning-text: #7c2d12;
+      --alert-error-bg: #fef2f2;
+      --alert-error-border: #fca5a5;
+      --alert-error-text: #7f1d1d;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme='light']) {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --text: #e6edf3;
+        --muted: #9aa7b5;
+        --card-bg: #141b24;
+        --card-border: #2b3644;
+        --btn-bg: #1a2330;
+        --btn-border: #334255;
+        --btn-primary-bg: #e6edf3;
+        --btn-primary-text: #0d1117;
+        --field-bg: #101722;
+        --field-border: #334255;
+        --table-border: #2b3644;
+        --table-head: #9aa7b5;
+        --nav-bg: #141b24;
+        --nav-border: #2b3644;
+        --pill-bg: #1a2330;
+        --pill-border: #2b3644;
+        --alert-success-bg: #0f2a1d;
+        --alert-success-border: #2f7d55;
+        --alert-success-text: #b8f7cc;
+        --alert-warning-bg: #2d1d12;
+        --alert-warning-border: #8a4b21;
+        --alert-warning-text: #ffd9b0;
+        --alert-error-bg: #321516;
+        --alert-error-border: #8f2f35;
+        --alert-error-text: #ffb4b8;
+      }
+    }
+
+    :root[data-theme='light'] {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --text: #111827;
+      --muted: #5f6b7a;
+      --card-bg: #ffffff;
+      --card-border: #e2e8f0;
+      --btn-bg: #ffffff;
+      --btn-border: #cdd5df;
+      --btn-primary-bg: #111827;
+      --btn-primary-text: #f8fafc;
+      --field-bg: #ffffff;
+      --field-border: #cdd5df;
+      --table-border: #e2e8f0;
+      --table-head: #5f6b7a;
+      --nav-bg: #ffffff;
+      --nav-border: #dbe3ec;
+      --pill-bg: #eef2f7;
+      --pill-border: #dbe3ec;
+      --alert-success-bg: #ecfdf3;
+      --alert-success-border: #86efac;
+      --alert-success-text: #14532d;
+      --alert-warning-bg: #fff7ed;
+      --alert-warning-border: #fdba74;
+      --alert-warning-text: #7c2d12;
+      --alert-error-bg: #fef2f2;
+      --alert-error-border: #fca5a5;
+      --alert-error-text: #7f1d1d;
+    }
+
+    :root[data-theme='dark'] {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --text: #e6edf3;
+      --muted: #9aa7b5;
+      --card-bg: #141b24;
+      --card-border: #2b3644;
+      --btn-bg: #1a2330;
+      --btn-border: #334255;
+      --btn-primary-bg: #e6edf3;
+      --btn-primary-text: #0d1117;
+      --field-bg: #101722;
+      --field-border: #334255;
+      --table-border: #2b3644;
+      --table-head: #9aa7b5;
+      --nav-bg: #141b24;
+      --nav-border: #2b3644;
+      --pill-bg: #1a2330;
+      --pill-border: #2b3644;
+      --alert-success-bg: #0f2a1d;
+      --alert-success-border: #2f7d55;
+      --alert-success-text: #b8f7cc;
+      --alert-warning-bg: #2d1d12;
+      --alert-warning-border: #8a4b21;
+      --alert-warning-text: #ffd9b0;
+      --alert-error-bg: #321516;
+      --alert-error-border: #8f2f35;
+      --alert-error-text: #ffb4b8;
+    }
+
+    body { margin: 0; background: var(--bg); color: var(--text); }
     a { color: inherit; }
     .wrap { max-width: 1080px; margin: 0 auto; padding: 18px 14px 40px; }
-    .card { border: 1px solid #e6e6e6; border-radius: 16px; padding: 14px; background: #fff; }
-    .muted { color: #666; font-size: 0.95rem; }
+    .card { border: 1px solid var(--card-border); border-radius: 16px; padding: 14px; background: var(--card-bg); }
+    .alert {
+      margin-bottom: 12px;
+      border-width: 1px;
+      border-style: solid;
+    }
+    .alert-success {
+      border-color: var(--alert-success-border);
+      background: var(--alert-success-bg);
+      color: var(--alert-success-text);
+    }
+    .alert-warning {
+      border-color: var(--alert-warning-border);
+      background: var(--alert-warning-bg);
+      color: var(--alert-warning-text);
+    }
+    .alert-error {
+      border-color: var(--alert-error-border);
+      background: var(--alert-error-bg);
+      color: var(--alert-error-text);
+    }
+    .muted { color: var(--muted); font-size: 0.95rem; }
     .btn {
-      border: 1px solid #ddd;
-      background: #fff;
+      border: 1px solid var(--btn-border);
+      background: var(--btn-bg);
       padding: 8px 12px;
       border-radius: 12px;
       cursor: pointer;
@@ -29,11 +233,56 @@
       appearance: none;
       -webkit-appearance: none;
     }
-    .btn.primary { border-color: #111; background: #111; color: #fff; }
-    input, select, textarea { padding: 8px 10px; border-radius: 12px; border: 1px solid #ddd; }
+    .btn.primary {
+      border-color: var(--btn-primary-bg);
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
+    }
+    input, select, textarea {
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--field-border);
+      background: var(--field-bg);
+      color: var(--text);
+    }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 8px; border-bottom: 1px solid #eee; text-align: left; }
-    th { font-size: 0.85rem; color: #666; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid var(--table-border); text-align: left; }
+    th { font-size: 0.85rem; color: var(--table-head); }
+    .theme-toggle {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      border: 1px solid var(--nav-border);
+      background: var(--nav-bg);
+      border-radius: 999px;
+      padding: 3px;
+    }
+    .theme-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      font-size: 0.95rem;
+      line-height: 1;
+    }
+    .theme-icon:hover {
+      background: var(--pill-bg);
+      color: var(--text);
+    }
+    .theme-icon.is-active {
+      background: var(--pill-bg);
+      color: var(--text);
+    }
+    .theme-icon.is-system {
+      opacity: 0.75;
+    }
     .grid2 { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     @media (max-width: 780px) { .grid2 { grid-template-columns: 1fr; } }
   </style>
@@ -55,6 +304,26 @@
       {#if data.isAdmin}
         <a href="/admin" style={navA}>Admin</a>
       {/if}
+      <div class="theme-toggle" title={themePreference === 'system' ? 'Theme: System (auto)' : `Theme: ${themePreference}`}>
+        <button
+          class="theme-icon {resolvedTheme === 'light' ? 'is-active' : ''} {themePreference === 'system' && resolvedTheme === 'light' ? 'is-system' : ''}"
+          type="button"
+          aria-label="Use light theme (click again for system)"
+          aria-pressed={resolvedTheme === 'light'}
+          on:click={() => setThemePreference('light')}
+        >
+          ☀
+        </button>
+        <button
+          class="theme-icon {resolvedTheme === 'dark' ? 'is-active' : ''} {themePreference === 'system' && resolvedTheme === 'dark' ? 'is-system' : ''}"
+          type="button"
+          aria-label="Use dark theme (click again for system)"
+          aria-pressed={resolvedTheme === 'dark'}
+          on:click={() => setThemePreference('dark')}
+        >
+          ☾
+        </button>
+      </div>
 
       {#if data.session}
         <span style={pill} title="Signed in">

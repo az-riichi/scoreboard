@@ -33,12 +33,6 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .eq('id', matchRes.data.ruleset_id)
     .maybeSingle();
 
-  const ratingsRes = await locals.supabase
-    .from('rating_state')
-    .select('player_id, rate, games_played')
-    .eq('is_lifetime', false)
-    .eq('season_id', matchRes.data.season_id);
-
   const lifetimeRatingsRes = await locals.supabase
     .from('rating_state')
     .select('player_id, rate, games_played')
@@ -77,7 +71,6 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     players,
     results: resultsRes.error ? [] : (resultsRes.data ?? []),
     ruleset: rulesetRes.error ? null : rulesetRes.data,
-    seasonRatings: ratingsRes.error ? [] : (ratingsRes.data ?? []),
     lifetimeRatings: lifetimeRatingsRes.error ? [] : (lifetimeRatingsRes.data ?? []),
     penalties
   };
@@ -305,7 +298,7 @@ export const actions: Actions = {
 
     const { error } = await locals.supabase.rpc('recompute_match_derived', { p_match_id: match_id });
     if (error) return fail(400, { message: error.message });
-    return { message: 'Recomputed placement and club points.' };
+    return { message: 'Recomputed placement and Season Points (SP).' };
   },
 
   finalize: async ({ locals, params }) => {

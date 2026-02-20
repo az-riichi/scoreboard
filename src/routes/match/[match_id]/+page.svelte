@@ -45,7 +45,7 @@
 <div class="grid2">
   <div class="card">
     <div style="font-size:1.05rem; font-weight:650;">Results</div>
-    <div class="muted">Seats E/S/W/N with raw points, club points, placement.</div>
+    <div class="muted">Seats E/S/W/N with raw points, Season Points (SP), and placement.</div>
 
     <div style="margin-top:12px; overflow:auto;">
       <table>
@@ -54,7 +54,7 @@
             <th style="width:70px;">Seat</th>
             <th>Player</th>
             <th style="width:140px;">Raw</th>
-            <th style="width:140px;">Club</th>
+            <th style="width:140px;">SP Δ</th>
             <th style="width:90px;">Place</th>
           </tr>
         </thead>
@@ -74,8 +74,8 @@
   </div>
 
   <div class="card">
-    <div style="font-size:1.05rem; font-weight:650;">R deltas (season)</div>
-    <div class="muted">Tenhou-like rating change for this match.</div>
+    <div style="font-size:1.05rem; font-weight:650;">Rating (R) deltas</div>
+    <div class="muted">Lifetime Rating (R) change for this match.</div>
 
     <div style="margin-top:12px; overflow:auto;">
       <table>
@@ -97,7 +97,7 @@
             </tr>
           {/each}
           {#if data.ratingDeltas.length === 0}
-            <tr><td colspan="4" class="muted">No rating events found.</td></tr>
+            <tr><td colspan="4" class="muted">No Rating (R) events found.</td></tr>
           {/if}
         </tbody>
       </table>

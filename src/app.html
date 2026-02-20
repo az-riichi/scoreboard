@@ -3,6 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('azrm-theme');
+          if (theme === 'light' || theme === 'dark') {
+            document.documentElement.setAttribute('data-theme', theme);
+          } else {
+            document.documentElement.removeAttribute('data-theme');
+          }
+        } catch {}
+      })();
+    </script>
     %sveltekit.head%
     <title>AZRM Scoreboard</title>
   </head>

@@ -21,7 +21,7 @@
 </div>
 
 {#if form?.message}
-  <div class="card" style="border-color:#c7f0c2; background:#f2fff0; margin-bottom:12px;">
+  <div class="card alert alert-success">
     {form.message}
   </div>
 {/if}
