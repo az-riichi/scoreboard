@@ -10,6 +10,7 @@
   let game_number = '';
   let table_mode = 'A';
   let extra_sticks = 0;
+  let notes = '';
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -77,6 +78,11 @@
       <input name="extra_sticks" type="number" min="0" step="1" bind:value={extra_sticks} />
     </label>
 
+    <label style="min-width:300px; flex:1 1 300px;">
+      <div class="muted">Note (optional)</div>
+      <input name="notes" bind:value={notes} placeholder="Optional match notes" />
+    </label>
+
     <button class="btn primary" type="submit">Create draft</button>
   </form>
 
@@ -114,6 +120,10 @@
               {#if m.status === 'final'}
                 <a class="btn" href={`/match/${m.id}`} style="text-decoration:none; margin-left:6px;">Public</a>
               {/if}
+              <form method="POST" action="?/delete" style="display:inline-block; margin-left:6px;" on:submit={(e) => { if (!confirm('Delete this game? This cannot be undone.')) e.preventDefault(); }}>
+                <input type="hidden" name="match_id" value={m.id} />
+                <button class="btn" type="submit">Delete</button>
+              </form>
             </td>
           </tr>
         {/each}

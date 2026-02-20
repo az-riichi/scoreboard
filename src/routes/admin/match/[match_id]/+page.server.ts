@@ -3,6 +3,8 @@ import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
 import { composePlayerDisplayName } from '$lib/player-name';
 
+const CHOMBO_PREFIX = 'CHOMBO';
+
 export const load: PageServerLoad = async ({ locals, params }) => {
   await requireAdmin(locals);
   const match_id = params.match_id;
@@ -17,8 +19,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const playersRes = await locals.supabase
     .from('players')
-    .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name')
-    .eq('is_active', true)
+    .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, is_active')
     .order('created_at', { ascending: true });
 
   const resultsRes = await locals.supabase
@@ -26,14 +27,59 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .select('seat, player_id, raw_points, placement, club_points')
     .eq('match_id', match_id);
 
-  return {
-    match: matchRes.data,
-    players: playersRes.error
+  const rulesetRes = await locals.supabase
+    .from('rulesets')
+    .select('id, name, return_points, point_divisor, uma_1, uma_2, uma_3, uma_4, oka_1, oka_2, oka_3, oka_4')
+    .eq('id', matchRes.data.ruleset_id)
+    .maybeSingle();
+
+  const ratingsRes = await locals.supabase
+    .from('rating_state')
+    .select('player_id, rate, games_played')
+    .eq('is_lifetime', false)
+    .eq('season_id', matchRes.data.season_id);
+
+  const lifetimeRatingsRes = await locals.supabase
+    .from('rating_state')
+    .select('player_id, rate, games_played')
+    .eq('is_lifetime', true);
+
+  const penaltyReasonPrefix = `${CHOMBO_PREFIX}:${match_id}:%`;
+  const penaltiesRes = await locals.supabase
+    .from('adjustments')
+    .select('id, player_id, points, reason, created_at')
+    .eq('season_id', matchRes.data.season_id)
+    .like('reason', penaltyReasonPrefix)
+    .order('created_at', { ascending: false });
+
+  const players =
+    playersRes.error
       ? []
       : (playersRes.data ?? [])
           .map((p) => ({ ...p, label: composePlayerDisplayName(p) }))
-          .sort((a, b) => a.label.localeCompare(b.label)),
-    results: resultsRes.error ? [] : (resultsRes.data ?? [])
+          .sort((a, b) => a.label.localeCompare(b.label));
+
+  const playerLabelById = new Map(players.map((p) => [p.id, p.label]));
+  const penalties = penaltiesRes.error
+    ? []
+    : (penaltiesRes.data ?? []).map((p) => {
+        const prefix = `${CHOMBO_PREFIX}:${match_id}:`;
+        const reason_code = p.reason.startsWith(prefix) ? p.reason.slice(prefix.length) : p.reason;
+        return {
+          ...p,
+          reason_code,
+          player_label: playerLabelById.get(p.player_id) ?? p.player_id.slice(0, 8)
+        };
+      });
+
+  return {
+    match: matchRes.data,
+    players,
+    results: resultsRes.error ? [] : (resultsRes.data ?? []),
+    ruleset: rulesetRes.error ? null : rulesetRes.data,
+    seasonRatings: ratingsRes.error ? [] : (ratingsRes.data ?? []),
+    lifetimeRatings: lifetimeRatingsRes.error ? [] : (lifetimeRatingsRes.data ?? []),
+    penalties
   };
 };
 
@@ -46,6 +92,89 @@ function getInt(f: FormData, k: string) {
 }
 
 export const actions: Actions = {
+  deleteGame: async ({ locals, params }) => {
+    await requireAdmin(locals);
+    const match_id = params.match_id;
+
+    const matchRes = await locals.supabase
+      .from('matches')
+      .select('id, season_id, status')
+      .eq('id', match_id)
+      .maybeSingle();
+    if (matchRes.error || !matchRes.data) return fail(400, { message: 'Match not found.' });
+
+    const reasonLike = `${CHOMBO_PREFIX}:${match_id}:%`;
+    const delPenRes = await locals.supabase
+      .from('adjustments')
+      .delete()
+      .eq('season_id', matchRes.data.season_id)
+      .like('reason', reasonLike);
+    if (delPenRes.error) return fail(400, { message: delPenRes.error.message });
+
+    const delMatchRes = await locals.supabase
+      .from('matches')
+      .delete()
+      .eq('id', match_id);
+    if (delMatchRes.error) return fail(400, { message: delMatchRes.error.message });
+
+    if (matchRes.data.status === 'final') {
+      const seasonRecompute = await locals.supabase.rpc('recompute_season_ratings', {
+        p_season_id: matchRes.data.season_id
+      });
+      if (seasonRecompute.error) return fail(400, { message: seasonRecompute.error.message });
+
+      const lifetimeRecompute = await locals.supabase.rpc('recompute_lifetime_ratings');
+      if (lifetimeRecompute.error) return fail(400, { message: lifetimeRecompute.error.message });
+    }
+
+    throw redirect(303, '/admin/matches');
+  },
+
+  saveMatchMeta: async ({ request, locals, params }) => {
+    await requireAdmin(locals);
+    const match_id = params.match_id;
+
+    const f = await request.formData();
+    const played_at = getStr(f, 'played_at');
+    const table_label = getStr(f, 'table_label');
+    const game_raw = getStr(f, 'game_number');
+    const table_mode_raw = getStr(f, 'table_mode').toUpperCase();
+    const ex_raw = getStr(f, 'extra_sticks');
+    const notes = getStr(f, 'notes');
+
+    if (!played_at) return fail(400, { message: 'Played at is required.' });
+
+    const game_number = game_raw ? Number(game_raw) : null;
+    if (game_raw && (game_number === null || !Number.isInteger(game_number) || game_number <= 0)) {
+      return fail(400, { message: 'Game number must be a positive integer.' });
+    }
+
+    const table_mode = table_mode_raw ? table_mode_raw : null;
+    if (table_mode && table_mode !== 'A' && table_mode !== 'M') {
+      return fail(400, { message: 'Tbl must be A or M.' });
+    }
+
+    const extra_sticks = ex_raw === '' ? 0 : Number(ex_raw);
+    if (!Number.isInteger(extra_sticks) || extra_sticks < 0) {
+      return fail(400, { message: 'Ex must be an integer >= 0.' });
+    }
+
+    const { error } = await locals.supabase
+      .from('matches')
+      .update({
+        played_at,
+        table_label: table_label || null,
+        game_number,
+        table_mode,
+        extra_sticks,
+        notes: notes || null
+      })
+      .eq('id', match_id);
+
+    if (error) return fail(400, { message: error.message });
+    return { message: 'Match details updated.' };
+  },
+
   saveResults: async ({ request, locals, params }) => {
     await requireAdmin(locals);
     const match_id = params.match_id;
@@ -70,6 +199,83 @@ export const actions: Actions = {
 
     if (error) return fail(400, { message: error.message });
     return { message: 'Saved.' };
+  },
+
+  addPenalty: async ({ request, locals, params }) => {
+    await requireAdmin(locals);
+    const match_id = params.match_id;
+    const f = await request.formData();
+
+    const player_id = getStr(f, 'player_id');
+    const points = Number(getStr(f, 'points'));
+    const reason_code = getStr(f, 'reason_code').toUpperCase();
+
+    if (!player_id) return fail(400, { message: 'Choose a player for penalty.' });
+    if (!reason_code) return fail(400, { message: 'Reason code is required.' });
+    if (!/^[A-Z0-9_-]{1,40}$/.test(reason_code)) {
+      return fail(400, { message: 'Reason code can use A-Z, 0-9, _ and - only (max 40 chars).' });
+    }
+    if (!Number.isFinite(points) || !Number.isInteger(points) || points === 0) {
+      return fail(400, { message: 'Penalty points must be a non-zero integer.' });
+    }
+
+    const matchRes = await locals.supabase
+      .from('matches')
+      .select('season_id')
+      .eq('id', match_id)
+      .maybeSingle();
+    if (matchRes.error || !matchRes.data) return fail(400, { message: 'Match not found.' });
+
+    const reason = `${CHOMBO_PREFIX}:${match_id}:${reason_code}`;
+
+    const duplicateRes = await locals.supabase
+      .from('adjustments')
+      .select('id')
+      .eq('season_id', matchRes.data.season_id)
+      .eq('player_id', player_id)
+      .eq('reason', reason)
+      .maybeSingle();
+    if (duplicateRes.error) return fail(400, { message: duplicateRes.error.message });
+    if (duplicateRes.data) {
+      return fail(400, { message: 'This penalty code already exists for that player in this match.' });
+    }
+
+    const insertRes = await locals.supabase.from('adjustments').insert({
+      season_id: matchRes.data.season_id,
+      player_id,
+      points,
+      reason,
+      created_by: locals.userId
+    });
+    if (insertRes.error) return fail(400, { message: insertRes.error.message });
+
+    return { message: 'Penalty saved.' };
+  },
+
+  removePenalty: async ({ request, locals, params }) => {
+    await requireAdmin(locals);
+    const match_id = params.match_id;
+    const f = await request.formData();
+    const adjustment_id = getStr(f, 'adjustment_id');
+    if (!adjustment_id) return fail(400, { message: 'Missing penalty id.' });
+
+    const matchRes = await locals.supabase
+      .from('matches')
+      .select('season_id')
+      .eq('id', match_id)
+      .maybeSingle();
+    if (matchRes.error || !matchRes.data) return fail(400, { message: 'Match not found.' });
+
+    const reasonLike = `${CHOMBO_PREFIX}:${match_id}:%`;
+    const delRes = await locals.supabase
+      .from('adjustments')
+      .delete()
+      .eq('id', adjustment_id)
+      .eq('season_id', matchRes.data.season_id)
+      .like('reason', reasonLike);
+
+    if (delRes.error) return fail(400, { message: delRes.error.message });
+    return { message: 'Penalty removed.' };
   },
 
   recompute: async ({ locals, params }) => {

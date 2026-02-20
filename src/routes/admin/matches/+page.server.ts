@@ -2,6 +2,8 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
 
+const CHOMBO_PREFIX = 'CHOMBO';
+
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals);
 
@@ -34,6 +36,46 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  delete: async ({ request, locals }) => {
+    await requireAdmin(locals);
+    const f = await request.formData();
+    const match_id = String(f.get('match_id') ?? '').trim();
+    if (!match_id) return fail(400, { message: 'Missing match id.' });
+
+    const matchRes = await locals.supabase
+      .from('matches')
+      .select('id, season_id, status')
+      .eq('id', match_id)
+      .maybeSingle();
+    if (matchRes.error || !matchRes.data) return fail(400, { message: 'Match not found.' });
+
+    const reasonLike = `${CHOMBO_PREFIX}:${match_id}:%`;
+    const delPenRes = await locals.supabase
+      .from('adjustments')
+      .delete()
+      .eq('season_id', matchRes.data.season_id)
+      .like('reason', reasonLike);
+    if (delPenRes.error) return fail(400, { message: delPenRes.error.message });
+
+    const delMatchRes = await locals.supabase
+      .from('matches')
+      .delete()
+      .eq('id', match_id);
+    if (delMatchRes.error) return fail(400, { message: delMatchRes.error.message });
+
+    if (matchRes.data.status === 'final') {
+      const seasonRecompute = await locals.supabase.rpc('recompute_season_ratings', {
+        p_season_id: matchRes.data.season_id
+      });
+      if (seasonRecompute.error) return fail(400, { message: seasonRecompute.error.message });
+
+      const lifetimeRecompute = await locals.supabase.rpc('recompute_lifetime_ratings');
+      if (lifetimeRecompute.error) return fail(400, { message: lifetimeRecompute.error.message });
+    }
+
+    return { message: 'Game deleted.' };
+  },
+
   create: async ({ request, locals }) => {
     await requireAdmin(locals);
     const f = await request.formData();
@@ -44,6 +86,7 @@ export const actions: Actions = {
     const game_raw = String(f.get('game_number') ?? '').trim();
     const table_mode_raw = String(f.get('table_mode') ?? '').trim().toUpperCase();
     const extra_raw = String(f.get('extra_sticks') ?? '').trim();
+    const notes = String(f.get('notes') ?? '').trim();
 
     if (!season_id || !ruleset_id || !played_at) return fail(400, { message: 'Missing fields.' });
 
@@ -72,6 +115,7 @@ export const actions: Actions = {
         extra_sticks,
         played_at,
         table_label: table_label || null,
+        notes: notes || null,
         created_by: locals.userId
       })
       .select('id')

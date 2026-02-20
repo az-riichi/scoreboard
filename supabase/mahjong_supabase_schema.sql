@@ -497,23 +497,56 @@ begin
     raise exception 'match % must have 4 distinct players', p_match_id;
   end if;
 
-  -- Compute placement by raw_points desc; tie-break by seat priority
-  with ordered as (
-    select match_id, seat,
-           row_number() over (order by raw_points desc, public.seat_priority(seat) asc) as rn
-    from public.match_results
-    where match_id = p_match_id
+  -- Placement still uses seat tie-break.
+  -- UMA is split across tied rank span by raw_points.
+  with ranked as (
+    select
+      mr.match_id,
+      mr.seat,
+      row_number() over (order by mr.raw_points desc, public.seat_priority(mr.seat) asc) as placement,
+      rank() over (order by mr.raw_points desc) as tie_rank_start,
+      count(*) over (partition by mr.raw_points) as tie_size
+    from public.match_results mr
+    where mr.match_id = p_match_id
+  ),
+  scored as (
+    select
+      r.match_id,
+      r.seat,
+      r.placement,
+      rs.return_points,
+      rs.point_divisor,
+      case r.placement
+        when 1 then rs.oka_1
+        when 2 then rs.oka_2
+        when 3 then rs.oka_3
+        when 4 then rs.oka_4
+        else 0
+      end as oka_points,
+      (
+        select avg(
+          case gs.place
+            when 1 then rs.uma_1
+            when 2 then rs.uma_2
+            when 3 then rs.uma_3
+            when 4 then rs.uma_4
+            else 0
+          end
+        )::numeric
+        from generate_series(r.tie_rank_start, r.tie_rank_start + r.tie_size - 1) as gs(place)
+      ) as split_uma
+    from ranked r
+    join public.rulesets rs on rs.id = m.ruleset_id
   )
   update public.match_results mr
-  set placement = o.rn
-  from ordered o
-  where mr.match_id = o.match_id and mr.seat = o.seat;
-
-  update public.match_results mr
   set
-    club_points = public.compute_club_points(mr.raw_points, mr.placement, m.ruleset_id),
+    placement = s.placement,
+    club_points = ((mr.raw_points - s.return_points)::numeric / s.point_divisor::numeric)
+                  + s.split_uma
+                  + s.oka_points,
     tobi = (mr.raw_points < 0)
-  where mr.match_id = p_match_id;
+  from scored s
+  where mr.match_id = s.match_id and mr.seat = s.seat;
 end;
 $$;
 
@@ -555,9 +588,25 @@ begin
   perform public.recompute_match_derived(p_match_id);
 
   -- ===== SEASON rating =====
-  insert into public.rating_state (is_lifetime, season_id, player_id)
-  select false, m.season_id, mr.player_id
+  insert into public.rating_state (is_lifetime, season_id, player_id, rate, games_played)
+  select
+    false,
+    m.season_id,
+    mr.player_id,
+    coalesce(prev.rate, 1500),
+    coalesce(prev.games_played, 0)
   from public.match_results mr
+  left join lateral (
+    select rs_prev.rate, rs_prev.games_played
+    from public.rating_state rs_prev
+    join public.seasons s_prev on s_prev.id = rs_prev.season_id
+    join public.seasons s_cur on s_cur.id = m.season_id
+    where rs_prev.is_lifetime = false
+      and rs_prev.player_id = mr.player_id
+      and s_prev.end_date <= s_cur.start_date
+    order by s_prev.end_date desc, s_prev.created_at desc
+    limit 1
+  ) prev on true
   where mr.match_id = p_match_id
   on conflict (season_id, player_id) where (is_lifetime = false) do nothing;
 
@@ -661,9 +710,17 @@ declare
   m public.matches;
   rec record;
   avg_rate numeric;
+  season_start date;
 begin
   if not public.is_admin(auth.uid()) then
     raise exception 'admin only';
+  end if;
+
+  select s.start_date into season_start
+  from public.seasons s
+  where s.id = p_season_id;
+  if season_start is null then
+    raise exception 'season % not found', p_season_id;
   end if;
 
   delete from public.rating_events where is_lifetime = false and season_id = p_season_id;
@@ -680,9 +737,24 @@ begin
     -- ensure derived fields exist
     perform public.recompute_match_derived(mid);
 
-    insert into public.rating_state (is_lifetime, season_id, player_id)
-    select false, p_season_id, mr.player_id
+    insert into public.rating_state (is_lifetime, season_id, player_id, rate, games_played)
+    select
+      false,
+      p_season_id,
+      mr.player_id,
+      coalesce(prev.rate, 1500),
+      coalesce(prev.games_played, 0)
     from public.match_results mr
+    left join lateral (
+      select rs_prev.rate, rs_prev.games_played
+      from public.rating_state rs_prev
+      join public.seasons s_prev on s_prev.id = rs_prev.season_id
+      where rs_prev.is_lifetime = false
+        and rs_prev.player_id = mr.player_id
+        and s_prev.end_date <= season_start
+      order by s_prev.end_date desc, s_prev.created_at desc
+      limit 1
+    ) prev on true
     where mr.match_id = mid
     on conflict (season_id, player_id) where (is_lifetime = false) do nothing;
 
