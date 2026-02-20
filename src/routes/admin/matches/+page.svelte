@@ -21,7 +21,7 @@
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
     <div>
       <div style="font-size:1.1rem; font-weight:650;">Matches</div>
-      <div class="muted">Create a draft match, enter results, then finalize.</div>
+      <div class="muted">Enter and review match results</div>
     </div>
     <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
   </div>
@@ -97,9 +97,7 @@
       <thead>
         <tr>
           <th>Date</th>
-          <th>Match UUID</th>
-          <th style="width:80px;">Tbl</th>
-          <th style="width:80px;">Game</th>
+          <th style="width:90px;">Game</th>
           <th style="width:80px;">Ex</th>
           <th style="width:120px;">Status</th>
           <th style="width:300px;"></th>
@@ -109,9 +107,7 @@
         {#each data.recentMatches as m}
           <tr>
             <td>{fmtDateTime(m.played_at)}</td>
-            <td><span title={m.id}>{m.id.slice(0,8)}</span></td>
-            <td>{m.table_mode ?? ''}</td>
-            <td>{m.game_number ?? ''}</td>
+            <td>{m.table_mode ?? ''}{m.game_number ?? ''}</td>
             <td>{m.extra_sticks ?? 0}</td>
             <td>{m.status}</td>
             <td>

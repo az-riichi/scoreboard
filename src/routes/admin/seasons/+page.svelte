@@ -14,7 +14,7 @@
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
     <div>
       <div style="font-size:1.1rem; font-weight:650;">Seasons</div>
-      <div class="muted">Create and manage seasons.</div>
+      <div class="muted">Create and manage seasons</div>
     </div>
     <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
   </div>
