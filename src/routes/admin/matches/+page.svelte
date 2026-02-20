@@ -7,6 +7,9 @@
   let ruleset_id = data.defaultRules ?? '';
   let played_at = new Date().toISOString().slice(0,16);
   let table_label = '';
+  let game_number = '';
+  let table_mode = 'A';
+  let extra_sticks = 0;
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -56,6 +59,24 @@
       <input name="table_label" bind:value={table_label} placeholder="Table 1" />
     </label>
 
+    <label style="width:120px;">
+      <div class="muted">Game (optional)</div>
+      <input name="game_number" type="number" min="1" step="1" bind:value={game_number} />
+    </label>
+
+    <label style="width:120px;">
+      <div class="muted">Tbl</div>
+      <select name="table_mode" bind:value={table_mode}>
+        <option value="A">A</option>
+        <option value="M">M</option>
+      </select>
+    </label>
+
+    <label style="width:120px;">
+      <div class="muted">Ex</div>
+      <input name="extra_sticks" type="number" min="0" step="1" bind:value={extra_sticks} />
+    </label>
+
     <button class="btn primary" type="submit">Create draft</button>
   </form>
 
@@ -72,6 +93,9 @@
         <tr>
           <th>Date</th>
           <th>Match</th>
+          <th style="width:80px;">Tbl</th>
+          <th style="width:80px;">Game</th>
+          <th style="width:80px;">Ex</th>
           <th style="width:120px;">Status</th>
           <th style="width:140px;"></th>
         </tr>
@@ -81,6 +105,9 @@
           <tr>
             <td>{fmtDateTime(m.played_at)}</td>
             <td>{m.table_label ?? m.id.slice(0,8)}</td>
+            <td>{m.table_mode ?? ''}</td>
+            <td>{m.game_number ?? ''}</td>
+            <td>{m.extra_sticks ?? 0}</td>
             <td>{m.status}</td>
             <td>
               <a class="btn" href={`/admin/match/${m.id}`} style="text-decoration:none;">Open</a>

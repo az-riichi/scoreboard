@@ -6,7 +6,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const matchRes = await locals.supabase
     .from('matches')
-    .select('id, season_id, ruleset_id, played_at, table_label, notes, status')
+    .select('id, season_id, ruleset_id, played_at, table_label, notes, status, game_number, table_mode, extra_sticks')
     .eq('id', match_id)
     .maybeSingle();
 

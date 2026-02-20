@@ -17,7 +17,23 @@
   let raw_W = bySeat.W?.raw_points ?? 25000;
   let raw_N = bySeat.N?.raw_points ?? 25000;
 
+  const seats = ['E', 'S', 'W', 'N'] as const;
   const isFinal = match.status === 'final';
+  const expectedRawTotal = 100000 - ((match.extra_sticks ?? 0) * 1000);
+
+  const playerBinds = {
+    E: { get: () => p_E, set: (value: string) => (p_E = value) },
+    S: { get: () => p_S, set: (value: string) => (p_S = value) },
+    W: { get: () => p_W, set: (value: string) => (p_W = value) },
+    N: { get: () => p_N, set: (value: string) => (p_N = value) }
+  };
+
+  const rawBinds = {
+    E: { get: () => raw_E, set: (value: number) => (raw_E = value) },
+    S: { get: () => raw_S, set: (value: number) => (raw_S = value) },
+    W: { get: () => raw_W, set: (value: number) => (raw_W = value) },
+    N: { get: () => raw_N, set: (value: number) => (raw_N = value) }
+  };
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -25,6 +41,7 @@
     <div>
       <div style="font-size:1.1rem; font-weight:650;">Edit match</div>
       <div class="muted">{fmtDateTime(match.played_at)} — {match.table_label ?? match.id.slice(0,8)} — {match.status}</div>
+      <div class="muted">Tbl: {match.table_mode ?? '—'} | Game: {match.game_number ?? '—'} | Ex: {match.extra_sticks ?? 0}</div>
     </div>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <a class="btn" href="/admin/matches" style="text-decoration:none;">Back</a>
@@ -47,26 +64,26 @@
     <div class="muted">Pick players for E/S/W/N and input raw end points.</div>
 
     <form method="POST" action="?/saveResults" style="display:grid; gap:10px; margin-top:12px;">
-      {#each ['E','S','W','N'] as seat}
+      {#each seats as seat}
         <div class="card" style="border-radius:14px;">
           <div class="muted" style="margin-bottom:6px;">Seat {seat}</div>
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <select
               name={`p_${seat}`}
-              bind:value={seat === 'E' ? p_E : seat==='S' ? p_S : seat==='W' ? p_W : p_N}
+              bind:value={playerBinds[seat]}
               required
               style="min-width:240px;"
             >
               <option value="" disabled>Select player</option>
               {#each data.players as p}
-                <option value={p.id}>{p.display_name}</option>
+                <option value={p.id}>{p.label}</option>
               {/each}
             </select>
             <input
               name={`raw_${seat}`}
               type="number"
               step="100"
-              bind:value={seat === 'E' ? raw_E : seat==='S' ? raw_S : seat==='W' ? raw_W : raw_N}
+              bind:value={rawBinds[seat]}
               style="width:160px;"
             />
           </div>
@@ -99,7 +116,7 @@
       <div class="card" style="border-radius:14px;">
         <div class="muted">Current raw total</div>
         <div style="font-size:1.2rem; font-weight:700;">{raw_E + raw_S + raw_W + raw_N}</div>
-        <div class="muted">If you use 25k start points, typical total is 100000 (before riichi sticks/honba).</div>
+        <div class="muted">Expected total with Ex={match.extra_sticks ?? 0}: {expectedRawTotal}.</div>
       </div>
 
       <div class="card" style="border-radius:14px;">

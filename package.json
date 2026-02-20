@@ -1,5 +1,5 @@
 {
-  "name": "mahjong-club-frontend",
+  "name": "azrm-scoreboard",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,7 +18,8 @@
     "vite": "^5.0.0"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.4.0",
     "@supabase/supabase-js": "^2.49.0",
-    "@supabase/ssr": "^0.4.0"
+    "xlsx": "^0.18.5"
   }
 }

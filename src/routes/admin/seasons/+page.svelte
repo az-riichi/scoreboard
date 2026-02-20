@@ -6,6 +6,8 @@
   let start_date = '';
   let end_date = '';
   let is_active = false;
+  let importSeasonId = data.activeSeason ?? '';
+  let importRulesetId = data.defaultRules ?? '';
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -45,6 +47,47 @@
     </label>
     <button class="btn primary" type="submit">Create</button>
   </form>
+</div>
+
+<div class="card" style="margin-bottom:12px;">
+  <h3 style="margin:0 0 10px;">Import season matches (Excel)</h3>
+  <div class="muted" style="margin-bottom:10px;">
+    Header must include: Date, Game, Tbl, E/S/W/N Player, E/S/W/N Pts, Ex.
+  </div>
+  <div class="muted" style="margin-bottom:10px;">
+    Unknown player first names are auto-created as new players.
+  </div>
+
+  <form method="POST" action="?/importExcel" enctype="multipart/form-data" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+    <label style="min-width:240px;">
+      <div class="muted">Season</div>
+      <select name="season_id" bind:value={importSeasonId} required style="min-width:240px;">
+        {#each data.seasons as s}
+          <option value={s.id}>{s.name}{s.is_active ? ' (active)' : ''}</option>
+        {/each}
+      </select>
+    </label>
+
+    <label style="min-width:240px;">
+      <div class="muted">Ruleset</div>
+      <select name="ruleset_id" bind:value={importRulesetId} required style="min-width:240px;">
+        {#each data.rulesets as r}
+          <option value={r.id}>{r.name}</option>
+        {/each}
+      </select>
+    </label>
+
+    <label style="min-width:280px;">
+      <div class="muted">Excel file</div>
+      <input name="file" type="file" accept=".xlsx,.xls,.xlsm" required />
+    </label>
+
+    <button class="btn primary" type="submit">Import Excel</button>
+  </form>
+
+  {#if data.rulesets.length === 0}
+    <div class="muted" style="margin-top:10px;">No rulesets found. Create one in SQL before importing.</div>
+  {/if}
 </div>
 
 <div class="card">

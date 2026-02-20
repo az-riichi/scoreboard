@@ -9,8 +9,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   signIn: async ({ request, locals }) => {
     const form = await request.formData();
-    const email = String(form.get('email') ?? '').trim();
-    const password = String(form.get('password') ?? '');
+    const email = String(form.get('signin-email') ?? '').trim();
+    const password = String(form.get('signin-password') ?? '');
 
     if (!email || !password) return fail(400, { message: 'Missing email or password.' });
 
@@ -22,8 +22,8 @@ export const actions: Actions = {
 
   signUp: async ({ request, locals }) => {
     const form = await request.formData();
-    const email = String(form.get('email') ?? '').trim();
-    const password = String(form.get('password') ?? '');
+    const email = String(form.get('signup-email') ?? '').trim();
+    const password = String(form.get('signup-password') ?? '');
 
     if (!email || !password) return fail(400, { message: 'Missing email or password.' });
 

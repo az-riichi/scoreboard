@@ -28,9 +28,8 @@
   <header style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;">
     <div style="display:flex; flex-direction:column;">
       <a href="/" style="text-decoration:none;">
-        <div style="font-size:1.25rem; font-weight:650;">Mahjong Club</div>
+        <div style="font-size:1.25rem; font-weight:650;">AZRM Scoreboard</div>
       </a>
-      <div class="muted">Scores & rankings</div>
     </div>
 
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
@@ -50,7 +49,7 @@
           </form>
         </span>
       {:else}
-        <a href="/login" style={navA}>Admin sign in</a>
+        <a href="/login" style={navA}>Admin</a>
       {/if}
     </div>
   </header>

@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
+import { composePlayerDisplayName } from '$lib/player-name';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   await requireAdmin(locals);
@@ -8,7 +9,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const matchRes = await locals.supabase
     .from('matches')
-    .select('id, season_id, ruleset_id, played_at, table_label, notes, status')
+    .select('id, season_id, ruleset_id, played_at, table_label, notes, status, game_number, table_mode, extra_sticks')
     .eq('id', match_id)
     .maybeSingle();
 
@@ -16,9 +17,9 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const playersRes = await locals.supabase
     .from('players')
-    .select('id, display_name')
+    .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name')
     .eq('is_active', true)
-    .order('display_name', { ascending: true });
+    .order('created_at', { ascending: true });
 
   const resultsRes = await locals.supabase
     .from('match_results')
@@ -27,7 +28,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   return {
     match: matchRes.data,
-    players: playersRes.error ? [] : (playersRes.data ?? []),
+    players: playersRes.error
+      ? []
+      : (playersRes.data ?? [])
+          .map((p) => ({ ...p, label: composePlayerDisplayName(p) }))
+          .sort((a, b) => a.label.localeCompare(b.label)),
     results: resultsRes.error ? [] : (resultsRes.data ?? [])
   };
 };

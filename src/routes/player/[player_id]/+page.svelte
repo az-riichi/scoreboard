@@ -1,14 +1,21 @@
 <script lang="ts">
   import { fmtDateTime, fmtNum, fmtPct } from '$lib/ui';
   export let data: any;
+  export let form: any;
 
   let season = data.seasonId;
+  let display_name = data.player.display_name ?? '';
+  let real_first_name = data.player.real_first_name ?? '';
+  let real_last_name = data.player.real_last_name ?? '';
+  let show_display_name = data.player.show_display_name ?? true;
+  let show_real_first_name = data.player.show_real_first_name ?? false;
+  let show_real_last_name = data.player.show_real_last_name ?? false;
 </script>
 
 <div class="card" style="margin-bottom:12px;">
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
     <div>
-      <div style="font-size:1.15rem; font-weight:700;">{data.player.display_name}</div>
+      <div style="font-size:1.15rem; font-weight:700;">{data.player.public_name}</div>
       <div class="muted">Player profile</div>
     </div>
 
@@ -25,6 +32,49 @@
     </form>
   </div>
 </div>
+
+{#if form?.message}
+  <div class="card" style="border-color:#c7f0c2; background:#f2fff0; margin-bottom:12px;">
+    {form.message}
+  </div>
+{/if}
+
+{#if data.canEditDisplay}
+  <div class="card" style="margin-bottom:12px;">
+    <div style="font-size:1.05rem; font-weight:650;">Your display settings</div>
+    <div class="muted">Choose what appears publicly for this player profile.</div>
+
+    <form method="POST" action="?/updateDisplay" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:12px;">
+      <label style="min-width:220px;">
+        <div class="muted">Display name</div>
+        <input name="display_name" bind:value={display_name} placeholder="Optional nickname" />
+      </label>
+      <label style="min-width:220px;">
+        <div class="muted">Real first name</div>
+        <input name="real_first_name" bind:value={real_first_name} placeholder="Optional first name" />
+      </label>
+      <label style="min-width:220px;">
+        <div class="muted">Real last name</div>
+        <input name="real_last_name" bind:value={real_last_name} placeholder="Optional last name" />
+      </label>
+
+      <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
+        <input name="show_display_name" type="checkbox" bind:checked={show_display_name} />
+        <span class="muted">Show display</span>
+      </label>
+      <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
+        <input name="show_real_first_name" type="checkbox" bind:checked={show_real_first_name} />
+        <span class="muted">Show first</span>
+      </label>
+      <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
+        <input name="show_real_last_name" type="checkbox" bind:checked={show_real_last_name} />
+        <span class="muted">Show last</span>
+      </label>
+
+      <button class="btn primary" type="submit">Save display settings</button>
+    </form>
+  </div>
+{/if}
 
 {#if !data.seasonId}
   <div class="card">No active season found.</div>
