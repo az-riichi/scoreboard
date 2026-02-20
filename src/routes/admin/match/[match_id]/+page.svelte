@@ -15,9 +15,7 @@
   }
 
   let played_at = toDatetimeLocal(match.played_at);
-  let table_label = match.table_label ?? '';
-  let game_number = match.game_number != null ? String(match.game_number) : '';
-  let table_mode = match.table_mode ?? '';
+  let table_mode = match.table_mode ?? 'A';
   let extra_sticks = String(match.extra_sticks ?? 0);
   let notes = match.notes ?? '';
 
@@ -237,6 +235,7 @@
       <div style="font-size:1.1rem; font-weight:650;">Edit match</div>
       <div class="muted">{fmtDateTime(match.played_at)} — {match.table_label ?? match.id.slice(0,8)} — {match.status}</div>
       <div class="muted">Tbl: {match.table_mode ?? '—'} | Game: {match.game_number ?? '—'} | Ex: {match.extra_sticks ?? 0}</div>
+      <div style="font-size:0.8rem; color:#888;">UUID: <code>{match.id}</code></div>
       {#if match.notes}
         <div class="muted">Note: {match.notes}</div>
       {/if}
@@ -261,7 +260,7 @@
 
 <div class="card" style="margin-bottom:12px;">
   <div style="font-size:1.05rem; font-weight:650;">Match metadata</div>
-  <div class="muted">Edit date/table/game mode, Ex sticks, and notes for this match.</div>
+  <div class="muted">Edit date/table mode, Ex sticks, and notes. Game # / table label are auto-generated.</div>
 
   <form method="POST" action="?/saveMatchMeta" style="display:grid; gap:10px; margin-top:12px;">
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
@@ -271,19 +270,8 @@
       </div>
 
       <div style="display:grid; gap:4px;">
-        <label for="table_label">Table label</label>
-        <input id="table_label" name="table_label" type="text" bind:value={table_label} placeholder="Table A-1" />
-      </div>
-
-      <div style="display:grid; gap:4px;">
-        <label for="game_number">Game #</label>
-        <input id="game_number" name="game_number" type="number" min="1" step="1" bind:value={game_number} style="width:120px;" />
-      </div>
-
-      <div style="display:grid; gap:4px;">
         <label for="table_mode">Tbl</label>
         <select id="table_mode" name="table_mode" bind:value={table_mode} style="width:110px;">
-          <option value="">—</option>
           <option value="A">A</option>
           <option value="M">M</option>
         </select>
@@ -299,6 +287,8 @@
       <label for="notes">Note</label>
       <textarea id="notes" name="notes" bind:value={notes} rows="3" placeholder="Optional match notes"></textarea>
     </div>
+
+    <div class="muted">Current auto values: Tbl {match.table_mode ?? table_mode} | Game {match.game_number ?? '—'} | Label {match.table_label ?? '—'}</div>
 
     <div>
       <button class="btn" type="submit">Save metadata</button>

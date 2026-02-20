@@ -3,11 +3,15 @@
   export let data: any;
   export let form: any;
 
+  function nowLocalDatetime() {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   let season_id = data.activeSeason ?? '';
   let ruleset_id = data.defaultRules ?? '';
-  let played_at = new Date().toISOString().slice(0,16);
-  let table_label = '';
-  let game_number = '';
+  let played_at = nowLocalDatetime();
   let table_mode = 'A';
   let extra_sticks = 0;
   let notes = '';
@@ -31,59 +35,54 @@
 
 <div class="card" style="margin-bottom:12px;">
   <h3 style="margin:0 0 10px;">Create match</h3>
-  <form method="POST" action="?/create" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
-    <label style="min-width:240px;">
-      <div class="muted">Season</div>
-      <select name="season_id" bind:value={season_id} required style="min-width:240px;">
-        {#each data.seasons as s}
-          <option value={s.id}>{s.name}{s.is_active ? ' (active)' : ''}</option>
-        {/each}
-      </select>
-    </label>
+  <div class="muted" style="margin-bottom:10px;">Game # and table label are auto-generated from date + table type.</div>
+  <form method="POST" action="?/create" style="display:grid; gap:10px;">
+    <div style="display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+      <label style="display:grid; gap:4px;">
+        <div class="muted">Season</div>
+        <select name="season_id" bind:value={season_id} required>
+          {#each data.seasons as s}
+            <option value={s.id}>{s.name}{s.is_active ? ' (active)' : ''}</option>
+          {/each}
+        </select>
+      </label>
 
-    <label style="min-width:240px;">
-      <div class="muted">Ruleset</div>
-      <select name="ruleset_id" bind:value={ruleset_id} required style="min-width:240px;">
-        {#each data.rulesets as r}
-          <option value={r.id}>{r.name}</option>
-        {/each}
-      </select>
-    </label>
+      <label style="display:grid; gap:4px;">
+        <div class="muted">Ruleset</div>
+        <select name="ruleset_id" bind:value={ruleset_id} required>
+          {#each data.rulesets as r}
+            <option value={r.id}>{r.name}</option>
+          {/each}
+        </select>
+      </label>
 
-    <label>
-      <div class="muted">Played at</div>
-      <input name="played_at" type="datetime-local" bind:value={played_at} required />
-    </label>
+      <label style="display:grid; gap:4px;">
+        <div class="muted">Played at</div>
+        <input name="played_at" type="datetime-local" bind:value={played_at} required />
+      </label>
+    </div>
 
-    <label style="min-width:200px;">
-      <div class="muted">Table label (optional)</div>
-      <input name="table_label" bind:value={table_label} placeholder="Table 1" />
-    </label>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+      <label style="width:70px; display:grid; gap:4px;">
+        <div class="muted">Tbl type</div>
+        <select name="table_mode" bind:value={table_mode}>
+          <option value="A">A</option>
+          <option value="M">M</option>
+        </select>
+      </label>
 
-    <label style="width:120px;">
-      <div class="muted">Game (optional)</div>
-      <input name="game_number" type="number" min="1" step="1" bind:value={game_number} />
-    </label>
+      <label style="display:grid; gap:4px;">
+        <div class="muted">Extra</div>
+        <input style="width:50px" name="extra_sticks" type="number" min="0" step="1000" bind:value={extra_sticks} />
+      </label>
 
-    <label style="width:120px;">
-      <div class="muted">Tbl</div>
-      <select name="table_mode" bind:value={table_mode}>
-        <option value="A">A</option>
-        <option value="M">M</option>
-      </select>
-    </label>
+      <label style="min-width:150px; flex:0 1 500px; display:grid; gap:4px;">
+        <div class="muted">Notes (optional)</div>
+        <input name="notes" bind:value={notes} placeholder="Match notes" />
+      </label>
 
-    <label style="width:120px;">
-      <div class="muted">Ex</div>
-      <input name="extra_sticks" type="number" min="0" step="1" bind:value={extra_sticks} />
-    </label>
-
-    <label style="min-width:300px; flex:1 1 300px;">
-      <div class="muted">Note (optional)</div>
-      <input name="notes" bind:value={notes} placeholder="Optional match notes" />
-    </label>
-
-    <button class="btn primary" type="submit">Create draft</button>
+      <button class="btn primary" type="submit" style="margin-left: auto;">Create draft</button>
+    </div>
   </form>
 
   {#if data.rulesets.length === 0}
@@ -98,32 +97,34 @@
       <thead>
         <tr>
           <th>Date</th>
-          <th>Match</th>
+          <th>Match UUID</th>
           <th style="width:80px;">Tbl</th>
           <th style="width:80px;">Game</th>
           <th style="width:80px;">Ex</th>
           <th style="width:120px;">Status</th>
-          <th style="width:140px;"></th>
+          <th style="width:300px;"></th>
         </tr>
       </thead>
       <tbody>
         {#each data.recentMatches as m}
           <tr>
             <td>{fmtDateTime(m.played_at)}</td>
-            <td>{m.table_label ?? m.id.slice(0,8)}</td>
+            <td><span title={m.id}>{m.id.slice(0,8)}</span></td>
             <td>{m.table_mode ?? ''}</td>
             <td>{m.game_number ?? ''}</td>
             <td>{m.extra_sticks ?? 0}</td>
             <td>{m.status}</td>
             <td>
-              <a class="btn" href={`/admin/match/${m.id}`} style="text-decoration:none;">Open</a>
-              {#if m.status === 'final'}
-                <a class="btn" href={`/match/${m.id}`} style="text-decoration:none; margin-left:6px;">Public</a>
-              {/if}
-              <form method="POST" action="?/delete" style="display:inline-block; margin-left:6px;" on:submit={(e) => { if (!confirm('Delete this game? This cannot be undone.')) e.preventDefault(); }}>
-                <input type="hidden" name="match_id" value={m.id} />
-                <button class="btn" type="submit">Delete</button>
-              </form>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <a class="btn" href={`/admin/match/${m.id}`} style="text-decoration:none;">Open</a>
+                {#if m.status === 'final'}
+                  <a class="btn" href={`/match/${m.id}`} style="text-decoration:none;">Public</a>
+                {/if}
+                <form method="POST" action="?/delete" style="margin:0;" on:submit={(e) => { if (!confirm('Delete this game? This cannot be undone.')) e.preventDefault(); }}>
+                  <input type="hidden" name="match_id" value={m.id} />
+                  <button class="btn" type="submit">Delete</button>
+                </form>
+              </div>
             </td>
           </tr>
         {/each}

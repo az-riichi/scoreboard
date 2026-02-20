@@ -13,7 +13,22 @@
     .wrap { max-width: 1080px; margin: 0 auto; padding: 18px 14px 40px; }
     .card { border: 1px solid #e6e6e6; border-radius: 16px; padding: 14px; background: #fff; }
     .muted { color: #666; font-size: 0.95rem; }
-    .btn { border: 1px solid #ddd; background: #fff; padding: 8px 12px; border-radius: 12px; cursor: pointer; }
+    .btn {
+      border: 1px solid #ddd;
+      background: #fff;
+      padding: 8px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.2;
+      font: inherit;
+      color: inherit;
+      text-decoration: none;
+      appearance: none;
+      -webkit-appearance: none;
+    }
     .btn.primary { border-color: #111; background: #111; color: #fff; }
     input, select, textarea { padding: 8px 10px; border-radius: 12px; border: 1px solid #ddd; }
     table { width: 100%; border-collapse: collapse; }

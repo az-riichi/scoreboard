@@ -4,6 +4,21 @@ import { requireAdmin } from '$lib/server/admin';
 
 const CHOMBO_PREFIX = 'CHOMBO';
 
+function parseDayBounds(playedAt: string) {
+  const m = playedAt.match(/^(\d{4}-\d{2}-\d{2})T/);
+  if (!m) return null;
+  const day = m[1];
+  const d = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const next = new Date(d);
+  next.setUTCDate(next.getUTCDate() + 1);
+  const nextDay = next.toISOString().slice(0, 10);
+  return {
+    dayStart: `${day}T00:00:00`,
+    dayEnd: `${nextDay}T00:00:00`
+  };
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals);
 
@@ -19,7 +34,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const recentRes = await locals.supabase
     .from('matches')
-    .select('id, played_at, table_label, season_id, status, game_number, table_mode, extra_sticks')
+    .select('id, played_at, season_id, status, game_number, table_mode, extra_sticks')
     .order('played_at', { ascending: false })
     .limit(30);
 
@@ -82,23 +97,30 @@ export const actions: Actions = {
     const season_id = String(f.get('season_id') ?? '').trim();
     const ruleset_id = String(f.get('ruleset_id') ?? '').trim();
     const played_at = String(f.get('played_at') ?? '').trim();
-    const table_label = String(f.get('table_label') ?? '').trim();
-    const game_raw = String(f.get('game_number') ?? '').trim();
     const table_mode_raw = String(f.get('table_mode') ?? '').trim().toUpperCase();
     const extra_raw = String(f.get('extra_sticks') ?? '').trim();
     const notes = String(f.get('notes') ?? '').trim();
 
     if (!season_id || !ruleset_id || !played_at) return fail(400, { message: 'Missing fields.' });
 
-    const game_number = game_raw ? Number(game_raw) : null;
-    if (game_raw && (game_number === null || !Number.isInteger(game_number) || game_number <= 0)) {
-      return fail(400, { message: 'Game number must be a positive integer.' });
+    const dayBounds = parseDayBounds(played_at);
+    if (!dayBounds) {
+      return fail(400, { message: 'Played at must be a valid date/time.' });
     }
 
-    const table_mode = table_mode_raw || null;
-    if (table_mode && table_mode !== 'A' && table_mode !== 'M') {
+    const table_mode = table_mode_raw;
+    if (table_mode !== 'A' && table_mode !== 'M') {
       return fail(400, { message: 'Tbl must be A or M.' });
     }
+
+    const dayCountRes = await locals.supabase
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .gte('played_at', dayBounds.dayStart)
+      .lt('played_at', dayBounds.dayEnd);
+    if (dayCountRes.error) return fail(400, { message: dayCountRes.error.message });
+    const game_number = (dayCountRes.count ?? 0) + 1;
+    const table_label = `${table_mode}-${game_number}`;
 
     const extra_sticks = extra_raw === '' ? 0 : Number(extra_raw);
     if (!Number.isInteger(extra_sticks) || extra_sticks < 0) {
@@ -114,7 +136,7 @@ export const actions: Actions = {
         table_mode,
         extra_sticks,
         played_at,
-        table_label: table_label || null,
+        table_label,
         notes: notes || null,
         created_by: locals.userId
       })

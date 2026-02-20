@@ -33,6 +33,7 @@
       <div style="font-size:1.1rem; font-weight:650;">Match {data.match.table_label ?? data.match.id.slice(0,8)}</div>
       <div class="muted">{fmtDateTime(data.match.played_at)}</div>
       <div class="muted">Tbl: {data.match.table_mode ?? '—'} | Game: {data.match.game_number ?? '—'} | Ex: {data.match.extra_sticks ?? 0}</div>
+      <div style="font-size:0.8rem; color:#888;">UUID: <code>{data.match.id}</code></div>
       {#if data.match.notes}
         <div class="muted">Note: {data.match.notes}</div>
       {/if}

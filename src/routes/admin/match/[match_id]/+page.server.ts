@@ -90,6 +90,20 @@ function getInt(f: FormData, k: string) {
   const n = Number(f.get(k));
   return Number.isFinite(n) ? Math.trunc(n) : 0;
 }
+function parseDayBounds(playedAt: string) {
+  const m = playedAt.match(/^(\d{4}-\d{2}-\d{2})T/);
+  if (!m) return null;
+  const day = m[1];
+  const d = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const next = new Date(d);
+  next.setUTCDate(next.getUTCDate() + 1);
+  const nextDay = next.toISOString().slice(0, 10);
+  return {
+    dayStart: `${day}T00:00:00`,
+    dayEnd: `${nextDay}T00:00:00`
+  };
+}
 
 export const actions: Actions = {
   deleteGame: async ({ locals, params }) => {
@@ -136,23 +150,30 @@ export const actions: Actions = {
 
     const f = await request.formData();
     const played_at = getStr(f, 'played_at');
-    const table_label = getStr(f, 'table_label');
-    const game_raw = getStr(f, 'game_number');
     const table_mode_raw = getStr(f, 'table_mode').toUpperCase();
     const ex_raw = getStr(f, 'extra_sticks');
     const notes = getStr(f, 'notes');
 
     if (!played_at) return fail(400, { message: 'Played at is required.' });
-
-    const game_number = game_raw ? Number(game_raw) : null;
-    if (game_raw && (game_number === null || !Number.isInteger(game_number) || game_number <= 0)) {
-      return fail(400, { message: 'Game number must be a positive integer.' });
+    const dayBounds = parseDayBounds(played_at);
+    if (!dayBounds) {
+      return fail(400, { message: 'Played at must be a valid date/time.' });
     }
 
-    const table_mode = table_mode_raw ? table_mode_raw : null;
-    if (table_mode && table_mode !== 'A' && table_mode !== 'M') {
+    const table_mode = table_mode_raw;
+    if (table_mode !== 'A' && table_mode !== 'M') {
       return fail(400, { message: 'Tbl must be A or M.' });
     }
+
+    const dayCountRes = await locals.supabase
+      .from('matches')
+      .select('id', { count: 'exact', head: true })
+      .gte('played_at', dayBounds.dayStart)
+      .lt('played_at', dayBounds.dayEnd)
+      .neq('id', match_id);
+    if (dayCountRes.error) return fail(400, { message: dayCountRes.error.message });
+    const game_number = (dayCountRes.count ?? 0) + 1;
+    const table_label = `${table_mode}-${game_number}`;
 
     const extra_sticks = ex_raw === '' ? 0 : Number(ex_raw);
     if (!Number.isInteger(extra_sticks) || extra_sticks < 0) {
@@ -163,7 +184,7 @@ export const actions: Actions = {
       .from('matches')
       .update({
         played_at,
-        table_label: table_label || null,
+        table_label,
         game_number,
         table_mode,
         extra_sticks,
