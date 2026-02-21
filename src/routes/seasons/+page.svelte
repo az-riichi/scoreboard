@@ -6,7 +6,7 @@
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
     <div>
       <div style="font-size:1.1rem; font-weight:650;">Seasons</div>
-      <div class="muted">Pick a season to view standings and stats.</div>
+      <div class="muted">Pick a season to view standings and stats</div>
     </div>
   </div>
 

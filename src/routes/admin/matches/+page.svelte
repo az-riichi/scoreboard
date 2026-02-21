@@ -24,8 +24,8 @@
       <div class="muted">Enter and review match results</div>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <form method="POST" action="?/recomputeLifetimeR" on:submit={(e) => { if (!confirm('Recompute lifetime Rating (R) now?')) e.preventDefault(); }}>
-        <button class="btn" type="submit">Recompute lifetime R</button>
+      <form method="POST" action="?/recomputeLifetimeR" on:submit={(e) => { if (!confirm('Recompute lifetime Rating (R) for everyone?')) e.preventDefault(); }}>
+        <button class="btn" type="submit">Recompute R</button>
       </form>
       <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
     </div>
@@ -40,7 +40,7 @@
 
 <div class="card" style="margin-bottom:12px;">
   <h3 style="margin:0 0 10px;">Create match</h3>
-  <div class="muted" style="margin-bottom:10px;">Game # and table label are auto-generated from date + table type.</div>
+  <div class="muted" style="margin-bottom:10px;">Game # and table label are auto-generated</div>
   <form method="POST" action="?/create" style="display:grid; gap:10px;">
     <div style="display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
       <label style="display:grid; gap:4px;">

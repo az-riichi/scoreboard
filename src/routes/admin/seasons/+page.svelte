@@ -45,17 +45,17 @@
       <input name="is_active" type="checkbox" bind:checked={is_active} />
       <span class="muted">Set active</span>
     </label>
-    <button class="btn primary" type="submit">Create</button>
+    <button class="btn primary" type="submit" style="margin-left: auto">Create</button>
   </form>
 </div>
 
 <div class="card" style="margin-bottom:12px;">
   <h3 style="margin:0 0 10px;">Import season matches (Excel)</h3>
   <div class="muted" style="margin-bottom:10px;">
-    Header must include: Date, Game, Tbl, E/S/W/N Player, E/S/W/N Pts, Ex.
+    Header must include: Date, Game, Tbl, E/S/W/N Player, E/S/W/N Pts, Ex
   </div>
   <div class="muted" style="margin-bottom:10px;">
-    Unknown player first names are auto-created as new players.
+    Unknown player first names are auto-created as new players
   </div>
 
   <form method="POST" action="?/importExcel" enctype="multipart/form-data" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
@@ -82,7 +82,7 @@
       <input name="file" type="file" accept=".xlsx,.xls,.xlsm" required />
     </label>
 
-    <button class="btn primary" type="submit">Import Excel</button>
+    <button class="btn primary" type="submit" style="margin-left: auto">Import</button>
   </form>
 
   {#if data.rulesets.length === 0}

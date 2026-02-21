@@ -23,8 +23,31 @@
   const seatOrder: Record<Seat, number> = { E: 1, S: 2, W: 3, N: 4 };
   const isFinal = match.status === 'final';
 
-  const playerLabelById = new Map<string, string>();
-  for (const p of data.players ?? []) playerLabelById.set(p.id, p.label);
+  const playerMetaById = new Map<string, { primary: string; secondary: string | null; label: string; token: string }>();
+  const tokenToPlayerId = new Map<string, string>();
+  const tokenByPlayerId = new Map<string, string>();
+  const playerOptions: Array<{ id: string; label: string; token: string }> = [];
+  const labelCount = new Map<string, number>();
+  for (const p of data.players ?? []) {
+    const primary = String(p?.player_name_primary ?? p?.label ?? '').trim() || 'Unnamed player';
+    const secondaryRaw = String(p?.player_name_secondary ?? '').trim();
+    const secondary = secondaryRaw || null;
+    const label = secondary ? `${primary} (${secondary})` : primary;
+    labelCount.set(label, (labelCount.get(label) ?? 0) + 1);
+  }
+  for (const p of data.players ?? []) {
+    const id = String(p?.id ?? '').trim();
+    if (!id) continue;
+    const primary = String(p?.player_name_primary ?? p?.label ?? '').trim() || 'Unnamed player';
+    const secondaryRaw = String(p?.player_name_secondary ?? '').trim();
+    const secondary = secondaryRaw || null;
+    const label = secondary ? `${primary} (${secondary})` : primary;
+    const token = (labelCount.get(label) ?? 0) > 1 ? `${label} · ${id.slice(0, 8)}` : label;
+    playerMetaById.set(id, { primary, secondary, label, token });
+    tokenToPlayerId.set(token, id);
+    tokenByPlayerId.set(id, token);
+    playerOptions.push({ id, label, token });
+  }
 
   const penaltyPlayers = (() => {
     const seen = new Set<string>();
@@ -35,7 +58,7 @@
       seen.add(id);
       ids.push(id);
     }
-    return ids.map((id) => ({ id, label: playerLabelById.get(id) ?? id.slice(0, 8) }));
+    return ids.map((id) => ({ id, label: playerMetaById.get(id)?.label ?? id.slice(0, 8) }));
   })();
 
   const lifetimeRatingByPlayer = new Map<string, { rate: number; games_played: number }>();
@@ -51,6 +74,12 @@
     player_id: bySeat[seat]?.player_id ?? '',
     raw_points: asNum(bySeat[seat]?.raw_points, 25000)
   }));
+  let seatPlayerText: Record<Seat, string> = {
+    E: tokenByPlayerId.get(String(bySeat.E?.player_id ?? '').trim()) ?? '',
+    S: tokenByPlayerId.get(String(bySeat.S?.player_id ?? '').trim()) ?? '',
+    W: tokenByPlayerId.get(String(bySeat.W?.player_id ?? '').trim()) ?? '',
+    N: tokenByPlayerId.get(String(bySeat.N?.player_id ?? '').trim()) ?? ''
+  };
 
   function toDatetimeLocal(ts: string) {
     const d = new Date(ts);
@@ -69,9 +98,21 @@
     return Number.isFinite(n) ? n : fallback;
   }
 
-  function playerLabel(player_id: string) {
-    if (!player_id) return '—';
-    return playerLabelById.get(player_id) ?? player_id.slice(0, 8);
+  function setSeatPlayerFromToken(seat: Seat, token: string) {
+    seatPlayerText = { ...seatPlayerText, [seat]: token };
+    const selectedId = tokenToPlayerId.get(token.trim()) ?? '';
+    entries = entries.map((row) =>
+      row.seat === seat
+        ? { ...row, player_id: selectedId }
+        : row
+    );
+  }
+
+  function playerNameParts(player_id: string) {
+    const meta = playerMetaById.get(player_id);
+    if (meta) return { primary: meta.primary, secondary: meta.secondary };
+    if (!player_id) return { primary: '—', secondary: null as string | null };
+    return { primary: player_id.slice(0, 8), secondary: null as string | null };
   }
 
   function ratingState(player_id: string) {
@@ -135,6 +176,12 @@
   }));
 
   $: rawTotal = enteredRows.reduce((sum, row) => sum + row.raw_points, 0);
+  $: startPoints = asNum(data.ruleset?.start_points, 25000);
+  $: targetTotalWithNoLeak = startPoints * 4;
+  $: extraPointsValue = asNum(extra_sticks, asNum(match.extra_sticks, 0));
+  $: totalWithExtra = rawTotal + extraPointsValue;
+  $: totalDiff = targetTotalWithNoLeak - totalWithExtra;
+  $: totalCheckOk = totalDiff === 0;
 
   $: placementBySeat = (() => {
     const ordered = [...enteredRows].sort((a, b) => {
@@ -201,9 +248,11 @@
     const displayPlacement = placement ? displayPlacementBySeat[row.seat] ?? placement : null;
 
     if (!placement || !row.player_id || avgRate == null) {
+      const player = playerNameParts(row.player_id);
       return {
         ...row,
-        player_label: playerLabel(row.player_id),
+        player_name_primary: player.primary,
+        player_name_secondary: player.secondary,
         placement,
         display_placement: displayPlacement,
         expected_club: expectedClub,
@@ -214,12 +263,14 @@
     }
 
     const rating = ratingState(row.player_id);
+    const player = playerNameParts(row.player_id);
     const delta =
       gamesAdjustment(rating.games_played) * (placeBasePoints(placement) + (avgRate - rating.rate) / 40);
 
     return {
       ...row,
-      player_label: playerLabel(row.player_id),
+      player_name_primary: player.primary,
+      player_name_secondary: player.secondary,
       placement,
       display_placement: displayPlacement,
       expected_club: expectedClub,
@@ -229,6 +280,55 @@
     };
   });
 </script>
+
+<style>
+  .result-entry-row {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) 160px;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+  }
+
+  .player-picker-wrap {
+    position: relative;
+    min-width: 0;
+  }
+
+  .player-picker-wrap::before {
+    content: '⌕';
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+    font-size: 0.92rem;
+  }
+
+  .player-picker-input {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding-left: 30px;
+    padding-right: 34px;
+    background:
+      linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 16px) calc(50% - 1px) / 6px 6px no-repeat,
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 12px) calc(50% - 1px) / 6px 6px no-repeat,
+      var(--field-bg);
+  }
+
+  .player-picker-input:focus {
+    border-color: var(--btn-primary-bg);
+    outline: none;
+  }
+
+  @media (max-width: 720px) {
+    .result-entry-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
 
 <div class="card" style="margin-bottom:12px;">
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
@@ -261,7 +361,7 @@
 
 <div class="card" style="margin-bottom:12px;">
   <div style="font-size:1.05rem; font-weight:650;">Match metadata</div>
-  <div class="muted">Edit date/table mode, Ex sticks, and notes. Game # / table label are auto-generated.</div>
+  <div class="muted">Game # / table label are auto-generated.</div>
 
   <form method="POST" action="?/saveMatchMeta" style="display:grid; gap:10px; margin-top:12px;">
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
@@ -271,7 +371,7 @@
       </div>
 
       <div style="display:grid; gap:4px;">
-        <label for="table_mode">Tbl</label>
+        <label for="table_mode">Table type</label>
         <select id="table_mode" name="table_mode" bind:value={table_mode} style="width:110px;">
           <option value="A">A</option>
           <option value="M">M</option>
@@ -279,7 +379,7 @@
       </div>
 
       <div style="display:grid; gap:4px;">
-        <label for="extra_sticks">Ex</label>
+        <label for="extra_sticks">Extra points</label>
         <input id="extra_sticks" name="extra_sticks" type="number" min="0" step="1" bind:value={extra_sticks} style="width:110px;" />
       </div>
     </div>
@@ -300,34 +400,38 @@
 <div class="grid2">
   <div class="card">
     <div style="font-size:1.05rem; font-weight:650;">Results entry (raw points)</div>
-    <div class="muted">Pick players for E/S/W/N and input raw end points.</div>
 
     <form method="POST" action="?/saveResults" style="display:grid; gap:10px; margin-top:12px;">
       {#each entries as row, i (row.seat)}
         <div class="card" style="border-radius:14px;">
           <div class="muted" style="margin-bottom:6px;">Seat {row.seat}</div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-            <select
-              name={`p_${row.seat}`}
-              bind:value={entries[i].player_id}
-              required
-              style="min-width:240px;"
-            >
-              <option value="" disabled>Select player</option>
-              {#each data.players as p}
-                <option value={p.id}>{p.label}</option>
-              {/each}
-            </select>
+          <div class="result-entry-row">
+            <input type="hidden" name={`p_${row.seat}`} value={entries[i].player_id} />
+            <div class="player-picker-wrap">
+              <input
+                class="player-picker-input"
+                list="result-entry-player-options"
+                value={seatPlayerText[row.seat]}
+                on:input={(e) => setSeatPlayerFromToken(row.seat, (e.currentTarget as HTMLInputElement).value)}
+                placeholder="Search and select player"
+                required
+              />
+            </div>
             <input
               name={`raw_${row.seat}`}
               type="number"
               step="100"
               bind:value={entries[i].raw_points}
-              style="width:160px;"
+              style="width:130px; justify-self:start;"
             />
           </div>
         </div>
       {/each}
+      <datalist id="result-entry-player-options">
+        {#each playerOptions as p}
+          <option value={p.token}></option>
+        {/each}
+      </datalist>
 
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <button class="btn primary" type="submit" disabled={isFinal}>Save results</button>
@@ -336,13 +440,12 @@
       </div>
 
       {#if isFinal}
-        <div class="muted">This match is finalized (public).</div>
+        <div class="muted">This match is finalized (public)</div>
       {/if}
     </form>
 
     <div style="margin-top:14px;">
       <div style="font-size:1.02rem; font-weight:650;">Expected outcomes</div>
-      <div class="muted">Season Points (SP) include ruleset return/divisor and tie-split UMA (OKA by placement). Rating (R) preview is lifetime.</div>
 
       <div style="margin-top:10px; overflow:auto;">
         <table>
@@ -361,7 +464,12 @@
             {#each expectedRows as row}
               <tr>
                 <td>{row.seat}</td>
-                <td>{row.player_label}</td>
+                <td>
+                  {row.player_name_primary}
+                  {#if row.player_name_secondary}
+                    <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
+                  {/if}
+                </td>
                 <td>{row.raw_points}</td>
                 <td>{row.display_placement ?? '—'}</td>
                 <td>{row.expected_club == null ? '—' : fmtNum(row.expected_club, 2)}</td>
@@ -374,14 +482,13 @@
       </div>
 
       {#if !canProjectR}
-        <div class="muted" style="margin-top:8px;">Pick 4 distinct players to preview Rating (R) gain/loss.</div>
+        <div class="muted" style="margin-top:8px;">Pick 4 distinct players to preview SP and R changes</div>
       {/if}
     </div>
   </div>
 
   <div class="card">
-    <div style="font-size:1.05rem; font-weight:650;">Quick checks</div>
-    <div class="muted">Sanity check before finalizing.</div>
+    <div style="font-size:1.05rem; font-weight:650;">Point check</div>
 
     <div style="margin-top:12px; display:grid; gap:10px;">
       <div class="card" style="border-radius:14px;">
@@ -389,13 +496,34 @@
         <div style="font-size:1.2rem; font-weight:700;">{rawTotal}</div>
       </div>
 
+      <div
+        class="card"
+        style={`border-radius:14px; border-color:${totalCheckOk ? 'var(--alert-success-border)' : 'var(--alert-warning-border)'}; background:${totalCheckOk ? 'var(--alert-success-bg)' : 'var(--alert-warning-bg)'}; color:${totalCheckOk ? 'var(--alert-success-text)' : 'var(--alert-warning-text)'};`}
+      >
+        <div style="font-weight:650; margin-bottom:4px;">
+          {#if totalCheckOk}
+            Point total check: OK
+          {:else}
+            Point total check: mismatch
+          {/if}
+        </div>
+        <div class="muted" style="color:inherit;">
+          4 × start points ({startPoints}) = {targetTotalWithNoLeak}
+        </div>
+        <div class="muted" style="color:inherit;">
+          Raw total + extra points = {rawTotal} + {extraPointsValue} = {totalWithExtra}
+        </div>
+        {#if !totalCheckOk}
+          <div style="margin-top:4px; font-weight:600;">
+            Difference: {totalDiff > 0 ? '+' : ''}{totalDiff}
+          </div>
+        {/if}
+      </div>
+
       <details class="card" style="border-radius:14px;">
         <summary style="cursor:pointer; font-weight:650;">Penalties / Chombo ({data.penalties.length})</summary>
         <div class="muted" style="margin-top:8px;">
-          Penalties adjust Season Points (SP) only. They do not change Rating (R).
-        </div>
-        <div class="muted" style="margin-top:4px;">
-          Penalty target list is limited to players already entered in this match.
+          Penalties adjust Season Points (SP) only. They do not change Rating (R)
         </div>
 
         <form method="POST" action="?/addPenalty" style="display:grid; gap:10px; margin-top:10px;">
@@ -455,16 +583,12 @@
                 </tr>
               {/each}
               {#if data.penalties.length === 0}
-                <tr><td colspan="5" class="muted">No penalties added.</td></tr>
+                <tr><td colspan="5" class="muted">No penalties added</td></tr>
               {/if}
             </tbody>
           </table>
         </div>
       </details>
-
-      <div class="muted">
-        Ex is set in Match metadata above.
-      </div>
     </div>
   </div>
 </div>

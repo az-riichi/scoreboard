@@ -104,9 +104,9 @@
     <div class="muted">
       Ranked by Season Points (SP), after adjustments. SP resets each season,
       {#if data.isRatingSeason}
-        Rating (R) does not reset.
+        Rating (R) does not reset
       {:else}
-        Rating (R) starts in Spring 2026 and is shown as — for this season.
+        Rating (R) starts in Spring 2026 and is shown as — for this season
       {/if}
     </div>
   </div>

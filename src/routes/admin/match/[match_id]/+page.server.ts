@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
-import { composePlayerDisplayName } from '$lib/player-name';
+import { composeSeasonNameParts } from '$lib/player-name';
 
 const CHOMBO_PREFIX = 'CHOMBO';
 
@@ -30,7 +30,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const rulesetRes = await locals.supabase
     .from('rulesets')
-    .select('id, name, return_points, point_divisor, uma_1, uma_2, uma_3, uma_4, oka_1, oka_2, oka_3, oka_4')
+    .select('id, name, start_points, return_points, point_divisor, uma_1, uma_2, uma_3, uma_4, oka_1, oka_2, oka_3, oka_4')
     .eq('id', matchRes.data.ruleset_id)
     .maybeSingle();
 
@@ -63,8 +63,20 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     playersRes.error
       ? []
       : (playersRes.data ?? [])
-          .map((p) => ({ ...p, label: composePlayerDisplayName(p) }))
-          .sort((a, b) => a.label.localeCompare(b.label));
+          .map((p) => {
+            const nameParts = composeSeasonNameParts(p);
+            return {
+              ...p,
+              player_name_primary: nameParts.primary,
+              player_name_secondary: nameParts.secondary,
+              label: nameParts.secondary ? `${nameParts.primary} (${nameParts.secondary})` : nameParts.primary
+            };
+          })
+          .sort((a, b) => {
+            const primaryCmp = a.player_name_primary.localeCompare(b.player_name_primary);
+            if (primaryCmp !== 0) return primaryCmp;
+            return String(a.player_name_secondary ?? '').localeCompare(String(b.player_name_secondary ?? ''));
+          });
 
   const playerLabelById = new Map(players.map((p) => [p.id, p.label]));
   const penalties = penaltiesRes.error

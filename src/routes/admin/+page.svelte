@@ -6,7 +6,7 @@
 <div class="card" style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end; margin-bottom:12px;">
   <div>
     <div style="font-size:1.1rem; font-weight:650;">Admin</div>
-    <div class="muted">Manage seasons, players, matches, and finalize results.</div>
+    <div class="muted">Manage seasons, players, matches, and finalize results</div>
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a class="btn" href="/admin/seasons" style="text-decoration:none;">Seasons</a>
@@ -17,7 +17,7 @@
 
 <div class="card">
   <div style="font-size:1.05rem; font-weight:650;">Draft matches</div>
-  <div class="muted">Matches not yet finalized (not public).</div>
+  <div class="muted">Matches not yet finalized (not public)</div>
 
   <div style="margin-top:12px; overflow:auto;">
     <table>
@@ -37,7 +37,7 @@
           </tr>
         {/each}
         {#if data.drafts.length === 0}
-          <tr><td colspan="3" class="muted">No drafts.</td></tr>
+          <tr><td colspan="3" class="muted">No drafts</td></tr>
         {/if}
       </tbody>
     </table>
