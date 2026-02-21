@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/stores';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
 
@@ -13,6 +14,75 @@
   type ThemePreference = 'system' | 'light' | 'dark';
   let themePreference: ThemePreference = 'system';
   let resolvedTheme: 'light' | 'dark' = 'light';
+  const SITE_NAME = 'AZRM Scoreboard';
+  let pageTitle = SITE_NAME;
+
+  function asRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object') return null;
+    return value as Record<string, unknown>;
+  }
+
+  function asText(value: unknown): string | null {
+    const text = String(value ?? '').trim();
+    return text.length > 0 ? text : null;
+  }
+
+  function getFieldText(record: Record<string, unknown> | null, key: string): string | null {
+    if (!record) return null;
+    return asText(record[key]);
+  }
+
+  function resolvePageTitle(pathname: string, pageData: unknown): string {
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts.length === 0) return SITE_NAME;
+    const pageRecord = asRecord(pageData);
+    const section = parts[0];
+
+    if (section === 'login') return `Login | ${SITE_NAME}`;
+    if (section === 'seasons') return `Seasons | ${SITE_NAME}`;
+
+    if (section === 'season') {
+      const season = asRecord(pageRecord?.season);
+      const seasonName = getFieldText(season, 'name');
+      return `${seasonName ?? 'Season Standings'} | ${SITE_NAME}`;
+    }
+
+    if (section === 'player') {
+      const player = asRecord(pageRecord?.player);
+      const primary =
+        getFieldText(player, 'player_name_primary') ??
+        getFieldText(player, 'real_first_name') ??
+        getFieldText(player, 'display_name');
+      const secondary = getFieldText(player, 'player_name_secondary');
+      const playerName = primary ? (secondary ? `${primary} (${secondary})` : primary) : 'Player';
+      return `${playerName} | ${SITE_NAME}`;
+    }
+
+    if (section === 'match') {
+      const match = asRecord(pageRecord?.match);
+      const label = getFieldText(match, 'table_label');
+      const matchName = label ?? (parts[1] ? `Match ${parts[1].slice(0, 8)}` : 'Match');
+      return `${matchName} | ${SITE_NAME}`;
+    }
+
+    if (section === 'admin') {
+      if (parts.length === 1) return `Admin Dashboard | ${SITE_NAME}`;
+      if (parts[1] === 'players') return `Admin Players | ${SITE_NAME}`;
+      if (parts[1] === 'matches') return `Admin Matches | ${SITE_NAME}`;
+      if (parts[1] === 'seasons') return `Admin Seasons | ${SITE_NAME}`;
+      if (parts[1] === 'match') {
+        const match = asRecord(pageRecord?.match);
+        const label = getFieldText(match, 'table_label');
+        const matchName = label ?? (parts[2] ? `Match ${parts[2].slice(0, 8)}` : 'Match');
+        return `Admin ${matchName} | ${SITE_NAME}`;
+      }
+      return `Admin | ${SITE_NAME}`;
+    }
+
+    return SITE_NAME;
+  }
+
+  $: pageTitle = resolvePageTitle($page.url.pathname, $page.data);
 
   function normalizeTheme(value: string | null): ThemePreference {
     if (value === 'light' || value === 'dark' || value === 'system') return value;
@@ -68,6 +138,7 @@
 </script>
 
 <svelte:head>
+  <title>{pageTitle}</title>
   <style>
     :root {
       color-scheme: light;
