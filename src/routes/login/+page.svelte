@@ -6,7 +6,26 @@
   let signUpPassword = '';
 </script>
 
-<div class="card" style="max-width:520px; margin: 0 auto;">
+<style>
+  .auth-card {
+    width: min(520px, 100%);
+    margin: 0 auto;
+  }
+
+  .auth-card label {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .auth-card input {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+</style>
+
+<div class="card auth-card">
   <h2 style="margin:0 0 10px;">Admin sign in</h2>
   <p class="muted" style="margin-top:0;">Only admins can create players and enter results.</p>
 
@@ -19,12 +38,12 @@
   <form method="POST" action="?/signIn" style="display:grid; gap:10px; margin-bottom:18px;">
     <label>
       <div class="muted">Email</div>
-      <input name="signin-email" bind:value={signInEmail} type="email" autocomplete="email" required style="width:100%;" />
+      <input name="signin-email" bind:value={signInEmail} type="email" autocomplete="email" required />
     </label>
 
     <label>
       <div class="muted">Password</div>
-      <input name="signin-password" bind:value={signInPassword} type="password" autocomplete="current-password" required style="width:100%;" />
+      <input name="signin-password" bind:value={signInPassword} type="password" autocomplete="current-password" required />
     </label>
 
     <button class="btn primary" type="submit">Sign in</button>
@@ -36,12 +55,12 @@
   <form method="POST" action="?/signUp" style="display:grid; gap:10px;">
     <label>
       <div class="muted">Email</div>
-      <input name="signup-email" bind:value={signUpEmail} type="email" autocomplete="email" required style="width:100%;" />
+      <input name="signup-email" bind:value={signUpEmail} type="email" autocomplete="email" required />
     </label>
 
     <label>
       <div class="muted">Password</div>
-      <input name="signup-password" bind:value={signUpPassword} type="password" autocomplete="new-password" required style="width:100%;" />
+      <input name="signup-password" bind:value={signUpPassword} type="password" autocomplete="new-password" required />
     </label>
 
     <button class="btn" type="submit">Sign up</button>

@@ -101,7 +101,14 @@
 <div class="card" style="margin-bottom:12px;">
   <div>
     <div style="font-size:1.05rem; font-weight:650;">Standings</div>
-    <div class="muted">Ranked by Season Points (SP), after adjustments. SP resets each season, Rating (R) does not reset.</div>
+    <div class="muted">
+      Ranked by Season Points (SP), after adjustments. SP resets each season,
+      {#if data.isRatingSeason}
+        Rating (R) does not reset.
+      {:else}
+        Rating (R) starts in Spring 2026 and is shown as — for this season.
+      {/if}
+    </div>
   </div>
 
   <div style="margin-top:12px; overflow:auto;">

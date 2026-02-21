@@ -168,7 +168,12 @@
 <div class="card" style="margin-bottom:12px;">
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
     <div>
-      <div style="font-size:1.15rem; font-weight:700;">{data.player.public_name}</div>
+      <div style="font-size:1.15rem; font-weight:700;">
+        {data.player.player_name_primary}
+        {#if data.player.player_name_secondary}
+          <span class="muted" style="margin-left:6px;">({data.player.player_name_secondary})</span>
+        {/if}
+      </div>
       <div class="muted">Player profile</div>
     </div>
 

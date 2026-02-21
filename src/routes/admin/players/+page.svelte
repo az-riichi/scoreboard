@@ -75,7 +75,12 @@
     <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:end;">
       <div>
         <h3 style="margin:0 0 6px;">Edit player</h3>
-        <div class="muted">{editPlayer.public_name}</div>
+        <div>
+          {editPlayer.public_name_primary}
+          {#if editPlayer.public_name_secondary}
+            <span class="muted" style="margin-left:6px;">({editPlayer.public_name_secondary})</span>
+          {/if}
+        </div>
       </div>
       <a class="btn" href="/admin/players" style="text-decoration:none;">Cancel</a>
     </div>
@@ -142,7 +147,14 @@
       <tbody>
         {#each data.players as p}
           <tr>
-            <td><a href={`/player/${p.id}`} style="text-decoration:none;">{p.public_name}</a></td>
+            <td>
+              <a href={`/player/${p.id}`} style="text-decoration:none;">
+                {p.public_name_primary}
+                {#if p.public_name_secondary}
+                  <span class="muted" style="margin-left:6px;">({p.public_name_secondary})</span>
+                {/if}
+              </a>
+            </td>
             <td>{p.display_name ?? ''}</td>
             <td>{p.real_first_name ?? ''}</td>
             <td>{p.real_last_name ?? ''}</td>

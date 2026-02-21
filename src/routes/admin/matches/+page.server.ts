@@ -51,6 +51,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  recomputeLifetimeR: async ({ locals }) => {
+    await requireAdmin(locals);
+    const lifetimeRecompute = await locals.supabase.rpc('recompute_lifetime_ratings');
+    if (lifetimeRecompute.error) return fail(400, { message: lifetimeRecompute.error.message });
+    return { message: 'Lifetime Rating (R) recomputed.' };
+  },
+
   delete: async ({ request, locals }) => {
     await requireAdmin(locals);
     const f = await request.formData();

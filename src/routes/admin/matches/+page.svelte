@@ -23,7 +23,12 @@
       <div style="font-size:1.1rem; font-weight:650;">Matches</div>
       <div class="muted">Enter and review match results</div>
     </div>
-    <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <form method="POST" action="?/recomputeLifetimeR" on:submit={(e) => { if (!confirm('Recompute lifetime Rating (R) now?')) e.preventDefault(); }}>
+        <button class="btn" type="submit">Recompute lifetime R</button>
+      </form>
+      <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
+    </div>
   </div>
 </div>
 

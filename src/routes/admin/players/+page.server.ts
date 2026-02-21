@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
-import { composePlayerDisplayName } from '$lib/player-name';
+import { composeSeasonNameParts } from '$lib/player-name';
 
 function asText(value: unknown) {
   return String(value ?? '').trim();
@@ -23,8 +23,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     playersRes.error
       ? []
       : (playersRes.data ?? [])
-          .map((p) => ({ ...p, public_name: composePlayerDisplayName(p) }))
-          .sort((a, b) => a.public_name.localeCompare(b.public_name));
+          .map((p) => {
+            const nameParts = composeSeasonNameParts(p);
+            return {
+              ...p,
+              public_name_primary: nameParts.primary,
+              public_name_secondary: nameParts.secondary
+            };
+          })
+          .sort((a, b) => {
+            const primaryCmp = a.public_name_primary.localeCompare(b.public_name_primary);
+            if (primaryCmp !== 0) return primaryCmp;
+            return String(a.public_name_secondary ?? '').localeCompare(String(b.public_name_secondary ?? ''));
+          });
 
   const editIdRaw = asText(url.searchParams.get('edit'));
   const editId = editIdRaw && players.some((p) => p.id === editIdRaw) ? editIdRaw : null;

@@ -4,6 +4,7 @@ import { composeSeasonNameParts } from '$lib/player-name';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   const season_id = params.season_id;
+  const FALLBACK_RATING_START_DATE = '2026-01-01';
 
   const seasonRes = await locals.supabase
     .from('seasons')
@@ -12,6 +13,16 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .maybeSingle();
 
   if (seasonRes.error || !seasonRes.data) throw kitError(404, 'Season not found');
+
+  const ratingStartSeasonRes = await locals.supabase
+    .from('seasons')
+    .select('start_date')
+    .ilike('name', 'spring 2026%')
+    .order('start_date', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const ratingStartDate = String(ratingStartSeasonRes.data?.start_date ?? '').trim() || FALLBACK_RATING_START_DATE;
+  const isRatingSeason = String(seasonRes.data.start_date ?? '').trim() >= ratingStartDate;
 
   const standingsRes = await locals.supabase
     .from('v_season_standings')
@@ -51,19 +62,23 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   }
 
   let ratingByPlayerId = new Map<string, number>();
-  if (playerIds.length > 0) {
+  if (isRatingSeason && playerIds.length > 0) {
     const ratingsRes = await locals.supabase
-      .from('v_current_ratings')
-      .select('player_id, rate')
+      .from('v_rating_history')
+      .select('player_id, new_rate, played_at, match_id')
       .eq('is_lifetime', true)
-      .in('player_id', playerIds);
+      .in('player_id', playerIds)
+      .gte('played_at', ratingStartDate)
+      .order('played_at', { ascending: false })
+      .order('match_id', { ascending: false });
 
     if (!ratingsRes.error) {
-      ratingByPlayerId = new Map(
-        (ratingsRes.data ?? [])
-          .map((r) => [String(r.player_id ?? ''), Number(r.rate)] as const)
-          .filter(([id, rate]) => id.length > 0 && Number.isFinite(rate))
-      );
+      for (const row of ratingsRes.data ?? []) {
+        const id = String(row?.player_id ?? '').trim();
+        const rate = Number(row?.new_rate);
+        if (!id || !Number.isFinite(rate) || ratingByPlayerId.has(id)) continue;
+        ratingByPlayerId.set(id, rate);
+      }
     }
   }
 
@@ -74,7 +89,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       ...row,
       player_name_primary: parts?.primary ?? (fallbackName || 'Unnamed player'),
       player_name_secondary: parts?.secondary ?? null,
-      rating: ratingByPlayerId.get(String(row.player_id ?? '')) ?? null
+      rating: isRatingSeason ? (ratingByPlayerId.get(String(row.player_id ?? '')) ?? null) : null
     };
   });
 
@@ -169,6 +184,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   return {
     season: seasonRes.data,
+    isRatingSeason,
     standings: standingsWithNames,
     recentMatches
   };

@@ -8,6 +8,7 @@ const CHOMBO_PREFIX = 'CHOMBO';
 export const load: PageServerLoad = async ({ locals, params }) => {
   await requireAdmin(locals);
   const match_id = params.match_id;
+  const FALLBACK_RATING_START_DATE = '2026-01-01';
 
   const matchRes = await locals.supabase
     .from('matches')
@@ -33,10 +34,22 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .eq('id', matchRes.data.ruleset_id)
     .maybeSingle();
 
+  const ratingStartSeasonRes = await locals.supabase
+    .from('seasons')
+    .select('start_date')
+    .ilike('name', 'spring 2026%')
+    .order('start_date', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const ratingStartDate = String(ratingStartSeasonRes.data?.start_date ?? '').trim() || FALLBACK_RATING_START_DATE;
+
   const lifetimeRatingsRes = await locals.supabase
-    .from('rating_state')
-    .select('player_id, rate, games_played')
-    .eq('is_lifetime', true);
+    .from('v_rating_history')
+    .select('player_id, new_rate, played_at, match_id')
+    .eq('is_lifetime', true)
+    .gte('played_at', ratingStartDate)
+    .order('played_at', { ascending: false })
+    .order('match_id', { ascending: false });
 
   const penaltyReasonPrefix = `${CHOMBO_PREFIX}:${match_id}:%`;
   const penaltiesRes = await locals.supabase
@@ -66,12 +79,29 @@ export const load: PageServerLoad = async ({ locals, params }) => {
         };
       });
 
+  const lifetimeRatings: Array<{ player_id: string; rate: number; games_played: number }> = [];
+  if (!lifetimeRatingsRes.error) {
+    const latestRateByPlayer = new Map<string, number>();
+    const gamesByPlayer = new Map<string, number>();
+    for (const row of lifetimeRatingsRes.data ?? []) {
+      const player_id = String(row?.player_id ?? '').trim();
+      const rate = Number(row?.new_rate);
+      if (!player_id) continue;
+      gamesByPlayer.set(player_id, (gamesByPlayer.get(player_id) ?? 0) + 1);
+      if (!Number.isFinite(rate) || latestRateByPlayer.has(player_id)) continue;
+      latestRateByPlayer.set(player_id, rate);
+    }
+    for (const [player_id, rate] of latestRateByPlayer.entries()) {
+      lifetimeRatings.push({ player_id, rate, games_played: gamesByPlayer.get(player_id) ?? 0 });
+    }
+  }
+
   return {
     match: matchRes.data,
     players,
     results: resultsRes.error ? [] : (resultsRes.data ?? []),
     ruleset: rulesetRes.error ? null : rulesetRes.data,
-    lifetimeRatings: lifetimeRatingsRes.error ? [] : (lifetimeRatingsRes.data ?? []),
+    lifetimeRatings,
     penalties
   };
 };
