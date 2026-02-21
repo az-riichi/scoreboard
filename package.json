@@ -20,6 +20,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.4.0",
     "@supabase/supabase-js": "^2.49.0",
+    "@sveltejs/adapter-netlify": "^6.0.0",
     "xlsx": "^0.18.5"
   }
 }
