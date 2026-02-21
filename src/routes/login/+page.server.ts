@@ -2,7 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (locals.session) throw redirect(303, '/admin');
+  if (locals.user) throw redirect(303, '/admin');
   return {};
 };
 

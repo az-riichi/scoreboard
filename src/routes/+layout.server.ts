@@ -1,7 +1,7 @@
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
-  const session = locals.session;
+  const user = locals.user;
 
   let isAdmin = false;
   if (locals.userId) {
@@ -22,5 +22,5 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 
   const activeSeasonId = active?.[0]?.id ?? null;
 
-  return { session, isAdmin, activeSeasonId };
+  return { user, isAdmin, activeSeasonId };
 };

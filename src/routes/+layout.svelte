@@ -325,7 +325,7 @@
         </button>
       </div>
 
-      {#if data.session}
+      {#if data.user}
         <span style={pill} title="Signed in">
           <span class="muted">Signed in</span>
           <form method="POST" action="/logout" style="margin:0;">

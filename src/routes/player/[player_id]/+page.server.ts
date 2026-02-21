@@ -298,7 +298,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
 export const actions: Actions = {
   updateDisplay: async ({ request, locals, params }) => {
-    if (!locals.userId || !locals.session) return fail(401, { message: 'Sign in to update your display settings.' });
+    if (!locals.userId || !locals.user) return fail(401, { message: 'Sign in to update your display settings.' });
 
     const f = await request.formData();
     const display_name = asText(f.get('display_name')) || null;

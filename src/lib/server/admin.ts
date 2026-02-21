@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 
 export async function requireAdmin(locals: App.Locals) {
-  if (!locals.session || !locals.userId) throw redirect(303, '/login');
+  if (!locals.user || !locals.userId) throw redirect(303, '/login');
 
   const { data, error } = await locals.supabase
     .from('profiles')

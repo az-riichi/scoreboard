@@ -6,7 +6,13 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
     cookies: {
       getAll: () => event.cookies.getAll(),
-      setAll: (cookiesToSet) => {
+      setAll: (
+        cookiesToSet: Array<{
+          name: string;
+          value: string;
+          options: Parameters<typeof event.cookies.set>[2];
+        }>
+      ) => {
         cookiesToSet.forEach(({ name, value, options }) => {
           event.cookies.set(name, value, { ...options, path: '/' });
         });
@@ -14,21 +20,15 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   });
 
-  const { data: sessionData } = await event.locals.supabase.auth.getSession();
-  const session = sessionData.session ?? null;
+  const { data: userData, error: userError } = await event.locals.supabase.auth.getUser();
+  const user = userData.user ?? null;
 
-  if (!session) {
-    event.locals.session = null;
+  if (userError || !user) {
+    event.locals.user = null;
     event.locals.userId = null;
   } else {
-    const { data: claimsData, error } = await event.locals.supabase.auth.getClaims();
-    if (error || !claimsData?.claims) {
-      event.locals.session = null;
-      event.locals.userId = null;
-    } else {
-      event.locals.session = session;
-      event.locals.userId = (claimsData.claims as any).sub ?? null;
-    }
+    event.locals.user = user;
+    event.locals.userId = user.id;
   }
 
   return resolve(event, {

@@ -440,7 +440,7 @@
       </div>
 
       {#if isFinal}
-        <div class="muted">This match is finalized (public)</div>
+        <div class="muted">This match is finalized (public).</div>
       {/if}
     </form>
 
