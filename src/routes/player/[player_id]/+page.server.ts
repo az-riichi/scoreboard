@@ -60,6 +60,38 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     .eq('is_lifetime', true)
     .eq('player_id', player_id)
     .maybeSingle();
+  const lifetimeRatingsRes = await locals.supabase
+    .from('rating_state')
+    .select('player_id, rate')
+    .eq('is_lifetime', true)
+    .order('rate', { ascending: false })
+    .order('player_id', { ascending: true });
+
+  let currentRatingRank: number | null = null;
+  let currentRatingRankTotal = 0;
+  if (!lifetimeRatingsRes.error) {
+    const rows = (lifetimeRatingsRes.data ?? [])
+      .map((row) => ({
+        player_id: String(row?.player_id ?? ''),
+        rate: Number(row?.rate)
+      }))
+      .filter((row) => row.player_id.length > 0 && Number.isFinite(row.rate));
+
+    currentRatingRankTotal = rows.length;
+
+    let prevRate: number | null = null;
+    let rank = 0;
+    for (const row of rows) {
+      if (prevRate == null || row.rate !== prevRate) {
+        rank += 1;
+        prevRate = row.rate;
+      }
+      if (row.player_id === player_id) {
+        currentRatingRank = rank;
+        break;
+      }
+    }
+  }
 
   let stats = null;
   let standingsRow = null;
@@ -104,14 +136,25 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       .limit(200);
     pointHistory = phRes.error ? [] : (phRes.data ?? []);
 
-    const rhRes = await locals.supabase
-      .from('v_rating_history')
-      .select('*')
-      .eq('is_lifetime', true)
-      .eq('player_id', player_id)
-      .order('played_at', { ascending: true })
-      .limit(400);
-    ratingHistory = rhRes.error ? [] : (rhRes.data ?? []);
+    const seasonMatchIdsForRating = Array.from(
+      new Set(
+        [...pointHistory, ...matchHistory]
+          .map((row) => String(row?.match_id ?? '').trim())
+          .filter((id) => id.length > 0)
+      )
+    );
+    if (seasonMatchIdsForRating.length > 0) {
+      const rhRes = await locals.supabase
+        .from('v_rating_history')
+        .select('*')
+        .eq('is_lifetime', true)
+        .eq('player_id', player_id)
+        .in('match_id', seasonMatchIdsForRating)
+        .order('played_at', { ascending: true });
+      ratingHistory = rhRes.error ? [] : (rhRes.data ?? []);
+    } else {
+      ratingHistory = [];
+    }
 
     const bestRawRes = await locals.supabase
       .from('v_player_match_history')
@@ -216,6 +259,8 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     seasons: seasonsRes.error ? [] : (seasonsRes.data ?? []),
     seasonId,
     currentRating: currentRatingRes.error ? null : currentRatingRes.data,
+    currentRatingRank,
+    currentRatingRankTotal,
     stats,
     standingsRow,
     matchHistory,

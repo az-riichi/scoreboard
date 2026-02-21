@@ -22,10 +22,10 @@
     { key: 'all', label: 'All time' }
   ];
 
-  let historyRange: HistoryRange = '20';
+  let historyRange: HistoryRange = '10';
   const chartWidth = 1280;
-  const chartHeight = 520;
-  const plot = { left: 64, right: 64, top: 18, bottom: 150 };
+  const chartHeight = 500;
+  const plot = { left: 64, right: 64, top: 18, bottom: 92 };
 
   function fmtFixed2(x: number | null | undefined) {
     const n = Number(x);
@@ -233,11 +233,28 @@
   <div class="card">No active season found.</div>
 {:else}
   <div class="card" style="margin-bottom:12px;">
-    <div class="muted">Current Rating (R)</div>
-    <div style="font-size:2rem; font-weight:750; line-height:1.1; margin-top:4px;">
-      {fmtFixed2(data.currentRating?.rate)}
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+      <div class="card" style="border-radius:14px;">
+        <div class="muted">Current Rating (R)</div>
+        <div style="font-size:2rem; font-weight:750; line-height:1.1; margin-top:4px;">
+          {fmtFixed2(data.currentRating?.rate)}
+        </div>
+      </div>
+      <div class="card" style="border-radius:14px;">
+        <div class="muted">R Rank</div>
+        <div style="font-size:2rem; font-weight:800; line-height:1.1; margin-top:4px;">
+          {#if data.currentRatingRank == null}
+            -
+          {:else}
+            #{data.currentRatingRank}
+          {/if}
+        </div>
+        {#if data.currentRatingRankTotal}
+          <div class="muted" style="margin-top:2px;">of {data.currentRatingRankTotal}</div>
+        {/if}
+      </div>
     </div>
-    <div class="muted" style="margin-top:4px;">
+    <div class="muted" style="margin-top:8px;">
       Lifetime games: {data.currentRating?.games_played ?? 0}
     </div>
   </div>
@@ -245,7 +262,6 @@
   <div class="grid2" style="margin-bottom:12px;">
     <div class="card">
       <div style="font-size:1.05rem; font-weight:650;">Season snapshot</div>
-      <div class="muted">Rank + Season Points (SP) in this season.</div>
 
       <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px; margin-top:12px;">
         <div class="card" style="border-radius:14px;">
@@ -271,8 +287,7 @@
     </div>
 
     <div class="card">
-      <div style="font-size:1.05rem; font-weight:650;">Best / worst</div>
-      <div class="muted">Best and worst match by raw score.</div>
+      <div style="font-size:1.05rem; font-weight:650;">Best / worst games</div>
 
       <div style="margin-top:10px;">
         <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; padding:8px 0; border-top:1px solid var(--table-border);">
@@ -304,10 +319,155 @@
   </div>
 
   <div class="card" style="margin-bottom:12px;">
+    <div style="font-size:1.05rem; font-weight:650;">Match History</div>
+
+    <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;">
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        {#each historyRangeOptions as opt}
+          <button class="btn" class:primary={historyRange === opt.key} type="button" on:click={() => (historyRange = opt.key)}>
+            {opt.label}
+          </button>
+        {/each}
+      </div>
+
+      <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <span class="muted" style="display:inline-flex; align-items:center; gap:6px; font-size:1.1rem;">
+            <span style="width:10px; height:10px; border-radius:999px; background:#3b82f6; display:inline-block;"></span>
+            SP (left axis)
+          </span>
+        <span class="muted" style="display:inline-flex; align-items:center; gap:6px; font-size:1.1rem;">
+            <span style="width:10px; height:10px; border-radius:999px; background:#f59e0b; display:inline-block;"></span>
+            R (right axis)
+          </span>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      {#if hasHistoryData}
+        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style="width:100%; height:auto; display:block;">
+          <rect
+            x={plot.left}
+            y={plot.top}
+            width={plotWidth}
+            height={plotHeight}
+            fill="none"
+            stroke="var(--table-border)"
+            stroke-width="1"
+          />
+
+          {#each yGridYs as y}
+            <line
+              x1={plot.left}
+              y1={y}
+              x2={plot.left + plotWidth}
+              y2={y}
+              stroke="var(--table-border)"
+              stroke-opacity="0.45"
+              stroke-dasharray="3 3"
+            />
+          {/each}
+
+          {#each xAxisTicks as tick}
+            <line
+              x1={xAtIndex(tick.idx, xGameTicks.length)}
+              y1={plot.top}
+              x2={xAtIndex(tick.idx, xGameTicks.length)}
+              y2={plot.top + plotHeight}
+              stroke="var(--table-border)"
+              stroke-opacity="0.35"
+              stroke-dasharray="3 3"
+            />
+            <text
+              x={xAtIndex(tick.idx, xGameTicks.length)}
+              y={plot.top + plotHeight + 16}
+              text-anchor="middle"
+              dominant-baseline="hanging"
+              font-size="16"
+              font-weight="650"
+              fill="var(--muted)"
+            >
+              {tick.idx + 1}
+            </text>
+          {/each}
+
+          {#if spPoints.length > 1}
+            <path d={spPath} fill="none" stroke="#3b82f6" stroke-width="2.4" />
+          {/if}
+          {#if rPoints.length > 1}
+            <path d={rPath} fill="none" stroke="#f59e0b" stroke-width="2.4" />
+          {/if}
+
+          {#each spPoints as p}
+            <a href={`/match/${p.row.match_id}`}>
+              <circle cx={p.x} cy={p.y} r="4" fill="#3b82f6" stroke="var(--card-bg)" stroke-width="1.5">
+                <title>{spPointTooltip(p.row)}</title>
+              </circle>
+            </a>
+          {/each}
+
+          {#each rPoints as p}
+            <a href={`/match/${p.row.match_id}`}>
+              <circle cx={p.x} cy={p.y} r="4" fill="#f59e0b" stroke="var(--card-bg)" stroke-width="1.5">
+                <title>{rPointTooltip(p.row)}</title>
+              </circle>
+            </a>
+          {/each}
+
+          <text
+            x={plot.left - 8}
+            y={plot.top + 10}
+            text-anchor="end"
+            font-size="15"
+            font-weight="700"
+            fill="#3b82f6"
+          >
+            SP {fmtNum(spRange[1], 2)}
+          </text>
+          <text
+            x={plot.left - 8}
+            y={plot.top + plotHeight}
+            text-anchor="end"
+            dominant-baseline="ideographic"
+            font-size="15"
+            font-weight="700"
+            fill="#3b82f6"
+          >
+            SP {fmtNum(spRange[0], 2)}
+          </text>
+
+          <text
+            x={plot.left + plotWidth + 8}
+            y={plot.top + 10}
+            text-anchor="start"
+            font-size="15"
+            font-weight="700"
+            fill="#f59e0b"
+          >
+            R {fmtNum(rRange[1], 2)}
+          </text>
+          <text
+            x={plot.left + plotWidth + 8}
+            y={plot.top + plotHeight}
+            text-anchor="start"
+            dominant-baseline="ideographic"
+            font-size="15"
+            font-weight="700"
+            fill="#f59e0b"
+          >
+            R {fmtNum(rRange[0], 2)}
+          </text>
+        </svg>
+      {:else}
+        <div class="muted">No SP or Rating history yet.</div>
+      {/if}
+    </div>
+  </div>
+
+  <div class="card">
       <div style="font-size:1.05rem; font-weight:650;">Recent matches</div>
       <div class="muted">Last 100 matches (most recent first).</div>
 
-      <div style="margin-top:12px; overflow:auto; max-height: 520px;">
+      <div style="margin-top:12px; height:520px; overflow-y:auto; overflow-x:auto;">
         <table>
           <thead>
             <tr>
@@ -335,152 +495,6 @@
             {/if}
           </tbody>
         </table>
-      </div>
-  </div>
-
-  <div class="card">
-      <div style="font-size:1.05rem; font-weight:650;">Histories</div>
-      <div class="muted">Composite line chart for Season Points (SP) and Rating (R). Click a point to open that match.</div>
-
-      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;">
-        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          {#each historyRangeOptions as opt}
-            <button class="btn" class:primary={historyRange === opt.key} type="button" on:click={() => (historyRange = opt.key)}>
-              {opt.label}
-            </button>
-          {/each}
-        </div>
-
-        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-          <span class="muted" style="display:inline-flex; align-items:center; gap:6px; font-size:1.1rem;">
-            <span style="width:10px; height:10px; border-radius:999px; background:#3b82f6; display:inline-block;"></span>
-            SP (left axis)
-          </span>
-          <span class="muted" style="display:inline-flex; align-items:center; gap:6px; font-size:1.1rem;">
-            <span style="width:10px; height:10px; border-radius:999px; background:#f59e0b; display:inline-block;"></span>
-            R (right axis)
-          </span>
-        </div>
-      </div>
-
-      <div style="margin-top:12px;">
-        {#if hasHistoryData}
-          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} style="width:100%; height:auto; display:block;">
-            <rect
-              x={plot.left}
-              y={plot.top}
-              width={plotWidth}
-              height={plotHeight}
-              fill="none"
-              stroke="var(--table-border)"
-              stroke-width="1"
-            />
-
-            {#each yGridYs as y}
-              <line
-                x1={plot.left}
-                y1={y}
-                x2={plot.left + plotWidth}
-                y2={y}
-                stroke="var(--table-border)"
-                stroke-opacity="0.45"
-                stroke-dasharray="3 3"
-              />
-            {/each}
-
-            {#each xAxisTicks as tick}
-              <line
-                x1={xAtIndex(tick.idx, xGameTicks.length)}
-                y1={plot.top}
-                x2={xAtIndex(tick.idx, xGameTicks.length)}
-                y2={plot.top + plotHeight}
-                stroke="var(--table-border)"
-                stroke-opacity="0.35"
-                stroke-dasharray="3 3"
-              />
-              <text
-                x={xAtIndex(tick.idx, xGameTicks.length)}
-                y={chartHeight - 24}
-                text-anchor="end"
-                transform={`rotate(-45 ${xAtIndex(tick.idx, xGameTicks.length)} ${chartHeight - 24})`}
-                font-size="16"
-                font-weight="650"
-                fill="var(--muted)"
-              >
-                {tick.idx + 1}
-              </text>
-            {/each}
-
-            {#if spPoints.length > 1}
-              <path d={spPath} fill="none" stroke="#3b82f6" stroke-width="2.4" />
-            {/if}
-            {#if rPoints.length > 1}
-              <path d={rPath} fill="none" stroke="#f59e0b" stroke-width="2.4" />
-            {/if}
-
-            {#each spPoints as p}
-              <a href={`/match/${p.row.match_id}`}>
-                <circle cx={p.x} cy={p.y} r="4" fill="#3b82f6" stroke="var(--card-bg)" stroke-width="1.5">
-                  <title>{spPointTooltip(p.row)}</title>
-                </circle>
-              </a>
-            {/each}
-
-            {#each rPoints as p}
-              <a href={`/match/${p.row.match_id}`}>
-                <circle cx={p.x} cy={p.y} r="4" fill="#f59e0b" stroke="var(--card-bg)" stroke-width="1.5">
-                  <title>{rPointTooltip(p.row)}</title>
-                </circle>
-              </a>
-            {/each}
-
-            <text
-              x={plot.left - 8}
-              y={plot.top + 10}
-              text-anchor="end"
-              font-size="15"
-              font-weight="700"
-              fill="#3b82f6"
-            >
-              SP {fmtNum(spRange[1], 2)}
-            </text>
-            <text
-              x={plot.left - 8}
-              y={plot.top + plotHeight}
-              text-anchor="end"
-              dominant-baseline="ideographic"
-              font-size="15"
-              font-weight="700"
-              fill="#3b82f6"
-            >
-              SP {fmtNum(spRange[0], 2)}
-            </text>
-
-            <text
-              x={plot.left + plotWidth + 8}
-              y={plot.top + 10}
-              text-anchor="start"
-              font-size="15"
-              font-weight="700"
-              fill="#f59e0b"
-            >
-              R {fmtNum(rRange[1], 2)}
-            </text>
-            <text
-              x={plot.left + plotWidth + 8}
-              y={plot.top + plotHeight}
-              text-anchor="start"
-              dominant-baseline="ideographic"
-              font-size="15"
-              font-weight="700"
-              fill="#f59e0b"
-            >
-              R {fmtNum(rRange[0], 2)}
-            </text>
-          </svg>
-        {:else}
-          <div class="muted">No SP or Rating history yet.</div>
-        {/if}
       </div>
   </div>
 {/if}

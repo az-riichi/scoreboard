@@ -25,7 +25,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .eq('season_id', season_id)
     .eq('status', 'final')
     .order('played_at', { ascending: false })
-    .limit(25);
+    .limit(10);
 
   const standings = standingsRes.error ? [] : (standingsRes.data ?? []);
   const playerIds = Array.from(
@@ -50,19 +50,126 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     }
   }
 
+  let ratingByPlayerId = new Map<string, number>();
+  if (playerIds.length > 0) {
+    const ratingsRes = await locals.supabase
+      .from('v_current_ratings')
+      .select('player_id, rate')
+      .eq('is_lifetime', true)
+      .in('player_id', playerIds);
+
+    if (!ratingsRes.error) {
+      ratingByPlayerId = new Map(
+        (ratingsRes.data ?? [])
+          .map((r) => [String(r.player_id ?? ''), Number(r.rate)] as const)
+          .filter(([id, rate]) => id.length > 0 && Number.isFinite(rate))
+      );
+    }
+  }
+
   const standingsWithNames = standings.map((row: any) => {
     const parts = playerLabelById.get(row.player_id);
     const fallbackName = String(row.display_name ?? '').trim();
     return {
       ...row,
       player_name_primary: parts?.primary ?? (fallbackName || 'Unnamed player'),
-      player_name_secondary: parts?.secondary ?? null
+      player_name_secondary: parts?.secondary ?? null,
+      rating: ratingByPlayerId.get(String(row.player_id ?? '')) ?? null
+    };
+  });
+
+  const recentMatchesBase = matchesRes.error ? [] : (matchesRes.data ?? []);
+  const recentMatchIds = recentMatchesBase.map((m: any) => String(m?.id ?? '')).filter((id) => id.length > 0);
+  const summaryByMatchId = new Map<
+    string,
+    { winner_name: string | null; top_raw_points: number | null; sp_spread: number | null }
+  >();
+
+  if (recentMatchIds.length > 0) {
+    const finalRowsRes = await locals.supabase
+      .from('v_final_results')
+      .select('match_id, player_id, seat, display_name, placement, raw_points, club_points')
+      .in('match_id', recentMatchIds);
+
+    let finalRows: any[] = [];
+    if (!finalRowsRes.error) {
+      finalRows = finalRowsRes.data ?? [];
+    } else {
+      // Fallback in case view permissions or schema drift blocks v_final_results.
+      const mrRes = await locals.supabase
+        .from('match_results')
+        .select('match_id, player_id, seat, placement, raw_points, club_points')
+        .in('match_id', recentMatchIds);
+      finalRows = mrRes.error ? [] : (mrRes.data ?? []);
+    }
+
+    if (finalRows.length > 0) {
+      const rowsByMatch = new Map<string, any[]>();
+      for (const row of finalRows) {
+        const mid = String(row?.match_id ?? '');
+        if (!mid) continue;
+        if (!rowsByMatch.has(mid)) rowsByMatch.set(mid, []);
+        rowsByMatch.get(mid)!.push(row);
+      }
+
+      for (const match_id of recentMatchIds) {
+        const rows = rowsByMatch.get(match_id) ?? [];
+        if (rows.length === 0) {
+          summaryByMatchId.set(match_id, {
+            winner_name: null,
+            top_raw_points: null,
+            sp_spread: null
+          });
+          continue;
+        }
+
+        const ordered = [...rows].sort((a, b) => {
+          const ap = Number(a?.placement);
+          const bp = Number(b?.placement);
+          if (Number.isFinite(ap) && Number.isFinite(bp) && ap !== bp) return ap - bp;
+          const ar = Number(a?.raw_points);
+          const br = Number(b?.raw_points);
+          if (Number.isFinite(ar) && Number.isFinite(br) && ar !== br) return br - ar;
+          return 0;
+        });
+        const winner = ordered.find((r) => Number(r?.placement) === 1) ?? ordered[0];
+        const rawVals = rows.map((r) => Number(r?.raw_points)).filter((v) => Number.isFinite(v));
+        const spVals = rows.map((r) => Number(r?.club_points)).filter((v) => Number.isFinite(v));
+        const winnerPlayerId = String(winner?.player_id ?? '');
+        const winnerParts = playerLabelById.get(winnerPlayerId);
+        const winnerPrimary = winnerParts?.primary ?? String(winner?.display_name ?? '').trim();
+        const winnerSecondary = winnerParts?.secondary ?? null;
+        const winnerName = winnerPrimary
+          ? winnerSecondary
+            ? `${winnerPrimary} (${winnerSecondary})`
+            : winnerPrimary
+          : winnerPlayerId
+            ? winnerPlayerId.slice(0, 8)
+            : `Seat ${winner?.seat ?? '-'}`;
+
+        summaryByMatchId.set(match_id, {
+          winner_name: winnerName,
+          top_raw_points: rawVals.length > 0 ? Math.max(...rawVals) : null,
+          sp_spread: spVals.length > 0 ? Math.max(...spVals) - Math.min(...spVals) : null
+        });
+      }
+    }
+  }
+
+  const recentMatches = recentMatchesBase.map((m: any) => {
+    const match_id = String(m?.id ?? '');
+    const summary = summaryByMatchId.get(match_id);
+    return {
+      ...m,
+      winner_name: summary?.winner_name ?? null,
+      top_raw_points: summary?.top_raw_points ?? null,
+      sp_spread: summary?.sp_spread ?? null
     };
   });
 
   return {
     season: seasonRes.data,
     standings: standingsWithNames,
-    recentMatches: matchesRes.error ? [] : (matchesRes.data ?? [])
+    recentMatches
   };
 };
