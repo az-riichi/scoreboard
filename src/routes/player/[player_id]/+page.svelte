@@ -271,7 +271,11 @@
       <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px; margin-top:12px;">
         <div class="card" style="border-radius:14px;">
           <div class="muted">Rank</div>
-          <div style="font-size:1.3rem; font-weight:700;">{data.standingsRow?.rank ?? '-'}</div>
+          {#if data.seasonEligibleRank == null}
+            <div class="muted" style="margin-top:6px;">(need more games)</div>
+          {:else}
+            <div style="font-size:1.3rem; font-weight:700;">{data.seasonEligibleRank}</div>
+          {/if}
         </div>
         <div class="card" style="border-radius:14px;">
           <div class="muted">Season Points (SP)</div>

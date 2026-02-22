@@ -97,7 +97,12 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const recentMatchIds = recentMatchesBase.map((m: any) => String(m?.id ?? '')).filter((id) => id.length > 0);
   const summaryByMatchId = new Map<
     string,
-    { winner_name: string | null; top_raw_points: number | null; sp_spread: number | null }
+    {
+      winner_name: string | null;
+      winner_player_id: string | null;
+      top_raw_points: number | null;
+      sp_spread: number | null;
+    }
   >();
 
   if (recentMatchIds.length > 0) {
@@ -132,6 +137,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
         if (rows.length === 0) {
           summaryByMatchId.set(match_id, {
             winner_name: null,
+            winner_player_id: null,
             top_raw_points: null,
             sp_spread: null
           });
@@ -164,6 +170,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
         summaryByMatchId.set(match_id, {
           winner_name: winnerName,
+          winner_player_id: winnerPlayerId || null,
           top_raw_points: rawVals.length > 0 ? Math.max(...rawVals) : null,
           sp_spread: spVals.length > 0 ? Math.max(...spVals) - Math.min(...spVals) : null
         });
@@ -177,6 +184,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     return {
       ...m,
       winner_name: summary?.winner_name ?? null,
+      winner_player_id: summary?.winner_player_id ?? null,
       top_raw_points: summary?.top_raw_points ?? null,
       sp_spread: summary?.sp_spread ?? null
     };

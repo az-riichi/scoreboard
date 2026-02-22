@@ -4,9 +4,11 @@
 
   type SortKey = 'rank' | 'player' | 'rating' | 'sp' | 'games' | 'avg' | 'top2';
   type SortDir = 'asc' | 'desc';
+  type StandingsView = 'eligible' | 'all';
 
   let sortKey: SortKey = 'rank';
   let sortDir: SortDir = 'asc';
+  let standingsView: StandingsView = 'eligible';
 
   const defaultDirByKey: Record<SortKey, SortDir> = {
     rank: 'asc',
@@ -48,9 +50,46 @@
     return dir === 'asc' ? a - b : b - a;
   }
 
+  function playerHref(playerId: string) {
+    return `/player/${playerId}?season=${data.season.id}`;
+  }
+
+  function eligibleGames(row: any) {
+    return (numOrNull(row?.games_played) ?? 0) > 4;
+  }
+
+  $: eligibleRankByPlayerId = (() => {
+    const map = new Map<string, number>();
+    const sourceRows = [...(data.standings ?? [])].sort((a, b) => {
+      const rankCmp = cmpNullableNum(numOrNull(a?.rank), numOrNull(b?.rank), 'asc');
+      if (rankCmp !== 0) return rankCmp;
+      return String(a?.player_id ?? '').localeCompare(String(b?.player_id ?? ''));
+    });
+    const denseRankRemap = new Map<number, number>();
+    let nextEligibleRank = 1;
+    for (const row of sourceRows) {
+      if (!eligibleGames(row)) continue;
+      const playerId = String(row?.player_id ?? '').trim();
+      const sourceRank = numOrNull(row?.rank);
+      if (!playerId || sourceRank == null) continue;
+      if (!denseRankRemap.has(sourceRank)) {
+        denseRankRemap.set(sourceRank, nextEligibleRank);
+        nextEligibleRank += 1;
+      }
+      map.set(playerId, denseRankRemap.get(sourceRank)!);
+    }
+    return map;
+  })();
+
+  function displayRank(row: any): number | null {
+    const playerId = String(row?.player_id ?? '').trim();
+    if (!playerId) return null;
+    return eligibleRankByPlayerId.get(playerId) ?? null;
+  }
+
   $: sortedStandings = [...(data.standings ?? [])].sort((a, b) => {
     let cmp = 0;
-    if (sortKey === 'rank') cmp = cmpNullableNum(numOrNull(a?.rank), numOrNull(b?.rank), sortDir);
+    if (sortKey === 'rank') cmp = cmpNullableNum(displayRank(a), displayRank(b), sortDir);
     if (sortKey === 'player') {
       cmp = String(a?.player_name_primary ?? '').localeCompare(String(b?.player_name_primary ?? ''));
       if (sortDir === 'desc') cmp *= -1;
@@ -66,6 +105,9 @@
     }
     return cmp;
   });
+
+  $: eligibleStandings = sortedStandings.filter((row) => eligibleGames(row));
+  $: visibleStandings = standingsView === 'eligible' ? eligibleStandings : sortedStandings;
 </script>
 
 <style>
@@ -86,6 +128,53 @@
     min-width: 1ch;
     color: var(--muted);
   }
+  .standings-view-toggle {
+    display: inline-flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .standings-view-btn {
+    border: 1px solid var(--btn-border);
+    background: var(--btn-bg);
+    color: inherit;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font: inherit;
+    cursor: pointer;
+    line-height: 1.1;
+  }
+  .standings-view-btn.is-active {
+    background: var(--pill-bg);
+    border-color: var(--pill-border);
+    font-weight: 650;
+  }
+  .standings-row-link,
+  .recent-cell-link {
+    display: block;
+    margin: -10px -8px;
+    padding: 10px 8px;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color 120ms ease, text-decoration-color 120ms ease;
+  }
+  .standings-row-link:focus-visible,
+  .recent-cell-link:focus-visible {
+    outline: 2px solid var(--btn-border);
+    outline-offset: -2px;
+  }
+  tbody tr:hover .standings-row-link,
+  tbody tr:focus-within .standings-row-link {
+    background: var(--pill-bg);
+    text-decoration: none;
+    text-decoration-color: var(--muted);
+  }
+  .recent-cell-link:hover,
+  .recent-cell-link:focus-visible {
+    background: var(--pill-bg);
+    text-decoration: none;
+    text-decoration-color: var(--muted);
+  }
 </style>
 
 <div class="card" style="margin-bottom:12px;">
@@ -104,10 +193,31 @@
     <div class="muted">
       Ranked by Season Points (SP), after adjustments. SP resets each season,
       {#if data.isRatingSeason}
-        Rating (R) does not reset
+        Rating (R) does not reset.
       {:else}
-        Rating (R) starts in Spring 2026 and is shown as — for this season
+        Rating (R) starts in the next season.
       {/if}
+    </div>
+    <div class="muted">A total of 5 or more games is required to be eligible for ranks in that season.</div>
+    <div class="standings-view-toggle" role="tablist" aria-label="Standings list filter">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={standingsView === 'eligible'}
+        class="standings-view-btn {standingsView === 'eligible' ? 'is-active' : ''}"
+        on:click={() => (standingsView = 'eligible')}
+      >
+        Eligible ({eligibleStandings.length})
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={standingsView === 'all'}
+        class="standings-view-btn {standingsView === 'all' ? 'is-active' : ''}"
+        on:click={() => (standingsView = 'all')}
+      >
+        All players ({sortedStandings.length})
+      </button>
     </div>
   </div>
 
@@ -174,26 +284,34 @@
         </tr>
       </thead>
       <tbody>
-        {#each sortedStandings as row}
+        {#each visibleStandings as row}
           <tr>
-            <td>{row.rank}</td>
             <td>
-              <a href={`/player/${row.player_id}?season=${data.season.id}`} style="text-decoration:none;">
+              <a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{displayRank(row) ?? '-'}</a>
+            </td>
+            <td>
+              <a class="standings-row-link" href={playerHref(row.player_id)}>
                 {row.player_name_primary}
                 {#if row.player_name_secondary}
                   <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
                 {/if}
               </a>
             </td>
-            <td>{fmtFixed(row.total_points_with_adjustments, 1)}</td>
-            <td>{row.rating == null ? '—' : fmtNum(row.rating, 0)}</td>
-            <td>{row.games_played}</td>
-            <td>{fmtFixed(row.avg_placement, 2)}</td>
-            <td>{fmtPct(row.top2_rate)}</td>
+            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtFixed(row.total_points_with_adjustments, 1)}</a></td>
+            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.rating == null ? '—' : fmtNum(row.rating, 0)}</a></td>
+            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.games_played}</a></td>
+            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtFixed(row.avg_placement, 2)}</a></td>
+            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtPct(row.top2_rate)}</a></td>
           </tr>
         {/each}
-        {#if sortedStandings.length === 0}
-          <tr><td colspan="7" class="muted">No finalized matches yet.</td></tr>
+        {#if visibleStandings.length === 0}
+          <tr>
+            <td colspan="7" class="muted">
+              {standingsView === 'eligible'
+                ? 'No players with 5+ games yet.'
+                : 'No finalized matches yet.'}
+            </td>
+          </tr>
         {/if}
       </tbody>
     </table>
@@ -219,14 +337,20 @@
         {#each data.recentMatches as m}
           <tr>
             <td>{fmtDateTime(m.played_at)}</td>
-            <td><a href={`/match/${m.id}`} style="text-decoration:none;">{m.table_label ?? m.id.slice(0, 8)}</a></td>
-            <td>{m.winner_name ?? '—'}</td>
+            <td><a class="recent-cell-link" href={`/match/${m.id}`}>{m.table_label ?? m.id.slice(0, 8)}</a></td>
+            <td>
+              {#if m.winner_player_id}
+                <a class="recent-cell-link" href={playerHref(m.winner_player_id)}>{m.winner_name ?? '—'}</a>
+              {:else}
+                {m.winner_name ?? '—'}
+              {/if}
+            </td>
             <td>{m.top_raw_points == null ? '—' : fmtNum(m.top_raw_points, 0)}</td>
             <td>{m.sp_spread == null ? '—' : fmtNum(m.sp_spread, 1)}</td>
           </tr>
         {/each}
         {#if data.recentMatches.length === 0}
-          <tr><td colspan="6" class="muted">No matches yet.</td></tr>
+          <tr><td colspan="5" class="muted">No matches yet.</td></tr>
         {/if}
       </tbody>
     </table>

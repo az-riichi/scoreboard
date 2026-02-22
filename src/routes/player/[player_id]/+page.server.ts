@@ -120,6 +120,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
   let stats = null;
   let standingsRow = null;
+  let seasonEligibleRank: number | null = null;
   let matchHistory: any[] = [];
   let pointHistory: any[] = [];
   let ratingHistory: any[] = [];
@@ -142,6 +143,33 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       .eq('player_id', player_id)
       .maybeSingle();
     standingsRow = standingsRes.error ? null : standingsRes.data;
+
+    const seasonStandingsRes = await locals.supabase
+      .from('v_season_standings')
+      .select('player_id, rank, games_played')
+      .eq('season_id', seasonId)
+      .order('rank', { ascending: true })
+      .order('player_id', { ascending: true });
+    if (!seasonStandingsRes.error) {
+      const denseRankRemap = new Map<number, number>();
+      let nextEligibleRank = 1;
+      for (const row of seasonStandingsRes.data ?? []) {
+        const rowPlayerId = String(row?.player_id ?? '').trim();
+        const rowRank = Number(row?.rank);
+        const gamesPlayed = Number(row?.games_played);
+        if (!rowPlayerId || !Number.isFinite(rowRank) || !Number.isFinite(gamesPlayed) || gamesPlayed <= 4) {
+          continue;
+        }
+        if (!denseRankRemap.has(rowRank)) {
+          denseRankRemap.set(rowRank, nextEligibleRank);
+          nextEligibleRank += 1;
+        }
+        if (rowPlayerId === player_id) {
+          seasonEligibleRank = denseRankRemap.get(rowRank) ?? null;
+          break;
+        }
+      }
+    }
 
     const mhRes = await locals.supabase
       .from('v_player_match_history')
@@ -288,6 +316,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     currentRatingRankTotal,
     stats,
     standingsRow,
+    seasonEligibleRank,
     matchHistory,
     pointHistory,
     ratingHistory,
