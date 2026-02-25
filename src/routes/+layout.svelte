@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { navigating, page } from '$app/stores';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
 
@@ -114,6 +114,11 @@
     resolvedTheme = themePreference === 'system' ? getSystemTheme() : themePreference;
   }
 
+  function hideBootSplash() {
+    if (!browser) return;
+    (window as Window & { __azrmHideSplash?: () => void }).__azrmHideSplash?.();
+  }
+
   onMount(() => {
     if (!browser) return;
     let storedTheme: string | null = null;
@@ -127,6 +132,9 @@
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const onMediaChange = () => updateResolvedTheme();
     media.addEventListener('change', onMediaChange);
+
+    window.requestAnimationFrame(hideBootSplash);
+
     return () => media.removeEventListener('change', onMediaChange);
   });
 
@@ -355,9 +363,56 @@
       opacity: 0.75;
     }
     .grid2 { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .route-loading {
+      position: fixed;
+      inset: 0 0 auto 0;
+      height: 3px;
+      z-index: 1000;
+      pointer-events: none;
+      background: transparent;
+    }
+    .route-loading__bar {
+      height: 100%;
+      width: 40%;
+      border-radius: 0 999px 999px 0;
+      background: linear-gradient(90deg, var(--btn-primary-bg), var(--text));
+      animation: route-loading-slide 1s ease-in-out infinite;
+      box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.15);
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    @keyframes route-loading-slide {
+      0% {
+        transform: translateX(-120%);
+        opacity: 0.4;
+      }
+      50% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateX(280%);
+        opacity: 0.4;
+      }
+    }
     @media (max-width: 780px) { .grid2 { grid-template-columns: 1fr; } }
   </style>
 </svelte:head>
+
+{#if $navigating}
+  <div class="route-loading" aria-hidden="true">
+    <div class="route-loading__bar"></div>
+  </div>
+  <div class="sr-only" role="status" aria-live="polite">Loading page</div>
+{/if}
 
 <div class="wrap">
   <header style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;">

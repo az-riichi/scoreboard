@@ -6,6 +6,7 @@
     <meta name="color-scheme" content="light dark" />
     <script>
       (() => {
+        document.documentElement.classList.add('azrm-booting');
         try {
           const theme = localStorage.getItem('azrm-theme');
           if (theme === 'light' || theme === 'dark') {
@@ -16,10 +17,185 @@
         } catch {}
       })();
     </script>
+    <style>
+      html, body {
+        min-height: 100%;
+      }
+      body {
+        margin: 0;
+      }
+      html.azrm-booting body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: 9997;
+        background:
+          radial-gradient(circle at 15% 15%, rgba(127, 141, 255, 0.14), transparent 45%),
+          radial-gradient(circle at 85% 20%, rgba(16, 185, 129, 0.12), transparent 45%),
+          var(--boot-bg, #f5f7fb);
+        pointer-events: none;
+      }
+      html.azrm-booting body::after {
+        content: 'AZRM Scoreboard  Loading...';
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9998;
+        max-width: calc(100vw - 40px);
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid var(--boot-border, rgba(17, 24, 39, 0.08));
+        background: var(--boot-card, rgba(255, 255, 255, 0.88));
+        color: var(--boot-fg, #111827);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        backdrop-filter: blur(8px);
+        font: 600 0.9rem/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      :root {
+        --boot-bg: #f5f7fb;
+        --boot-fg: #111827;
+        --boot-muted: #5f6b7a;
+        --boot-card: rgba(255, 255, 255, 0.88);
+        --boot-border: rgba(17, 24, 39, 0.08);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --boot-bg: #0d1117;
+          --boot-fg: #e6edf3;
+          --boot-muted: #9aa7b5;
+          --boot-card: rgba(20, 27, 36, 0.9);
+          --boot-border: rgba(230, 237, 243, 0.08);
+        }
+      }
+      html[data-theme='dark'] {
+        --boot-bg: #0d1117;
+        --boot-fg: #e6edf3;
+        --boot-muted: #9aa7b5;
+        --boot-card: rgba(20, 27, 36, 0.9);
+        --boot-border: rgba(230, 237, 243, 0.08);
+      }
+      #azrm-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background:
+          radial-gradient(circle at 15% 15%, rgba(127, 141, 255, 0.14), transparent 45%),
+          radial-gradient(circle at 85% 20%, rgba(16, 185, 129, 0.12), transparent 45%),
+          var(--boot-bg);
+        color: var(--boot-fg);
+        transition: opacity 180ms ease, visibility 180ms ease;
+      }
+      #azrm-boot-splash.is-hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .azrm-boot-card {
+        min-width: min(360px, calc(100vw - 48px));
+        border-radius: 18px;
+        border: 1px solid var(--boot-border);
+        background: var(--boot-card);
+        backdrop-filter: blur(8px);
+        padding: 18px 18px 14px;
+        box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12);
+      }
+      .azrm-boot-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .azrm-boot-spinner {
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        border: 2px solid rgba(127, 127, 127, 0.25);
+        border-top-color: currentColor;
+        animation: azrm-boot-spin 0.8s linear infinite;
+        flex: 0 0 auto;
+      }
+      .azrm-boot-title {
+        font: 600 0.98rem/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        letter-spacing: 0.01em;
+      }
+      .azrm-boot-subtitle {
+        margin-top: 8px;
+        color: var(--boot-muted);
+        font: 400 0.88rem/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      }
+      .azrm-boot-track {
+        margin-top: 12px;
+        height: 4px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(127, 127, 127, 0.16);
+      }
+      .azrm-boot-fill {
+        height: 100%;
+        width: 42%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, currentColor, rgba(127, 127, 127, 0.7));
+        animation: azrm-boot-slide 1.1s ease-in-out infinite;
+        transform: translateX(-130%);
+      }
+      @keyframes azrm-boot-spin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes azrm-boot-slide {
+        to { transform: translateX(320%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .azrm-boot-spinner,
+        .azrm-boot-fill {
+          animation: none;
+        }
+      }
+    </style>
+    <script>
+      (() => {
+        let hidden = false;
+        const hide = () => {
+          if (hidden) return;
+          hidden = true;
+          document.documentElement.classList.remove('azrm-booting');
+          const splash = document.getElementById('azrm-boot-splash');
+          if (!splash) return;
+          splash.classList.add('is-hidden');
+          window.setTimeout(() => splash.remove(), 220);
+        };
+        window.__azrmHideSplash = hide;
+        window.addEventListener('load', hide, { once: true });
+      })();
+    </script>
     %sveltekit.head%
     <title>AZRM Scoreboard</title>
   </head>
   <body data-sveltekit-preload-data="hover">
+    <noscript>
+      <style>
+        #azrm-boot-splash { display: none !important; }
+        html.azrm-booting body::before,
+        html.azrm-booting body::after { content: none !important; }
+      </style>
+    </noscript>
+    <div id="azrm-boot-splash" role="status" aria-live="polite" aria-label="Loading AZRM Scoreboard">
+      <div class="azrm-boot-card">
+        <div class="azrm-boot-row">
+          <span class="azrm-boot-spinner" aria-hidden="true"></span>
+          <div class="azrm-boot-title">AZRM Scoreboard</div>
+        </div>
+        <div class="azrm-boot-subtitle">Loading standings and match data…</div>
+        <div class="azrm-boot-track" aria-hidden="true">
+          <div class="azrm-boot-fill"></div>
+        </div>
+      </div>
+    </div>
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>
