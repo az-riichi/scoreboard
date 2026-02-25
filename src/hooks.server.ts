@@ -20,15 +20,24 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   });
 
-  const { data: userData, error: userError } = await event.locals.supabase.auth.getUser();
-  const user = userData.user ?? null;
+  const hasSupabaseAuthCookie = event.cookies
+    .getAll()
+    .some(({ name }) => name.startsWith('sb-') && name.includes('-auth-token'));
 
-  if (userError || !user) {
+  if (!hasSupabaseAuthCookie) {
     event.locals.user = null;
     event.locals.userId = null;
   } else {
-    event.locals.user = user;
-    event.locals.userId = user.id;
+    const { data: userData, error: userError } = await event.locals.supabase.auth.getUser();
+    const user = userData.user ?? null;
+
+    if (userError || !user) {
+      event.locals.user = null;
+      event.locals.userId = null;
+    } else {
+      event.locals.user = user;
+      event.locals.userId = user.id;
+    }
   }
 
   return resolve(event, {

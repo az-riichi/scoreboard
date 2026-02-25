@@ -14,16 +14,14 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (matchRes.error || !matchRes.data) throw kitError(404, 'Match not found');
   if (matchRes.data.status !== 'final') throw kitError(404, 'Match not public');
 
-  const resultsRes = await locals.supabase
-    .from('v_final_results')
-    .select('*')
-    .eq('match_id', match_id);
-
-  const deltasRes = await locals.supabase
-    .from('v_rating_history')
-    .select('player_id, display_name, delta, new_rate, placement, is_lifetime')
-    .eq('match_id', match_id)
-    .eq('is_lifetime', true);
+  const [resultsRes, deltasRes] = await Promise.all([
+    locals.supabase.from('v_final_results').select('*').eq('match_id', match_id),
+    locals.supabase
+      .from('v_rating_history')
+      .select('player_id, display_name, delta, new_rate, placement, is_lifetime')
+      .eq('match_id', match_id)
+      .eq('is_lifetime', true)
+  ]);
 
   const results = resultsRes.error ? [] : (resultsRes.data ?? []);
   const ratingDeltas = deltasRes.error ? [] : (deltasRes.data ?? []);

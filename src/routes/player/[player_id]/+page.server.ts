@@ -1,6 +1,7 @@
 import { error as kitError, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { composeSeasonNameParts } from '$lib/player-name';
+import { getActiveSeasonId, getLifetimeRatingSnapshot, getRatingStartDate } from '$lib/server/public-cache';
 
 function asText(value: unknown) {
   return String(value ?? '').trim();
@@ -13,26 +14,30 @@ function asBool(value: unknown) {
 export const load: PageServerLoad = async ({ locals, params, url }) => {
   const player_id = params.player_id;
   const seasonParam = url.searchParams.get('season');
-  const FALLBACK_RATING_START_DATE = '2026-01-01';
-
-  const playerRes = await locals.supabase
-    .from('players')
-    .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, is_active')
-    .eq('id', player_id)
-    .maybeSingle();
+  const [playerRes, ownRes, seasonsRes, ratingStartDate, activeSeasonId] = await Promise.all([
+    locals.supabase
+      .from('players')
+      .select(
+        'id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, is_active'
+      )
+      .eq('id', player_id)
+      .maybeSingle(),
+    locals.userId
+      ? locals.supabase
+          .from('player_accounts')
+          .select('auth_user_id')
+          .eq('auth_user_id', locals.userId)
+          .eq('player_id', player_id)
+          .maybeSingle()
+      : Promise.resolve(null),
+    locals.supabase.from('seasons').select('id, name, start_date').order('start_date', { ascending: false }),
+    getRatingStartDate(locals.supabase),
+    seasonParam ? Promise.resolve(null) : getActiveSeasonId(locals.supabase)
+  ]);
 
   if (playerRes.error || !playerRes.data) throw kitError(404, 'Player not found');
 
-  let canEditDisplay = false;
-  if (locals.userId) {
-    const ownRes = await locals.supabase
-      .from('player_accounts')
-      .select('auth_user_id')
-      .eq('auth_user_id', locals.userId)
-      .eq('player_id', player_id)
-      .maybeSingle();
-    canEditDisplay = !!ownRes.data && !ownRes.error;
-  }
+  const canEditDisplay = !!(ownRes && !ownRes.error && ownRes.data);
 
   const nameParts = composeSeasonNameParts(playerRes.data);
   const player = {
@@ -41,82 +46,20 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     player_name_secondary: nameParts.secondary
   };
 
-  let seasonId = seasonParam || null;
-  if (!seasonId) {
-    const { data: active } = await locals.supabase
-      .from('seasons')
-      .select('id')
-      .eq('is_active', true)
-      .order('start_date', { ascending: false })
-      .limit(1);
-    seasonId = active?.[0]?.id ?? null;
-  }
-
-  const seasonsRes = await locals.supabase
-    .from('seasons')
-    .select('id, name, start_date')
-    .order('start_date', { ascending: false });
-
-  const ratingStartSeasonRes = await locals.supabase
-    .from('seasons')
-    .select('start_date')
-    .ilike('name', 'spring 2026%')
-    .order('start_date', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  const ratingStartDate = String(ratingStartSeasonRes.data?.start_date ?? '').trim() || FALLBACK_RATING_START_DATE;
+  const seasonId = seasonParam || activeSeasonId || null;
   const selectedSeason = (seasonsRes.data ?? []).find((s) => s.id === seasonId) ?? null;
-  const isRatingSeason = selectedSeason
-    ? String(selectedSeason.start_date ?? '').trim() >= ratingStartDate
-    : false;
+  const isRatingSeason = selectedSeason ? String(selectedSeason.start_date ?? '').trim() >= ratingStartDate : false;
 
-  const lifetimeRatingsRes = await locals.supabase
-    .from('v_rating_history')
-    .select('player_id, new_rate, played_at, match_id')
-    .eq('is_lifetime', true)
-    .gte('played_at', ratingStartDate)
-    .order('played_at', { ascending: false })
-    .order('match_id', { ascending: false });
+  const lifetimeRatings = await getLifetimeRatingSnapshot(locals.supabase, ratingStartDate);
 
   let currentRating = { rate: 1500, games_played: 0, updated_at: null as string | null };
-  let currentRatingRank: number | null = null;
-  let currentRatingRankTotal = 0;
-  if (!lifetimeRatingsRes.error) {
-    const latestRateByPlayer = new Map<string, number>();
-    const gamesByPlayer = new Map<string, number>();
-    for (const row of lifetimeRatingsRes.data ?? []) {
-      const rowPlayerId = String(row?.player_id ?? '').trim();
-      const rate = Number(row?.new_rate);
-      if (!rowPlayerId) continue;
-      gamesByPlayer.set(rowPlayerId, (gamesByPlayer.get(rowPlayerId) ?? 0) + 1);
-      if (!Number.isFinite(rate) || latestRateByPlayer.has(rowPlayerId)) continue;
-      latestRateByPlayer.set(rowPlayerId, rate);
-    }
+  const myRate = lifetimeRatings.latestRateByPlayer.get(player_id);
+  if (Number.isFinite(myRate)) currentRating.rate = Number(myRate);
+  currentRating.games_played = lifetimeRatings.gamesByPlayer.get(player_id) ?? 0;
+  currentRating.updated_at = lifetimeRatings.updatedAtByPlayer.get(player_id) ?? null;
 
-    const myRate = latestRateByPlayer.get(player_id);
-    if (Number.isFinite(myRate)) currentRating.rate = Number(myRate);
-    currentRating.games_played = gamesByPlayer.get(player_id) ?? 0;
-
-    const rows = Array.from(latestRateByPlayer.entries())
-      .map(([rowPlayerId, rate]) => ({ player_id: rowPlayerId, rate }))
-      .sort((a, b) => {
-        if (a.rate !== b.rate) return b.rate - a.rate;
-        return a.player_id.localeCompare(b.player_id);
-      });
-    currentRatingRankTotal = rows.length;
-    let prevRate: number | null = null;
-    let rank = 0;
-    for (const row of rows) {
-      if (prevRate == null || row.rate !== prevRate) {
-        rank += 1;
-        prevRate = row.rate;
-      }
-      if (row.player_id === player_id) {
-        currentRatingRank = rank;
-        break;
-      }
-    }
-  }
+  const currentRatingRank = lifetimeRatings.rankByPlayer.get(player_id) ?? null;
+  const currentRatingRankTotal = lifetimeRatings.totalPlayers;
 
   let stats = null;
   let standingsRow = null;
@@ -128,28 +71,61 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   let worstRawMatch: any = null;
 
   if (seasonId) {
-    const statsRes = await locals.supabase
-      .from('v_season_player_stats')
-      .select('*')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id)
-      .maybeSingle();
+    const [statsRes, standingsRes, seasonStandingsRes, mhRes, phRes, bestRawRes, worstRawRes] = await Promise.all([
+      locals.supabase
+        .from('v_season_player_stats')
+        .select('*')
+        .eq('season_id', seasonId)
+        .eq('player_id', player_id)
+        .maybeSingle(),
+      locals.supabase
+        .from('v_season_standings')
+        .select('*')
+        .eq('season_id', seasonId)
+        .eq('player_id', player_id)
+        .maybeSingle(),
+      locals.supabase
+        .from('v_season_standings')
+        .select('player_id, rank, games_played')
+        .eq('season_id', seasonId)
+        .order('rank', { ascending: true })
+        .order('player_id', { ascending: true }),
+      locals.supabase
+        .from('v_player_match_history')
+        .select('*')
+        .eq('season_id', seasonId)
+        .eq('player_id', player_id)
+        .order('played_at', { ascending: false })
+        .limit(100),
+      locals.supabase
+        .from('v_player_point_history')
+        .select('*')
+        .eq('season_id', seasonId)
+        .eq('player_id', player_id)
+        .order('played_at', { ascending: true })
+        .limit(200),
+      locals.supabase
+        .from('v_player_match_history')
+        .select('match_id, played_at, raw_points')
+        .eq('season_id', seasonId)
+        .eq('player_id', player_id)
+        .order('raw_points', { ascending: false })
+        .order('played_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      locals.supabase
+        .from('v_player_match_history')
+        .select('match_id, played_at, raw_points')
+        .eq('season_id', seasonId)
+        .eq('player_id', player_id)
+        .order('raw_points', { ascending: true })
+        .order('played_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    ]);
+
     stats = statsRes.error ? null : statsRes.data;
-
-    const standingsRes = await locals.supabase
-      .from('v_season_standings')
-      .select('*')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id)
-      .maybeSingle();
     standingsRow = standingsRes.error ? null : standingsRes.data;
-
-    const seasonStandingsRes = await locals.supabase
-      .from('v_season_standings')
-      .select('player_id, rank, games_played')
-      .eq('season_id', seasonId)
-      .order('rank', { ascending: true })
-      .order('player_id', { ascending: true });
     if (!seasonStandingsRes.error) {
       const denseRankRemap = new Map<number, number>();
       let nextEligibleRank = 1;
@@ -171,22 +147,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       }
     }
 
-    const mhRes = await locals.supabase
-      .from('v_player_match_history')
-      .select('*')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id)
-      .order('played_at', { ascending: false })
-      .limit(100);
     matchHistory = mhRes.error ? [] : (mhRes.data ?? []);
-
-    const phRes = await locals.supabase
-      .from('v_player_point_history')
-      .select('*')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id)
-      .order('played_at', { ascending: true })
-      .limit(200);
     pointHistory = phRes.error ? [] : (phRes.data ?? []);
 
     const seasonMatchIdsForRating = Array.from(
@@ -209,26 +170,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       ratingHistory = [];
     }
 
-    const bestRawRes = await locals.supabase
-      .from('v_player_match_history')
-      .select('match_id, played_at, raw_points')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id)
-      .order('raw_points', { ascending: false })
-      .order('played_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
     bestRawMatch = bestRawRes.error ? null : bestRawRes.data;
-
-    const worstRawRes = await locals.supabase
-      .from('v_player_match_history')
-      .select('match_id, played_at, raw_points')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id)
-      .order('raw_points', { ascending: true })
-      .order('played_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
     worstRawMatch = worstRawRes.error ? null : worstRawRes.data;
 
     const recentMatchIds = Array.from(
@@ -241,17 +183,11 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
     const ratingDeltaByMatch = new Map<string, number>();
     if (isRatingSeason && recentMatchIds.length > 0) {
-      const matchDeltasRes = await locals.supabase
-        .from('v_rating_history')
-        .select('match_id, delta')
-        .eq('is_lifetime', true)
-        .eq('player_id', player_id)
-        .in('match_id', recentMatchIds);
-      if (!matchDeltasRes.error) {
-        for (const row of matchDeltasRes.data ?? []) {
-          const id = String(row.match_id ?? '').trim();
-          const delta = Number(row.delta);
-          if (id && Number.isFinite(delta)) ratingDeltaByMatch.set(id, delta);
+      for (const row of ratingHistory) {
+        const id = String(row?.match_id ?? '').trim();
+        const delta = Number(row?.delta);
+        if (id && Number.isFinite(delta) && !ratingDeltaByMatch.has(id)) {
+          ratingDeltaByMatch.set(id, delta);
         }
       }
     }
