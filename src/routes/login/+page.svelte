@@ -10,6 +10,8 @@
   .auth-card {
     width: min(520px, 100%);
     margin: 0 auto;
+    box-sizing: border-box;
+    min-width: 0;
   }
 
   .auth-card label {
@@ -22,6 +24,10 @@
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+  }
+
+  .auth-card .alert {
+    overflow-wrap: anywhere;
   }
 </style>
 

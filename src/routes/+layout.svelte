@@ -363,6 +363,92 @@
       opacity: 0.75;
     }
     .grid2 { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .app-brand {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .header-right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 0;
+      flex-shrink: 0;
+    }
+    .desktop-header-nav {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      min-width: 0;
+    }
+    .mobile-nav {
+      display: none;
+      position: relative;
+    }
+    .mobile-nav__summary {
+      list-style: none;
+      border: 1px solid var(--nav-border);
+      background: var(--nav-bg);
+      border-radius: 10px;
+      padding: 6px 10px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      line-height: 1.2;
+      user-select: none;
+      box-sizing: border-box;
+      min-height: 38px;
+    }
+    .mobile-nav__summary::-webkit-details-marker { display: none; }
+    .mobile-nav__summary::marker { content: ''; }
+    .mobile-nav[open] .mobile-nav__summary {
+      background: var(--pill-bg);
+      border-color: var(--pill-border);
+    }
+    .mobile-nav__summary-label {
+      font-weight: 600;
+    }
+    .mobile-nav__panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      width: min(150px, calc(100vw - 28px));
+      z-index: 20;
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      background: var(--card-bg);
+      padding: 10px;
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+    }
+    .mobile-nav__list {
+      display: grid;
+      gap: 8px;
+    }
+    .mobile-nav__list > a {
+      display: block;
+    }
+    .mobile-nav__auth {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--card-border);
+      display: grid;
+      gap: 8px;
+    }
+    .mobile-nav__signout {
+      width: 100%;
+      justify-content: center;
+    }
     .route-loading {
       position: fixed;
       inset: 0 0 auto 0;
@@ -404,6 +490,21 @@
       }
     }
     @media (max-width: 780px) { .grid2 { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) {
+      .app-header {
+        align-items: flex-start;
+      }
+      .desktop-header-nav {
+        display: none;
+      }
+      .mobile-nav {
+        display: block;
+      }
+      .header-right {
+        gap: 8px;
+        align-items: center;
+      }
+    }
   </style>
 </svelte:head>
 
@@ -415,21 +516,35 @@
 {/if}
 
 <div class="wrap">
-  <header style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;">
-    <div style="display:flex; flex-direction:column;">
+  <header class="app-header">
+    <div class="app-brand">
       <a href="/" style="text-decoration:none;">
         <div style="font-size:1.25rem; font-weight:650;">AZRM Scoreboard</div>
       </a>
     </div>
 
-    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-      <a href="/seasons" style={navA}>Seasons</a>
-      {#if data.activeSeasonId}
-        <a href={`/season/${data.activeSeasonId}`} style={navA}>Standings</a>
-      {/if}
-      {#if data.isAdmin}
-        <a href="/admin" style={navA}>Admin</a>
-      {/if}
+    <div class="header-right">
+      <div class="desktop-header-nav">
+        <a href="/seasons" style={navA}>Seasons</a>
+        {#if data.activeSeasonId}
+          <a href={`/season/${data.activeSeasonId}`} style={navA}>Standings</a>
+        {/if}
+        {#if data.isAdmin}
+          <a href="/admin" style={navA}>Admin</a>
+        {/if}
+
+        {#if data.user}
+          <span style={pill} title="Signed in">
+            <span class="muted">Signed in</span>
+            <form method="POST" action="/logout" style="margin:0;">
+              <button class="btn" type="submit">Sign out</button>
+            </form>
+          </span>
+        {:else}
+          <a href="/login" style={navA}>Admin</a>
+        {/if}
+      </div>
+
       <div class="theme-toggle" title={themePreference === 'system' ? 'Theme: System (auto)' : `Theme: ${themePreference}`}>
         <button
           class="theme-icon {resolvedTheme === 'light' ? 'is-active' : ''} {themePreference === 'system' && resolvedTheme === 'light' ? 'is-system' : ''}"
@@ -451,16 +566,35 @@
         </button>
       </div>
 
-      {#if data.user}
-        <span style={pill} title="Signed in">
-          <span class="muted">Signed in</span>
-          <form method="POST" action="/logout" style="margin:0;">
-            <button class="btn" type="submit">Sign out</button>
-          </form>
-        </span>
-      {:else}
-        <a href="/login" style={navA}>Admin</a>
-      {/if}
+      <details class="mobile-nav">
+        <summary class="mobile-nav__summary" aria-label="Open navigation menu">
+          <span aria-hidden="true">☰</span>
+          <span class="mobile-nav__summary-label">Menu</span>
+        </summary>
+        <div class="mobile-nav__panel">
+          <div class="mobile-nav__list">
+            <a href="/seasons" style={navA}>Seasons</a>
+            {#if data.activeSeasonId}
+              <a href={`/season/${data.activeSeasonId}`} style={navA}>Standings</a>
+            {/if}
+            {#if data.isAdmin}
+              <a href="/admin" style={navA}>Admin</a>
+            {/if}
+            {#if !data.user}
+              <a href="/login" style={navA}>Admin</a>
+            {/if}
+          </div>
+
+          {#if data.user}
+            <div class="mobile-nav__auth">
+              <div class="muted">Signed in</div>
+              <form method="POST" action="/logout" style="margin:0;">
+                <button class="btn mobile-nav__signout" type="submit">Sign out</button>
+              </form>
+            </div>
+          {/if}
+        </div>
+      </details>
     </div>
   </header>
 

@@ -13,6 +13,19 @@ export function fmtDateTime(ts: string) {
   }
 }
 
+export function fmtDate(ts: string) {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch {
+    return ts;
+  }
+}
+
 export function fmtPct(x: number | null | undefined) {
   if (x == null || Number.isNaN(x)) return '0%';
   return `${Math.round(x * 100)}%`;

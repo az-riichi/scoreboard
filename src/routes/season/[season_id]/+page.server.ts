@@ -100,6 +100,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const summaryByMatchId = new Map<
     string,
     {
+      winner_name_primary: string | null;
+      winner_name_secondary: string | null;
       winner_name: string | null;
       winner_player_id: string | null;
       top_raw_points: number | null;
@@ -120,6 +122,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       const rows = rowsByMatch.get(match_id) ?? [];
       if (rows.length === 0) {
         summaryByMatchId.set(match_id, {
+          winner_name_primary: null,
+          winner_name_secondary: null,
           winner_name: null,
           winner_player_id: null,
           top_raw_points: null,
@@ -153,6 +157,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
           : `Seat ${winner?.seat ?? '-'}`;
 
       summaryByMatchId.set(match_id, {
+        winner_name_primary: winnerPrimary || (winnerName || null),
+        winner_name_secondary: winnerPrimary ? winnerSecondary : null,
         winner_name: winnerName,
         winner_player_id: winnerPlayerId || null,
         top_raw_points: rawVals.length > 0 ? Math.max(...rawVals) : null,
@@ -162,6 +168,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   } else if (recentMatchIds.length > 0) {
     for (const match_id of recentMatchIds) {
       summaryByMatchId.set(match_id, {
+        winner_name_primary: null,
+        winner_name_secondary: null,
         winner_name: null,
         winner_player_id: null,
         top_raw_points: null,
@@ -175,6 +183,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     const summary = summaryByMatchId.get(match_id);
     return {
       ...m,
+      winner_name_primary: summary?.winner_name_primary ?? null,
+      winner_name_secondary: summary?.winner_name_secondary ?? null,
       winner_name: summary?.winner_name ?? null,
       winner_player_id: summary?.winner_player_id ?? null,
       top_raw_points: summary?.top_raw_points ?? null,

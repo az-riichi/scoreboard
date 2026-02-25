@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fmtPct, fmtNum, fmtDateTime } from '$lib/ui';
+  import { fmtDate, fmtPct, fmtNum } from '$lib/ui';
   export let data: any;
 
   type SortKey = 'rank' | 'player' | 'rating' | 'sp' | 'games' | 'avg' | 'top2';
@@ -149,6 +149,18 @@
     border-color: var(--pill-border);
     font-weight: 650;
   }
+  .standings-notes-mobile {
+    display: none;
+    margin-top: 6px;
+  }
+  .standings-notes-mobile summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  .standings-notes-mobile[open] summary {
+    margin-bottom: 6px;
+  }
   .standings-row-link,
   .recent-cell-link {
     display: block;
@@ -175,6 +187,63 @@
     text-decoration: none;
     text-decoration-color: var(--muted);
   }
+  .standings-table .cell-player,
+  .recent-table .cell-match,
+  .recent-table .cell-winner {
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 760px) {
+    .standings-notes-desktop {
+      display: none;
+    }
+    .standings-notes-mobile {
+      display: block;
+    }
+    .standings-table .col-standings-top2,
+    .recent-table .col-recent-sp {
+      display: none;
+    }
+  }
+  @media (max-width: 680px) {
+    .standings-table .col-standings-avg,
+    .recent-table .col-recent-top {
+      display: none;
+    }
+  }
+  @media (max-width: 500px) {
+    .standings-table .col-standings-games {
+      display: none;
+    }
+    .standings-table .col-standings-rank {
+      width: 56px !important;
+    }
+    .standings-table .col-standings-sp {
+      width: 78px !important;
+    }
+    .standings-table .col-standings-player-head {
+      width: auto !important;
+    }
+    .standings-table th,
+    .standings-table td,
+    .recent-table th,
+    .recent-table td {
+      padding-left: 6px;
+      padding-right: 6px;
+    }
+    .standings-row-link,
+    .recent-cell-link {
+      margin-left: -6px;
+      margin-right: -6px;
+      padding-left: 6px;
+      padding-right: 6px;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .standings-table .col-standings-rating {
+      display: none;
+    }
+  }
 </style>
 
 <div class="card" style="margin-bottom:12px;">
@@ -190,7 +259,7 @@
 <div class="card" style="margin-bottom:12px;">
   <div>
     <div style="font-size:1.05rem; font-weight:650;">Standings</div>
-    <div class="muted">
+    <div class="muted standings-notes-desktop">
       Ranked by Season Points (SP), after adjustments. SP resets each season,
       {#if data.isRatingSeason}
         Rating (R) does not reset.
@@ -198,7 +267,19 @@
         Rating (R) starts in the next season.
       {/if}
     </div>
-    <div class="muted">A total of 5 or more games is required to be eligible for ranks in that season.</div>
+    <div class="muted standings-notes-desktop">A total of 5 or more games is required to be eligible for ranks in that season.</div>
+    <details class="standings-notes-mobile">
+      <summary>Notes</summary>
+      <div class="muted">
+        Ranked by Season Points (SP), after adjustments. SP resets each season,
+        {#if data.isRatingSeason}
+          Rating (R) does not reset.
+        {:else}
+          Rating (R) starts in the next season.
+        {/if}
+      </div>
+      <div class="muted" style="margin-top:4px;">A total of 5 or more games is required to be eligible for ranks in that season.</div>
+    </details>
     <div class="standings-view-toggle" role="tablist" aria-label="Standings list filter">
       <button
         type="button"
@@ -222,10 +303,10 @@
   </div>
 
   <div style="margin-top:12px; overflow:auto;">
-    <table>
+    <table class="standings-table">
       <thead>
         <tr>
-          <th style="width:72px;">
+          <th class="col-standings-rank" style="width:72px;">
             <button class="sort-head-btn" type="button" on:click={() => toggleSort('rank')}>
               Rank
               {#if sortKey === 'rank'}
@@ -233,7 +314,7 @@
               {/if}
             </button>
           </th>
-          <th style="width:250px;">
+          <th class="col-standings-player-head" style="width:200px;">
             <button class="sort-head-btn" type="button" on:click={() => toggleSort('player')}>
               Player
               {#if sortKey === 'player'}
@@ -241,7 +322,7 @@
               {/if}
             </button>
           </th>
-          <th style="width:100px;">
+          <th class="col-standings-sp" style="width:100px;">
             <button class="sort-head-btn" type="button" on:click={() => toggleSort('sp')}>
               SP
               {#if sortKey === 'sp'}
@@ -249,7 +330,7 @@
               {/if}
             </button>
           </th>
-          <th style="width:100px;">
+          <th class="col-standings-rating" style="width:100px;">
             <button class="sort-head-btn" type="button" on:click={() => toggleSort('rating')}>
               R
               {#if sortKey === 'rating'}
@@ -257,7 +338,7 @@
               {/if}
             </button>
           </th>
-          <th style="width:70px;">
+          <th class="col-standings-games" style="width:70px;">
             <button class="sort-head-btn" type="button" on:click={() => toggleSort('games')}>
               Games
               {#if sortKey === 'games'}
@@ -265,7 +346,7 @@
               {/if}
             </button>
           </th>
-          <th style="width:110px;">
+          <th class="col-standings-avg" style="width:110px;">
             <button class="sort-head-btn" type="button" on:click={() => toggleSort('avg')}>
               Avg place
               {#if sortKey === 'avg'}
@@ -273,7 +354,7 @@
               {/if}
             </button>
           </th>
-          <th style="width:110px;">
+          <th class="col-standings-top2" style="width:110px;">
             <button class="sort-head-btn" type="button" on:click={() => toggleSort('top2')}>
               Top2%
               {#if sortKey === 'top2'}
@@ -289,7 +370,7 @@
             <td>
               <a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{displayRank(row) ?? '-'}</a>
             </td>
-            <td>
+            <td class="cell-player">
               <a class="standings-row-link" href={playerHref(row.player_id)}>
                 {row.player_name_primary}
                 {#if row.player_name_secondary}
@@ -298,10 +379,10 @@
               </a>
             </td>
             <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtFixed(row.total_points_with_adjustments, 1)}</a></td>
-            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.rating == null ? '—' : fmtNum(row.rating, 0)}</a></td>
-            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.games_played}</a></td>
-            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtFixed(row.avg_placement, 2)}</a></td>
-            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtPct(row.top2_rate)}</a></td>
+            <td class="col-standings-rating"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.rating == null ? '—' : fmtNum(row.rating, 0)}</a></td>
+            <td class="col-standings-games"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.games_played}</a></td>
+            <td class="col-standings-avg"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtFixed(row.avg_placement, 2)}</a></td>
+            <td class="col-standings-top2"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtPct(row.top2_rate)}</a></td>
           </tr>
         {/each}
         {#if visibleStandings.length === 0}
@@ -323,30 +404,38 @@
   <div class="muted">Last 10 finalized matches.</div>
 
   <div style="margin-top:12px; overflow:auto;">
-    <table>
+    <table class="recent-table">
       <thead>
         <tr>
           <th>Date</th>
           <th>Match</th>
-          <th>Winner</th>
-          <th style="width:90px;">Top score</th>
-          <th style="width:100px;">SP spread</th>
+          <th class="col-recent-winner">Winner</th>
+          <th class="col-recent-top" style="width:90px;">Top score</th>
+          <th class="col-recent-sp" style="width:100px;">SP spread</th>
         </tr>
       </thead>
       <tbody>
         {#each data.recentMatches as m}
           <tr>
-            <td>{fmtDateTime(m.played_at)}</td>
-            <td><a class="recent-cell-link" href={`/match/${m.id}`}>{m.table_label ?? m.id.slice(0, 8)}</a></td>
-            <td>
+            <td>{fmtDate(m.played_at)}</td>
+            <td class="cell-match"><a class="recent-cell-link" href={`/match/${m.id}`}>{m.table_label ?? m.id.slice(0, 8)}</a></td>
+            <td class="col-recent-winner cell-winner">
               {#if m.winner_player_id}
-                <a class="recent-cell-link" href={playerHref(m.winner_player_id)}>{m.winner_name ?? '—'}</a>
+                <a class="recent-cell-link" href={playerHref(m.winner_player_id)}>
+                  {m.winner_name_primary ?? m.winner_name ?? '—'}
+                  {#if m.winner_name_secondary}
+                    <span class="muted" style="margin-left:6px;">({m.winner_name_secondary})</span>
+                  {/if}
+                </a>
               {:else}
-                {m.winner_name ?? '—'}
+                {m.winner_name_primary ?? m.winner_name ?? '—'}
+                {#if m.winner_name_secondary}
+                  <span class="muted" style="margin-left:6px;">({m.winner_name_secondary})</span>
+                {/if}
               {/if}
             </td>
-            <td>{m.top_raw_points == null ? '—' : fmtNum(m.top_raw_points, 0)}</td>
-            <td>{m.sp_spread == null ? '—' : fmtNum(m.sp_spread, 1)}</td>
+            <td class="col-recent-top">{m.top_raw_points == null ? '—' : fmtNum(m.top_raw_points, 0)}</td>
+            <td class="col-recent-sp">{m.sp_spread == null ? '—' : fmtNum(m.sp_spread, 1)}</td>
           </tr>
         {/each}
         {#if data.recentMatches.length === 0}
