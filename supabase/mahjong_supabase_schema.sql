@@ -893,15 +893,15 @@ create policy profiles_select_self
 on public.profiles
 for select
 to authenticated
-using (auth.uid() = id or public.is_admin(auth.uid()));
+using ((select auth.uid()) = id or public.is_admin((select auth.uid())));
 
 drop policy if exists profiles_update_self on public.profiles;
 create policy profiles_update_self
 on public.profiles
 for update
 to authenticated
-using (auth.uid() = id or public.is_admin(auth.uid()))
-with check (auth.uid() = id or public.is_admin(auth.uid()));
+using ((select auth.uid()) = id or public.is_admin((select auth.uid())))
+with check ((select auth.uid()) = id or public.is_admin((select auth.uid())));
 
 -- player_accounts: user can see self mapping; admin can see/write all
 drop policy if exists player_accounts_select on public.player_accounts;
@@ -909,15 +909,30 @@ create policy player_accounts_select
 on public.player_accounts
 for select
 to authenticated
-using (auth.uid() = auth_user_id or public.is_admin(auth.uid()));
+using ((select auth.uid()) = auth_user_id or public.is_admin((select auth.uid())));
 
 drop policy if exists player_accounts_admin_write on public.player_accounts;
-create policy player_accounts_admin_write
+drop policy if exists player_accounts_admin_insert on public.player_accounts;
+create policy player_accounts_admin_insert
 on public.player_accounts
-for all
+for insert
 to authenticated
-using (public.is_admin(auth.uid()))
-with check (public.is_admin(auth.uid()));
+with check (public.admin_only());
+
+drop policy if exists player_accounts_admin_update on public.player_accounts;
+create policy player_accounts_admin_update
+on public.player_accounts
+for update
+to authenticated
+using (public.admin_only())
+with check (public.admin_only());
+
+drop policy if exists player_accounts_admin_delete on public.player_accounts;
+create policy player_accounts_admin_delete
+on public.player_accounts
+for delete
+to authenticated
+using (public.admin_only());
 
 -- Player self-service display settings update
 create or replace function public.update_my_player_display(
@@ -1030,51 +1045,139 @@ stable
 security definer
 set search_path = public
 as $$
-  select public.is_admin(auth.uid());
+  select public.is_admin((select auth.uid()));
 $$;
 
 revoke all on function public.admin_only() from public;
 grant execute on function public.admin_only() to authenticated;
 
 drop policy if exists seasons_admin_write on public.seasons;
-create policy seasons_admin_write on public.seasons
-for all to authenticated
+drop policy if exists seasons_admin_insert on public.seasons;
+create policy seasons_admin_insert on public.seasons
+for insert to authenticated
+with check (public.admin_only());
+
+drop policy if exists seasons_admin_update on public.seasons;
+create policy seasons_admin_update on public.seasons
+for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
+
+drop policy if exists seasons_admin_delete on public.seasons;
+create policy seasons_admin_delete on public.seasons
+for delete to authenticated
+using (public.admin_only());
 
 drop policy if exists players_admin_write on public.players;
-create policy players_admin_write on public.players
-for all to authenticated
+drop policy if exists players_admin_insert on public.players;
+create policy players_admin_insert on public.players
+for insert to authenticated
+with check (public.admin_only());
+
+drop policy if exists players_admin_update on public.players;
+create policy players_admin_update on public.players
+for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
+
+drop policy if exists players_admin_delete on public.players;
+create policy players_admin_delete on public.players
+for delete to authenticated
+using (public.admin_only());
 
 drop policy if exists rulesets_admin_write on public.rulesets;
-create policy rulesets_admin_write on public.rulesets
-for all to authenticated
+drop policy if exists rulesets_admin_insert on public.rulesets;
+create policy rulesets_admin_insert on public.rulesets
+for insert to authenticated
+with check (public.admin_only());
+
+drop policy if exists rulesets_admin_update on public.rulesets;
+create policy rulesets_admin_update on public.rulesets
+for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
+
+drop policy if exists rulesets_admin_delete on public.rulesets;
+create policy rulesets_admin_delete on public.rulesets
+for delete to authenticated
+using (public.admin_only());
 
 drop policy if exists matches_admin_write on public.matches;
-create policy matches_admin_write on public.matches
-for all to authenticated
+drop policy if exists matches_admin_insert on public.matches;
+create policy matches_admin_insert on public.matches
+for insert to authenticated
+with check (public.admin_only());
+
+drop policy if exists matches_admin_update on public.matches;
+create policy matches_admin_update on public.matches
+for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
+
+drop policy if exists matches_admin_delete on public.matches;
+create policy matches_admin_delete on public.matches
+for delete to authenticated
+using (public.admin_only());
 
 drop policy if exists match_results_admin_write on public.match_results;
-create policy match_results_admin_write on public.match_results
-for all to authenticated
+drop policy if exists match_results_admin_insert on public.match_results;
+create policy match_results_admin_insert on public.match_results
+for insert to authenticated
+with check (public.admin_only());
+
+drop policy if exists match_results_admin_update on public.match_results;
+create policy match_results_admin_update on public.match_results
+for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
+
+drop policy if exists match_results_admin_delete on public.match_results;
+create policy match_results_admin_delete on public.match_results
+for delete to authenticated
+using (public.admin_only());
 
 drop policy if exists adjustments_admin_write on public.adjustments;
-create policy adjustments_admin_write on public.adjustments
-for all to authenticated
+drop policy if exists adjustments_admin_insert on public.adjustments;
+create policy adjustments_admin_insert on public.adjustments
+for insert to authenticated
+with check (public.admin_only());
+
+drop policy if exists adjustments_admin_update on public.adjustments;
+create policy adjustments_admin_update on public.adjustments
+for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
+
+drop policy if exists adjustments_admin_delete on public.adjustments;
+create policy adjustments_admin_delete on public.adjustments
+for delete to authenticated
+using (public.admin_only());
 
 drop policy if exists rating_state_admin_write on public.rating_state;
-create policy rating_state_admin_write on public.rating_state
-for all to authenticated
+drop policy if exists rating_state_admin_insert on public.rating_state;
+create policy rating_state_admin_insert on public.rating_state
+for insert to authenticated
+with check (public.admin_only());
+
+drop policy if exists rating_state_admin_update on public.rating_state;
+create policy rating_state_admin_update on public.rating_state
+for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
+drop policy if exists rating_state_admin_delete on public.rating_state;
+create policy rating_state_admin_delete on public.rating_state
+for delete to authenticated
+using (public.admin_only());
+
 drop policy if exists rating_events_admin_write on public.rating_events;
-create policy rating_events_admin_write on public.rating_events
-for all to authenticated
+drop policy if exists rating_events_admin_insert on public.rating_events;
+create policy rating_events_admin_insert on public.rating_events
+for insert to authenticated
+with check (public.admin_only());
+
+drop policy if exists rating_events_admin_update on public.rating_events;
+create policy rating_events_admin_update on public.rating_events
+for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
+
+drop policy if exists rating_events_admin_delete on public.rating_events;
+create policy rating_events_admin_delete on public.rating_events
+for delete to authenticated
+using (public.admin_only());
 
 -- grants (needed in addition to RLS)
 grant usage on schema public to anon, authenticated;
