@@ -1,4 +1,5 @@
 <script lang="ts">
+  export let data: any;
   export let form: any;
   let signInEmail = '';
   let signInPassword = '';
@@ -32,8 +33,8 @@
 </style>
 
 <div class="card auth-card">
-  <h2 style="margin:0 0 10px;">Admin sign in</h2>
-  <p class="muted" style="margin-top:0;">Only admins can create players and enter results.</p>
+  <h2 style="margin:0 0 10px;">Sign in</h2>
+  <p class="muted" style="margin-top:0;">Admins can create players, link accounts, and enter results.</p>
 
   {#if form?.message}
     <div class="card alert alert-warning">
@@ -42,6 +43,7 @@
   {/if}
 
   <form method="POST" action="?/signIn" style="display:grid; gap:10px; margin-bottom:18px;">
+    <input type="hidden" name="next" value={data?.next ?? ''} />
     <label>
       <div class="muted">Email</div>
       <input name="signin-email" bind:value={signInEmail} type="email" autocomplete="email" required />
@@ -59,6 +61,7 @@
 
   <h3 style="margin:0 0 10px;">Create an account</h3>
   <form method="POST" action="?/signUp" style="display:grid; gap:10px;">
+    <input type="hidden" name="next" value={data?.next ?? ''} />
     <label>
       <div class="muted">Email</div>
       <input name="signup-email" bind:value={signUpEmail} type="email" autocomplete="email" required />

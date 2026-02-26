@@ -17,11 +17,12 @@ create extension if not exists pgcrypto;
 -- 1) Auth profiles (admin flag lives here)
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  display_name text,
+  email text,
   is_admin boolean not null default false,
   created_at timestamptz not null default now()
 );
 
+alter table if exists public.profiles add column if not exists email text;
 alter table public.profiles enable row level security;
 
 create or replace function public.handle_new_user()
@@ -31,10 +32,10 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, display_name)
+  insert into public.profiles (id, email)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'display_name', null)
+    nullif(trim(new.email), '')
   )
   on conflict (id) do nothing;
   return new;
@@ -45,6 +46,8 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+alter table if exists public.profiles drop column if exists display_name;
 
 -- Helper: admin check
 create or replace function public.is_admin(uid uuid)

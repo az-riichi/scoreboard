@@ -45,7 +45,6 @@
 <div class="grid2">
   <div class="card">
     <div style="font-size:1.05rem; font-weight:650;">Results</div>
-    <div class="muted">Seats E/S/W/N with raw points, Season Points (SP), and placement.</div>
 
     <div style="margin-top:12px; overflow:auto;">
       <table>
@@ -53,7 +52,7 @@
           <tr>
             <th style="width:70px;">Seat</th>
             <th>Player</th>
-            <th style="width:140px;">Raw</th>
+            <th style="width:140px;">Points</th>
             <th style="width:140px;">SP Δ</th>
             <th style="width:90px;">Place</th>
           </tr>

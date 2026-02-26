@@ -20,14 +20,14 @@
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
     <div>
       <div style="font-size:1.1rem; font-weight:650;">Players</div>
-      <div class="muted">Register new players</div>
+      <div class="muted">Register new players and assign player accounts</div>
     </div>
     <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
   </div>
 </div>
 
 {#if form?.message}
-  <div class="card alert alert-success">
+  <div class="card alert" class:alert-success={form.ok !== false} class:alert-error={form.ok === false}>
     {form.message}
   </div>
 {/if}
@@ -79,6 +79,7 @@
           <th>First</th>
           <th>Last</th>
           <th>Visible</th>
+          <th style="min-width:240px;">Claimed Account</th>
           <th style="width:120px;">Active</th>
           <th style="width:120px;"></th>
         </tr>
@@ -87,7 +88,7 @@
         {#each data.players as p}
           {#if activeEditId === p.id}
             <tr>
-              <td colspan="7">
+              <td colspan="8">
                 <form method="POST" action="?/update" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:2px; padding-bottom:2px;">
                   <input type="hidden" name="player_id" value={p.id} />
 
@@ -132,6 +133,26 @@
                     <button class="btn primary" type="submit" style="white-space:nowrap;">Save</button>
                   </div>
                 </form>
+
+                <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--table-border);">
+                  <form method="POST" action="?/setClaim" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+                    <input type="hidden" name="player_id" value={p.id} />
+
+                    <label style="min-width:320px; flex:1 1 360px;">
+                      <div class="muted">Linked account</div>
+                      <select name="auth_user_id" style="width:100%;">
+                        <option value="">Unclaimed</option>
+                        {#each data.profiles as acct}
+                          <option value={acct.id} selected={p.linked_auth_user_id === acct.id}>
+                            {(acct.email ?? '(no email)') + ' - ' + acct.id.slice(0, 8) + (acct.is_admin ? ' [admin]' : '')}
+                          </option>
+                        {/each}
+                      </select>
+                    </label>
+
+                    <button class="btn" type="submit" style="white-space:nowrap;">Link account</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {:else}
@@ -148,6 +169,18 @@
               <td>{p.real_first_name ?? ''}</td>
               <td>{p.real_last_name ?? ''}</td>
               <td>{p.show_display_name ? 'display' : ''}{p.show_real_first_name ? (p.show_display_name ? ' + first' : 'first') : ''}{p.show_real_last_name ? ' + last' : ''}</td>
+              <td>
+                {#if p.linked_auth_user_id}
+                  <div>
+                    {p.linked_profile_email ?? '(no email)'} - {p.linked_auth_user_id.slice(0, 8)}
+                    {#if p.linked_profile_is_admin}
+                      <span class="muted"> [admin]</span>
+                    {/if}
+                  </div>
+                {:else}
+                  <span class="muted">Unclaimed</span>
+                {/if}
+              </td>
               <td>{p.is_active ? 'Yes' : 'No'}</td>
               <td style="align-items: end">
                 <a class="btn" href={`/admin/players?edit=${p.id}`} style="text-decoration:none">Edit</a>
@@ -156,7 +189,7 @@
           {/if}
         {/each}
         {#if data.players.length === 0}
-          <tr><td colspan="7" class="muted">No players yet.</td></tr>
+          <tr><td colspan="8" class="muted">No players yet.</td></tr>
         {/if}
       </tbody>
     </table>

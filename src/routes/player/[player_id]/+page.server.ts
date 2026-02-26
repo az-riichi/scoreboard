@@ -263,7 +263,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
 export const actions: Actions = {
   updateDisplay: async ({ request, locals, params }) => {
-    if (!locals.userId || !locals.user) return fail(401, { message: 'Sign in to update your display settings.' });
+    if (!locals.userId || !locals.user) return fail(401, { ok: false, message: 'Sign in to update player settings.' });
 
     const f = await request.formData();
     const display_name = asText(f.get('display_name')) || null;
@@ -274,19 +274,19 @@ export const actions: Actions = {
     const show_real_last_name = asBool(f.get('show_real_last_name'));
 
     if (!display_name && !real_first_name) {
-      return fail(400, { message: 'Provide at least Display name or Real first name.' });
+      return fail(400, { ok: false, message: 'Provide at least Display name or Real first name.' });
     }
     if (!show_display_name && !show_real_first_name) {
-      return fail(400, { message: 'Enable at least Display name or Real first name.' });
+      return fail(400, { ok: false, message: 'Enable at least Display name or Real first name.' });
     }
     if (show_display_name && !display_name) {
-      return fail(400, { message: 'Display name is enabled but empty.' });
+      return fail(400, { ok: false, message: 'Display name is enabled but empty.' });
     }
     if (show_real_first_name && !real_first_name) {
-      return fail(400, { message: 'Real first name is enabled but empty.' });
+      return fail(400, { ok: false, message: 'Real first name is enabled but empty.' });
     }
     if (show_real_last_name && !real_last_name) {
-      return fail(400, { message: 'Real last name is enabled but empty.' });
+      return fail(400, { ok: false, message: 'Real last name is enabled but empty.' });
     }
 
     const updateRes = await locals.supabase.rpc('update_my_player_display', {
@@ -298,12 +298,12 @@ export const actions: Actions = {
       p_show_real_last_name: show_real_last_name
     });
 
-    if (updateRes.error) return fail(400, { message: updateRes.error.message });
+    if (updateRes.error) return fail(400, { ok: false, message: updateRes.error.message });
 
     if (updateRes.data && String(updateRes.data) !== params.player_id) {
-      return fail(403, { message: 'You can only update your own linked player profile.' });
+      return fail(403, { ok: false, message: 'You can only update your own linked player profile.' });
     }
 
-    return { message: 'Display settings updated.' };
+    return { ok: true, message: 'Player profile settings updated.' };
   }
 };

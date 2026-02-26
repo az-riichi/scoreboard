@@ -10,6 +10,11 @@
   let show_display_name = data.player.show_display_name ?? true;
   let show_real_first_name = data.player.show_real_first_name ?? false;
   let show_real_last_name = data.player.show_real_last_name ?? false;
+  let profileSettingsOpen = false;
+
+  $: if (data.canEditDisplay && form?.message) {
+    profileSettingsOpen = true;
+  }
 
   type HistoryRange = '10' | '20' | '50' | 'all';
   type ChartPoint = { row: any; x: number; y: number };
@@ -168,57 +173,73 @@
 <div class="card" style="margin-bottom:12px;">
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
     <div>
-      <div style="font-size:1.15rem; font-weight:700;">
+      <div style="font-size:1.5rem; font-weight:700;">
         {data.player.player_name_primary}
         {#if data.player.player_name_secondary}
-          <span class="muted" style="margin-left:6px;">({data.player.player_name_secondary})</span>
+          <span class="muted" style="font-size: 1.15rem; margin-left:6px;">({data.player.player_name_secondary})</span>
         {/if}
       </div>
       <div class="muted">Player profile</div>
     </div>
 
-    <form method="GET" style="display:flex; gap:10px; align-items:end;">
-      <label>
-        <div class="muted">Season</div>
-        <select name="season" bind:value={season} style="min-width:240px;">
-          {#each data.seasons as s}
-            <option value={s.id}>{s.name}</option>
-          {/each}
-        </select>
-      </label>
-      <button class="btn" type="submit">View</button>
-    </form>
+    <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+      <form method="GET" style="display:flex; gap:10px; align-items:end;">
+        <label>
+          <div class="muted">Season</div>
+          <select name="season" bind:value={season} style="min-width:240px;">
+            {#each data.seasons as s}
+              <option value={s.id}>{s.name}</option>
+            {/each}
+          </select>
+        </label>
+        <button class="btn" type="submit">View</button>
+      </form>
+
+      {#if data.canEditDisplay}
+        <button
+          class="btn"
+          type="button"
+          aria-expanded={profileSettingsOpen}
+          aria-controls="player-profile-settings-card"
+          aria-label={profileSettingsOpen ? 'Hide profile settings' : 'Show profile settings'}
+          title={profileSettingsOpen ? 'Hide profile settings' : 'Show profile settings'}
+          on:click={() => (profileSettingsOpen = !profileSettingsOpen)}
+        >
+          ⚙
+        </button>
+      {/if}
+    </div>
   </div>
 </div>
 
 {#if form?.message}
-  <div class="card alert alert-success">
+  <div class="card alert" class:alert-success={form.ok !== false} class:alert-error={form.ok === false}>
     {form.message}
   </div>
 {/if}
 
-{#if data.canEditDisplay}
-  <div class="card" style="margin-bottom:12px;">
-    <div style="font-size:1.05rem; font-weight:650;">Your display settings</div>
-    <div class="muted">Choose what appears publicly for this player profile.</div>
+{#if data.canEditDisplay && profileSettingsOpen}
+  <div id="player-profile-settings-card" class="card" style="margin-bottom:12px;">
+    <div style="font-size:1.05rem; font-weight:650;">Name & display settings</div>
+    <div class="muted">Update names and choose what appears publicly for your player profile.</div>
 
     <form method="POST" action="?/updateDisplay" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:12px;">
       <label style="min-width:220px;">
-        <div class="muted">Display name</div>
+        <div class="muted">Nickname</div>
         <input name="display_name" bind:value={display_name} placeholder="Optional nickname" />
       </label>
       <label style="min-width:220px;">
-        <div class="muted">Real first name</div>
+        <div class="muted">First name</div>
         <input name="real_first_name" bind:value={real_first_name} placeholder="Optional first name" />
       </label>
       <label style="min-width:220px;">
-        <div class="muted">Real last name</div>
+        <div class="muted">Last name</div>
         <input name="real_last_name" bind:value={real_last_name} placeholder="Optional last name" />
       </label>
 
       <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
         <input name="show_display_name" type="checkbox" bind:checked={show_display_name} />
-        <span class="muted">Show display</span>
+        <span class="muted">Show nick</span>
       </label>
       <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
         <input name="show_real_first_name" type="checkbox" bind:checked={show_real_first_name} />
@@ -229,7 +250,7 @@
         <span class="muted">Show last</span>
       </label>
 
-      <button class="btn primary" type="submit">Save display settings</button>
+      <button class="btn primary" type="submit">Save profile settings</button>
     </form>
   </div>
 {/if}
@@ -430,7 +451,7 @@
             font-weight="700"
             fill="#3b82f6"
           >
-            SP {fmtNum(spRange[1], 2)}
+            {fmtNum(spRange[1], 0)}
           </text>
           <text
             x={plot.left - 8}
@@ -441,7 +462,7 @@
             font-weight="700"
             fill="#3b82f6"
           >
-            SP {fmtNum(spRange[0], 2)}
+            {fmtNum(spRange[0], 0)}
           </text>
 
           <text
@@ -452,7 +473,7 @@
             font-weight="700"
             fill="#f59e0b"
           >
-            R {fmtNum(rRange[1], 2)}
+            {fmtNum(rRange[1], 0)}
           </text>
           <text
             x={plot.left + plotWidth + 8}
@@ -463,7 +484,7 @@
             font-weight="700"
             fill="#f59e0b"
           >
-            R {fmtNum(rRange[0], 2)}
+            {fmtNum(rRange[0], 0)}
           </text>
         </svg>
       {:else}
