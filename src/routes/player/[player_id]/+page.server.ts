@@ -1,6 +1,14 @@
 import { error as kitError, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { composeSeasonNameParts } from '$lib/player-name';
+import {
+  PLAYER_PROFILE_MEDIA_URL_MAX_CHARS,
+  PLAYER_PROFILE_MESSAGE_MAX_CHARS,
+  classifyPlayerProfileMedia,
+  normalizePlayerProfileMediaUrlInput,
+  normalizePlayerProfileMessageInput,
+  renderPlayerProfileMarkdown
+} from '$lib/player-profile-content';
 import { getActiveSeasonId, getLifetimeRatingSnapshot, getRatingStartDate } from '$lib/server/public-cache';
 
 function asText(value: unknown) {
@@ -18,7 +26,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     locals.supabase
       .from('players')
       .select(
-        'id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, is_active'
+        'id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, profile_message_md, profile_media_url, is_active'
       )
       .eq('id', player_id)
       .maybeSingle(),
@@ -45,6 +53,8 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     player_name_primary: nameParts.primary,
     player_name_secondary: nameParts.secondary
   };
+  const profileMessageHtml = renderPlayerProfileMarkdown(playerRes.data.profile_message_md);
+  const profileMedia = profileMessageHtml ? classifyPlayerProfileMedia(playerRes.data.profile_media_url) : null;
 
   const seasonId = seasonParam || activeSeasonId || null;
   const selectedSeason = (seasonsRes.data ?? []).find((s) => s.id === seasonId) ?? null;
@@ -244,6 +254,8 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
   return {
     player,
+    profileMessageHtml,
+    profileMedia,
     canEditDisplay,
     seasons: seasonsRes.error ? [] : (seasonsRes.data ?? []),
     seasonId,
@@ -272,6 +284,35 @@ export const actions: Actions = {
     const show_display_name = asBool(f.get('show_display_name'));
     const show_real_first_name = asBool(f.get('show_real_first_name'));
     const show_real_last_name = asBool(f.get('show_real_last_name'));
+    const profile_message_md = normalizePlayerProfileMessageInput(f.get('profile_message_md'));
+    const raw_profile_media_url = String(f.get('profile_media_url') ?? '').trim();
+
+    if (profile_message_md && profile_message_md.length > PLAYER_PROFILE_MESSAGE_MAX_CHARS) {
+      return fail(400, {
+        ok: false,
+        message: `Custom message is too long (max ${PLAYER_PROFILE_MESSAGE_MAX_CHARS} characters).`
+      });
+    }
+    if (raw_profile_media_url.length > PLAYER_PROFILE_MEDIA_URL_MAX_CHARS) {
+      return fail(400, {
+        ok: false,
+        message: `Media URL is too long (max ${PLAYER_PROFILE_MEDIA_URL_MAX_CHARS} characters).`
+      });
+    }
+
+    const profile_media_url = normalizePlayerProfileMediaUrlInput(raw_profile_media_url);
+    if (raw_profile_media_url && !profile_media_url) {
+      return fail(400, {
+        ok: false,
+        message: 'Media URL must be a valid http(s) URL.'
+      });
+    }
+    if (profile_media_url && !classifyPlayerProfileMedia(profile_media_url)) {
+      return fail(400, {
+        ok: false,
+        message: 'Media URL must be a direct image/video file or a YouTube link.'
+      });
+    }
 
     if (!display_name && !real_first_name) {
       return fail(400, { ok: false, message: 'Provide at least Display name or Real first name.' });
@@ -289,13 +330,15 @@ export const actions: Actions = {
       return fail(400, { ok: false, message: 'Real last name is enabled but empty.' });
     }
 
-    const updateRes = await locals.supabase.rpc('update_my_player_display', {
+    const updateRes = await locals.supabase.rpc('update_my_player_profile', {
       p_display_name: display_name,
       p_real_first_name: real_first_name,
       p_real_last_name: real_last_name,
       p_show_display_name: show_display_name,
       p_show_real_first_name: show_real_first_name,
-      p_show_real_last_name: show_real_last_name
+      p_show_real_last_name: show_real_last_name,
+      p_profile_message_md: profile_message_md,
+      p_profile_media_url: profile_media_url
     });
 
     if (updateRes.error) return fail(400, { ok: false, message: updateRes.error.message });

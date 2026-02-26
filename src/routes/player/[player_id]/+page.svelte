@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fmtDateTime, fmtNum, fmtPct } from '$lib/ui';
+  import { PLAYER_PROFILE_MEDIA_URL_MAX_CHARS, PLAYER_PROFILE_MESSAGE_MAX_CHARS } from '$lib/player-profile-content';
   export let data: any;
   export let form: any;
 
@@ -10,6 +11,8 @@
   let show_display_name = data.player.show_display_name ?? true;
   let show_real_first_name = data.player.show_real_first_name ?? false;
   let show_real_last_name = data.player.show_real_last_name ?? false;
+  let profile_message_md = data.player.profile_message_md ?? '';
+  let profile_media_url = data.player.profile_media_url ?? '';
   let profileSettingsOpen = false;
 
   $: if (data.canEditDisplay && form?.message) {
@@ -218,10 +221,117 @@
   </div>
 {/if}
 
+{#if data.profileMessageHtml}
+  <div class="card" style="margin-bottom:12px;">
+    <div style="font-size:1.05rem; font-weight:650;">Player Message</div>
+
+    {#if data.profileMedia}
+      <div class="profile-media">
+        {#if data.profileMedia.kind === 'image'}
+          <img
+            class="profile-media-image"
+            src={data.profileMedia.url}
+            alt={`${data.player.player_name_primary} media`}
+            loading="lazy"
+          />
+        {:else if data.profileMedia.kind === 'video'}
+          <div class="profile-media-frame">
+            <!-- svelte-ignore a11y_media_has_caption -->
+            <video src={data.profileMedia.url} controls preload="metadata" playsinline></video>
+          </div>
+        {:else if data.profileMedia.kind === 'youtube'}
+          <div class="profile-media-frame">
+            <iframe
+              src={data.profileMedia.embed_url}
+              title={`${data.player.player_name_primary} video`}
+              loading="lazy"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerpolicy="strict-origin-when-cross-origin"
+              allowfullscreen
+            ></iframe>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    <div class="profile-rich">{@html data.profileMessageHtml}</div>
+  </div>
+{/if}
+
+<style>
+  .profile-media {
+    margin-top: 10px;
+    margin-bottom: 12px;
+  }
+
+  .profile-media-image {
+    display: block;
+    width: 100%;
+    max-height: 520px;
+    object-fit: contain;
+    border-radius: 14px;
+    border: 1px solid var(--table-border);
+    background: color-mix(in oklab, var(--card-bg) 80%, black 20%);
+  }
+
+  .profile-media-frame {
+    width: 100%;
+    border-radius: 14px;
+    border: 1px solid var(--table-border);
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 16 / 9;
+  }
+
+  .profile-media-frame :global(video),
+  .profile-media-frame :global(iframe) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  .profile-rich {
+    line-height: 1.55;
+    word-break: break-word;
+  }
+
+  .profile-rich :global(h1),
+  .profile-rich :global(h2),
+  .profile-rich :global(h3) {
+    margin: 0.35rem 0 0.5rem;
+    line-height: 1.2;
+  }
+
+  .profile-rich :global(p) {
+    margin: 0 0 0.65rem;
+  }
+
+  .profile-rich :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .profile-rich :global(ul) {
+    margin: 0 0 0.65rem;
+    padding-left: 1.25rem;
+  }
+
+  .profile-rich :global(li) {
+    margin: 0.2rem 0;
+  }
+
+  .profile-rich :global(code) {
+    padding: 0.05rem 0.35rem;
+    border-radius: 6px;
+    background: color-mix(in oklab, var(--table-border) 35%, var(--card-bg) 65%);
+    font-size: 0.95em;
+  }
+</style>
+
 {#if data.canEditDisplay && profileSettingsOpen}
   <div id="player-profile-settings-card" class="card" style="margin-bottom:12px;">
-    <div style="font-size:1.05rem; font-weight:650;">Name & display settings</div>
-    <div class="muted">Update names and choose what appears publicly for your player profile.</div>
+    <div style="font-size:1.05rem; font-weight:650;">Profile & display settings</div>
+    <div class="muted">Update names, public display options, and your custom player message.</div>
 
     <form method="POST" action="?/updateDisplay" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:12px;">
       <label style="min-width:220px;">
@@ -249,6 +359,33 @@
         <input name="show_real_last_name" type="checkbox" bind:checked={show_real_last_name} />
         <span class="muted">Show last</span>
       </label>
+
+      <label style="flex:1 1 100%;">
+        <div class="muted">Custom message (Markdown)</div>
+        <textarea
+          name="profile_message_md"
+          bind:value={profile_message_md}
+          rows="6"
+          style="width: 90%"
+          maxlength={PLAYER_PROFILE_MESSAGE_MAX_CHARS}
+          placeholder="Share a short intro, links, accomplishments, or anything you want on your player page."
+        ></textarea>
+      </label>
+
+      <label style="flex:1 1 100%;">
+        <div class="muted">Image / video URL (optional)</div>
+        <input
+          name="profile_media_url"
+          bind:value={profile_media_url}
+          style="width: 90%"
+          maxlength={PLAYER_PROFILE_MEDIA_URL_MAX_CHARS}
+          placeholder="https://... (direct image/video link or YouTube URL)"
+        />
+      </label>
+
+      <div class="muted" style="flex:1 1 100%; font-size:0.95rem;">
+        Media is only shown when a custom message is set
+      </div>
 
       <button class="btn primary" type="submit">Save profile settings</button>
     </form>
