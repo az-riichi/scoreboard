@@ -1,23 +1,12 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
+import {
+  parseArizonaDayBoundsFromDatetimeLocal,
+  parseArizonaLocalDatetimeToUtcIso
+} from '$lib/arizona-time';
 
 const CHOMBO_PREFIX = 'CHOMBO';
-
-function parseDayBounds(playedAt: string) {
-  const m = playedAt.match(/^(\d{4}-\d{2}-\d{2})T/);
-  if (!m) return null;
-  const day = m[1];
-  const d = new Date(`${day}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return null;
-  const next = new Date(d);
-  next.setUTCDate(next.getUTCDate() + 1);
-  const nextDay = next.toISOString().slice(0, 10);
-  return {
-    dayStart: `${day}T00:00:00`,
-    dayEnd: `${nextDay}T00:00:00`
-  };
-}
 
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals);
@@ -103,15 +92,16 @@ export const actions: Actions = {
     const f = await request.formData();
     const season_id = String(f.get('season_id') ?? '').trim();
     const ruleset_id = String(f.get('ruleset_id') ?? '').trim();
-    const played_at = String(f.get('played_at') ?? '').trim();
+    const played_at_input = String(f.get('played_at') ?? '').trim();
     const table_mode_raw = String(f.get('table_mode') ?? '').trim().toUpperCase();
     const extra_raw = String(f.get('extra_sticks') ?? '').trim();
     const notes = String(f.get('notes') ?? '').trim();
 
-    if (!season_id || !ruleset_id || !played_at) return fail(400, { message: 'Missing fields.' });
+    if (!season_id || !ruleset_id || !played_at_input) return fail(400, { message: 'Missing fields.' });
 
-    const dayBounds = parseDayBounds(played_at);
-    if (!dayBounds) {
+    const played_at = parseArizonaLocalDatetimeToUtcIso(played_at_input);
+    const dayBounds = parseArizonaDayBoundsFromDatetimeLocal(played_at_input);
+    if (!played_at || !dayBounds) {
       return fail(400, { message: 'Played at must be a valid date/time.' });
     }
 

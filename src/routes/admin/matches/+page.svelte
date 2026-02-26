@@ -1,17 +1,11 @@
 <script lang="ts">
-  import { fmtDateTime } from '$lib/ui';
+  import { fmtDateTimeArizona as fmtDateTime, nowArizonaDatetimeLocalValue } from '$lib/arizona-time';
   export let data: any;
   export let form: any;
 
-  function nowLocalDatetime() {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-
   let season_id = data.activeSeason ?? '';
   let ruleset_id = data.defaultRules ?? '';
-  let played_at = nowLocalDatetime();
+  let played_at = nowArizonaDatetimeLocalValue();
   let table_mode = 'A';
   let extra_sticks = 0;
   let notes = '';

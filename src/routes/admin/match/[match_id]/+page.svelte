@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { fmtDateTime, fmtNum } from '$lib/ui';
+  import { fmtNum } from '$lib/ui';
+  import { fmtDateTimeArizona as fmtDateTime, toArizonaDatetimeLocalValue } from '$lib/arizona-time';
   export let data: any;
   export let form: any;
 
@@ -14,7 +15,7 @@
     }
   }
 
-  let played_at = toDatetimeLocal(match.played_at);
+  let played_at = toArizonaDatetimeLocalValue(match.played_at);
   let table_mode = match.table_mode ?? 'A';
   let extra_sticks = String(match.extra_sticks ?? 0);
   let notes = match.notes ?? '';
@@ -80,18 +81,6 @@
     W: tokenByPlayerId.get(String(bySeat.W?.player_id ?? '').trim()) ?? '',
     N: tokenByPlayerId.get(String(bySeat.N?.player_id ?? '').trim()) ?? ''
   };
-
-  function toDatetimeLocal(ts: string) {
-    const d = new Date(ts);
-    if (Number.isNaN(d.getTime())) return '';
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    const mm = pad(d.getMonth() + 1);
-    const dd = pad(d.getDate());
-    const hh = pad(d.getHours());
-    const mi = pad(d.getMinutes());
-    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-  }
 
   function asNum(v: unknown, fallback = 0) {
     const n = Number(v);
@@ -361,12 +350,12 @@
 
 <div class="card" style="margin-bottom:12px;">
   <div style="font-size:1.05rem; font-weight:650;">Match metadata</div>
-  <div class="muted">Game # / table label are auto-generated.</div>
+  <div class="muted">Game # / table label are auto-generated. Times are Arizona (MST).</div>
 
   <form method="POST" action="?/saveMatchMeta" style="display:grid; gap:10px; margin-top:12px;">
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
       <div style="display:grid; gap:4px;">
-        <label for="played_at">Played at</label>
+        <label for="played_at">Played at (Arizona)</label>
         <input id="played_at" name="played_at" type="datetime-local" bind:value={played_at} required />
       </div>
 

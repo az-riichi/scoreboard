@@ -2,6 +2,10 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
 import { composeSeasonNameParts } from '$lib/player-name';
+import {
+  parseArizonaDayBoundsFromDatetimeLocal,
+  parseArizonaLocalDatetimeToUtcIso
+} from '$lib/arizona-time';
 
 const CHOMBO_PREFIX = 'CHOMBO';
 
@@ -125,21 +129,6 @@ function getInt(f: FormData, k: string) {
   const n = Number(f.get(k));
   return Number.isFinite(n) ? Math.trunc(n) : 0;
 }
-function parseDayBounds(playedAt: string) {
-  const m = playedAt.match(/^(\d{4}-\d{2}-\d{2})T/);
-  if (!m) return null;
-  const day = m[1];
-  const d = new Date(`${day}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return null;
-  const next = new Date(d);
-  next.setUTCDate(next.getUTCDate() + 1);
-  const nextDay = next.toISOString().slice(0, 10);
-  return {
-    dayStart: `${day}T00:00:00`,
-    dayEnd: `${nextDay}T00:00:00`
-  };
-}
-
 export const actions: Actions = {
   deleteGame: async ({ locals, params }) => {
     await requireAdmin(locals);
@@ -184,14 +173,15 @@ export const actions: Actions = {
     const match_id = params.match_id;
 
     const f = await request.formData();
-    const played_at = getStr(f, 'played_at');
+    const played_at_input = getStr(f, 'played_at');
     const table_mode_raw = getStr(f, 'table_mode').toUpperCase();
     const ex_raw = getStr(f, 'extra_sticks');
     const notes = getStr(f, 'notes');
 
-    if (!played_at) return fail(400, { message: 'Played at is required.' });
-    const dayBounds = parseDayBounds(played_at);
-    if (!dayBounds) {
+    if (!played_at_input) return fail(400, { message: 'Played at is required.' });
+    const played_at = parseArizonaLocalDatetimeToUtcIso(played_at_input);
+    const dayBounds = parseArizonaDayBoundsFromDatetimeLocal(played_at_input);
+    if (!played_at || !dayBounds) {
       return fail(400, { message: 'Played at must be a valid date/time.' });
     }
 

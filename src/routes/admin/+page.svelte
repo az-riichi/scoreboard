@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fmtDateTime } from '$lib/ui';
+  import { fmtDateTimeArizona as fmtDateTime } from '$lib/arizona-time';
   export let data: any;
 </script>
 

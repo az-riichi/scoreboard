@@ -3,6 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
 import * as XLSX from 'xlsx';
 import { composePlayerDisplayName } from '$lib/player-name';
+import { toArizonaDatetimeLocalValue } from '$lib/arizona-time';
 
 const REQUIRED_HEADERS = [
   'Date',
@@ -375,7 +376,8 @@ export const actions: Actions = {
       if (!playedAt || !Number.isInteger(game_number)) continue;
       if (table_mode !== 'A' && table_mode !== 'M') continue;
 
-      const dateIso = new Date(playedAt).toISOString().slice(0, 10);
+      const dateIso = toArizonaDatetimeLocalValue(playedAt).slice(0, 10);
+      if (!dateIso) continue;
       existingKeys.add(`${dateIso}|${game_number}|${table_mode}`);
     }
 
