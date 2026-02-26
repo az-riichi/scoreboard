@@ -215,6 +215,8 @@ create table if not exists public.matches (
   created_at timestamptz not null default now()
 );
 create index if not exists matches_season_played_idx on public.matches (season_id, played_at desc);
+create index if not exists matches_created_by_idx on public.matches (created_by);
+create index if not exists matches_ruleset_id_idx on public.matches (ruleset_id);
 
 -- Backfill-safe schema updates for existing projects
 alter table if exists public.matches add column if not exists game_number int;
@@ -270,6 +272,8 @@ create table if not exists public.adjustments (
   created_at timestamptz not null default now()
 );
 create index if not exists adjustments_season_player_idx on public.adjustments (season_id, player_id);
+create index if not exists adjustments_created_by_idx on public.adjustments (created_by);
+create index if not exists adjustments_player_id_idx on public.adjustments (player_id);
 
 -- 3) Tenhou-like rating (season + lifetime)
 
@@ -333,6 +337,7 @@ create or replace function public.player_public_name(p public.players)
 returns text
 language plpgsql
 stable
+set search_path = public
 as $$
 declare
   parts text[] := '{}';
@@ -380,6 +385,7 @@ create or replace function public.seat_priority(s public.seat)
 returns int
 language sql
 immutable
+set search_path = public
 as $$
   select case s
     when 'E' then 1
@@ -393,6 +399,7 @@ create or replace function public.place_base_points(place smallint)
 returns numeric
 language sql
 immutable
+set search_path = public
 as $$
   select case place
     when 1 then 30
@@ -407,6 +414,7 @@ create or replace function public.games_adjustment(n int)
 returns numeric
 language sql
 immutable
+set search_path = public
 as $$
   -- Tenhou-style: if n <= 20, 1 - 0.04*n, floored at 0.2; else 0.2
   select case
@@ -420,6 +428,7 @@ create or replace function public.uma_for_place(r public.rulesets, place smallin
 returns numeric
 language sql
 immutable
+set search_path = public
 as $$
   select case place
     when 1 then r.uma_1
@@ -433,6 +442,7 @@ create or replace function public.oka_for_place(r public.rulesets, place smallin
 returns numeric
 language sql
 immutable
+set search_path = public
 as $$
   select case place
     when 1 then r.oka_1
