@@ -335,15 +335,6 @@ export const actions: Actions = {
     return { message: 'Penalty removed.' };
   },
 
-  recompute: async ({ locals, params }) => {
-    await requireAdmin(locals);
-    const match_id = params.match_id;
-
-    const { error } = await locals.supabase.rpc('recompute_match_derived', { p_match_id: match_id });
-    if (error) return fail(400, { message: error.message });
-    return { message: 'Recomputed placement and Season Points (SP).' };
-  },
-
   finalize: async ({ locals, params }) => {
     await requireAdmin(locals);
     const match_id = params.match_id;

@@ -23,6 +23,8 @@
   const seats: Seat[] = ['E', 'S', 'W', 'N'];
   const seatOrder: Record<Seat, number> = { E: 1, S: 2, W: 3, N: 4 };
   const isFinal = match.status === 'final';
+  type ConfirmAction = 'delete' | 'finalize' | null;
+  let confirmAction: ConfirmAction = null;
 
   const playerMetaById = new Map<string, { primary: string; secondary: string | null; label: string; token: string }>();
   const tokenToPlayerId = new Map<string, string>();
@@ -106,6 +108,14 @@
 
   function ratingState(player_id: string) {
     return lifetimeRatingByPlayer.get(player_id) ?? { rate: 1500, games_played: 0 };
+  }
+
+  function toggleConfirm(action: Exclude<ConfirmAction, null>) {
+    confirmAction = confirmAction === action ? null : action;
+  }
+
+  function closeConfirm() {
+    confirmAction = null;
   }
 
   function placeBasePoints(place: number) {
@@ -312,6 +322,43 @@
     outline: none;
   }
 
+  .confirm-anchor {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .confirm-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    min-width: 220px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    background: var(--field-bg, #fff);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    display: grid;
+    gap: 8px;
+  }
+
+  .confirm-popover.align-left {
+    left: 0;
+    right: auto;
+  }
+
+  .confirm-popover-text {
+    font-size: 0.86rem;
+    line-height: 1.3;
+  }
+
+  .confirm-popover-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
   @media (max-width: 720px) {
     .result-entry-row {
       grid-template-columns: 1fr;
@@ -335,8 +382,19 @@
       {#if isFinal}
         <a class="btn" href={`/match/${match.id}`} style="text-decoration:none;">Public view</a>
       {/if}
-      <form method="POST" action="?/deleteGame" on:submit={(e) => { if (!confirm('Delete this game? This cannot be undone.')) e.preventDefault(); }}>
-        <button class="btn" type="submit">Delete game</button>
+      <form method="POST" action="?/deleteGame" on:submit={() => closeConfirm()}>
+        <div class="confirm-anchor">
+          <button class="btn" type="button" on:click={() => toggleConfirm('delete')}>Delete game</button>
+          {#if confirmAction === 'delete'}
+            <div class="confirm-popover" role="dialog" aria-label="Confirm delete game">
+              <div class="confirm-popover-text">Delete this game? This cannot be undone.</div>
+              <div class="confirm-popover-actions">
+                <button class="btn" type="button" on:click={closeConfirm}>Cancel</button>
+                <button class="btn" type="submit">Delete</button>
+              </div>
+            </div>
+          {/if}
+        </div>
       </form>
     </div>
   </div>
@@ -422,14 +480,32 @@
         {/each}
       </datalist>
 
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="btn primary" type="submit" disabled={isFinal}>Save results</button>
-        <button class="btn" type="submit" formmethod="POST" formaction="?/recompute" disabled={!data.results?.length}>Recompute placement</button>
-        <button class="btn" type="submit" formmethod="POST" formaction="?/finalize" disabled={isFinal}>Finalize match</button>
-      </div>
-
-      {#if isFinal}
-        <div class="muted">This match is finalized (public).</div>
+      {#if !isFinal}
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn primary" type="submit" on:click={closeConfirm}>Save results</button>
+          <div class="confirm-anchor">
+            <button class="btn" type="button" on:click={() => toggleConfirm('finalize')}>Finalize match</button>
+            {#if confirmAction === 'finalize'}
+              <div class="confirm-popover align-left" role="dialog" aria-label="Confirm finalize match">
+                <div class="confirm-popover-text">Finalize this match and publish results?</div>
+                <div class="confirm-popover-actions">
+                  <button class="btn" type="button" on:click={closeConfirm}>Cancel</button>
+                  <button
+                    class="btn"
+                    type="submit"
+                    formmethod="POST"
+                    formaction="?/finalize"
+                    on:click={closeConfirm}
+                  >
+                    Finalize
+                  </button>
+                </div>
+              </div>
+            {/if}
+          </div>
+        </div>
+      {:else}
+        <div class="muted">This match is finalized & published, and cannot be edited.</div>
       {/if}
     </form>
 
