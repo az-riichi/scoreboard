@@ -1114,6 +1114,16 @@ $$;
 revoke all on function public.admin_only() from public;
 grant execute on function public.admin_only() to authenticated;
 
+drop policy if exists matches_admin_select on public.matches;
+create policy matches_admin_select on public.matches
+for select to authenticated
+using (public.admin_only());
+
+drop policy if exists match_results_admin_select on public.match_results;
+create policy match_results_admin_select on public.match_results
+for select to authenticated
+using (public.admin_only());
+
 drop policy if exists seasons_admin_write on public.seasons;
 drop policy if exists seasons_admin_insert on public.seasons;
 create policy seasons_admin_insert on public.seasons

@@ -448,7 +448,7 @@
   <div class="card">
     <div style="font-size:1.05rem; font-weight:650;">Results entry (raw points)</div>
 
-    <form method="POST" action="?/saveResults" style="display:grid; gap:10px; margin-top:12px;">
+    <form method="POST" action="?/saveResults" style="display:grid; gap:10px; margin-top:12px;" on:submit={closeConfirm}>
       {#each entries as row, i (row.seat)}
         <div class="card" style="border-radius:14px;">
           <div class="muted" style="margin-bottom:6px;">Seat {row.seat}</div>
@@ -495,7 +495,6 @@
                     type="submit"
                     formmethod="POST"
                     formaction="?/finalize"
-                    on:click={closeConfirm}
                   >
                     Finalize
                   </button>
