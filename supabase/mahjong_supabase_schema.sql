@@ -1,4 +1,6 @@
 -- Mahjong Club (Supabase/Postgres) schema v1.2
+-- Fresh-install baseline only. Run against a Supabase project that does not
+-- already contain these application objects; this is not an upgrade script.
 -- Supports:
 -- - Seasons (semester-style)
 -- - Players (separate from auth accounts; public-friendly)
@@ -8,21 +10,20 @@
 -- - Public read for non-admin data; admin-only writes (RLS)
 --
 -- Notes:
--- - Views are created as SECURITY INVOKER to avoid bypassing RLS (Postgres 15+).
---   See: https://supabase.com/docs/guides/database/postgres/row-level-security#views
+-- - Analytics views use SECURITY INVOKER (Postgres 15+). v_public_players is
+--   an owner-executed view that exposes only an explicit redacted projection.
 
 -- 0) Extensions
 create extension if not exists pgcrypto;
 
 -- 1) Auth profiles (admin flag lives here)
-create table if not exists public.profiles (
+create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
   is_admin boolean not null default false,
   created_at timestamptz not null default now()
 );
 
-alter table if exists public.profiles add column if not exists email text;
 alter table public.profiles enable row level security;
 
 create or replace function public.handle_new_user()
@@ -42,12 +43,9 @@ begin
 end;
 $$;
 
-drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
-
-alter table if exists public.profiles drop column if exists display_name;
 
 -- Helper: admin check
 create or replace function public.is_admin(uid uuid)
@@ -63,18 +61,41 @@ $$;
 revoke all on function public.is_admin(uuid) from public;
 grant execute on function public.is_admin(uuid) to authenticated;
 
+-- Centralized policy/RPC guard. Trusted database administrators retain an
+-- override; application calls must come from an existing admin profile.
+create or replace function public.admin_only()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    session_user in ('postgres', 'supabase_admin')
+    or public.is_admin((select auth.uid()));
+$$;
+
+revoke all on function public.admin_only() from public;
+grant execute on function public.admin_only() to authenticated;
+
 -- 2) Core domain tables
 
-create table if not exists public.seasons (
+create table public.seasons (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   start_date date not null,
   end_date date not null,
   is_active boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint seasons_date_order_check check (start_date <= end_date)
 );
 
-create table if not exists public.players (
+-- There can be only one season selected as the application default.
+create unique index seasons_one_active_idx
+on public.seasons (is_active)
+where is_active;
+
+create table public.players (
   id uuid primary key default gen_random_uuid(),
   display_name text unique,
   real_first_name text,
@@ -86,89 +107,22 @@ create table if not exists public.players (
   profile_media_url text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
-  check (
+  constraint players_name_presence_check check (
     nullif(trim(display_name), '') is not null
     or nullif(trim(real_first_name), '') is not null
   ),
-  check (show_display_name or show_real_first_name),
-  check ((not show_display_name) or nullif(trim(display_name), '') is not null),
-  check ((not show_real_first_name) or nullif(trim(real_first_name), '') is not null),
-  check ((not show_real_last_name) or nullif(trim(real_last_name), '') is not null)
+  constraint players_visible_name_choice_check
+    check (show_display_name or show_real_first_name),
+  constraint players_display_flag_has_value_check
+    check ((not show_display_name) or nullif(trim(display_name), '') is not null),
+  constraint players_first_flag_has_value_check
+    check ((not show_real_first_name) or nullif(trim(real_first_name), '') is not null),
+  constraint players_last_flag_has_value_check
+    check ((not show_real_last_name) or nullif(trim(real_last_name), '') is not null)
 );
 
--- Backfill-safe schema updates for existing projects
-alter table if exists public.players add column if not exists real_first_name text;
-alter table if exists public.players add column if not exists real_last_name text;
-alter table if exists public.players add column if not exists show_display_name boolean not null default true;
-alter table if exists public.players add column if not exists show_real_first_name boolean not null default false;
-alter table if exists public.players add column if not exists show_real_last_name boolean not null default false;
-alter table if exists public.players add column if not exists profile_message_md text;
-alter table if exists public.players add column if not exists profile_media_url text;
-alter table if exists public.players alter column display_name drop not null;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'players_name_presence_check'
-      and conrelid = 'public.players'::regclass
-  ) then
-    alter table public.players
-      add constraint players_name_presence_check
-      check (
-        nullif(trim(display_name), '') is not null
-        or nullif(trim(real_first_name), '') is not null
-      );
-  end if;
-
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'players_visible_name_choice_check'
-      and conrelid = 'public.players'::regclass
-  ) then
-    alter table public.players
-      add constraint players_visible_name_choice_check
-      check (show_display_name or show_real_first_name);
-  end if;
-
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'players_display_flag_has_value_check'
-      and conrelid = 'public.players'::regclass
-  ) then
-    alter table public.players
-      add constraint players_display_flag_has_value_check
-      check ((not show_display_name) or nullif(trim(display_name), '') is not null);
-  end if;
-
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'players_first_flag_has_value_check'
-      and conrelid = 'public.players'::regclass
-  ) then
-    alter table public.players
-      add constraint players_first_flag_has_value_check
-      check ((not show_real_first_name) or nullif(trim(real_first_name), '') is not null);
-  end if;
-
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'players_last_flag_has_value_check'
-      and conrelid = 'public.players'::regclass
-  ) then
-    alter table public.players
-      add constraint players_last_flag_has_value_check
-      check ((not show_real_last_name) or nullif(trim(real_last_name), '') is not null);
-  end if;
-end $$;
-
--- Optional mapping: auth user can claim a player identity
-create table if not exists public.player_accounts (
+-- Optional admin-managed mapping from an auth account to a player identity
+create table public.player_accounts (
   auth_user_id uuid primary key references auth.users(id) on delete cascade,
   player_id uuid not null references public.players(id) on delete restrict,
   created_at timestamptz not null default now(),
@@ -176,11 +130,11 @@ create table if not exists public.player_accounts (
 );
 
 -- Rulesets
-create table if not exists public.rulesets (
+create table public.rulesets (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   start_points int not null default 25000,
-  return_points int not null default 20000,
+  return_points int not null default 25000,
   point_divisor int not null default 1000,
   uma_1 numeric not null default 30,
   uma_2 numeric not null default 10,
@@ -190,70 +144,132 @@ create table if not exists public.rulesets (
   oka_2 numeric not null default 0,
   oka_3 numeric not null default 0,
   oka_4 numeric not null default 0,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint rulesets_positive_values_check
+    check (start_points > 0 and return_points > 0 and point_divisor > 0)
 );
 
--- Enums (safe create)
-do $$
-begin
-  if not exists (select 1 from pg_type where typname = 'match_status') then
-    create type public.match_status as enum ('draft','final','void');
-  end if;
-  if not exists (select 1 from pg_type where typname = 'seat') then
-    create type public.seat as enum ('E','S','W','N');
-  end if;
-  if not exists (select 1 from pg_type where typname = 'table_mode') then
-    create type public.table_mode as enum ('A','M');
-  end if;
-end $$;
+-- Enums
+create type public.match_status as enum ('draft','final','void');
+create type public.seat as enum ('E','S','W','N');
+create type public.table_mode as enum ('A','M');
 
-create table if not exists public.matches (
+create table public.matches (
   id uuid primary key default gen_random_uuid(),
   season_id uuid not null references public.seasons(id) on delete restrict,
   ruleset_id uuid not null references public.rulesets(id) on delete restrict,
   game_number int,
   table_mode public.table_mode,
   extra_sticks int not null default 0,
+  include_in_lifetime_rating boolean not null default true,
   played_at timestamptz not null,
   status public.match_status not null default 'draft',
   table_label text,
   notes text,
   created_by uuid references auth.users(id),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint matches_game_number_check check (game_number is null or game_number > 0),
+  constraint matches_extra_sticks_check check (extra_sticks >= 0),
+  constraint matches_game_metadata_pair_check check ((game_number is null) = (table_mode is null))
 );
-create index if not exists matches_season_played_idx on public.matches (season_id, played_at desc);
-create index if not exists matches_created_by_idx on public.matches (created_by);
-create index if not exists matches_ruleset_id_idx on public.matches (ruleset_id);
+create index matches_season_played_idx on public.matches (season_id, played_at desc);
+create index matches_created_by_idx on public.matches (created_by);
+create index matches_ruleset_id_idx on public.matches (ruleset_id);
 
--- Backfill-safe schema updates for existing projects
-alter table if exists public.matches add column if not exists game_number int;
-alter table if exists public.matches add column if not exists table_mode public.table_mode;
-alter table if exists public.matches add column if not exists extra_sticks int not null default 0;
+create unique index matches_season_day_game_table_unique
+on public.matches (
+  season_id,
+  ((played_at at time zone 'America/Phoenix')::date),
+  game_number,
+  table_mode
+)
+where status <> 'void' and game_number is not null and table_mode is not null;
 
-do $$
+-- Cross-table checks cannot be expressed as CHECK constraints. This trigger
+-- keeps a match on a day belonging to its season and provides a race-safe
+-- fallback for the business-key uniqueness enforced by the index above.
+create or replace function public.validate_match_metadata()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_start date;
+  v_end date;
+  v_played_date date;
+  v_key text;
 begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'matches_game_number_check'
-      and conrelid = 'public.matches'::regclass
-  ) then
-    alter table public.matches
-      add constraint matches_game_number_check check (game_number is null or game_number > 0);
+  select s.start_date, s.end_date
+  into v_start, v_end
+  from public.seasons s
+  where s.id = new.season_id;
+
+  if not found then
+    raise exception 'season % not found', new.season_id;
   end if;
 
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'matches_extra_sticks_check'
-      and conrelid = 'public.matches'::regclass
-  ) then
-    alter table public.matches
-      add constraint matches_extra_sticks_check check (extra_sticks >= 0);
+  v_played_date := (new.played_at at time zone 'America/Phoenix')::date;
+  if v_played_date < v_start or v_played_date > v_end then
+    raise exception 'match date % is outside season range % through %',
+      v_played_date, v_start, v_end;
   end if;
-end $$;
 
-create table if not exists public.match_results (
+  if new.status <> 'void' and new.game_number is not null and new.table_mode is not null then
+    v_key := new.season_id::text || '|' || v_played_date::text || '|'
+      || new.game_number::text || '|' || new.table_mode::text;
+    perform pg_advisory_xact_lock(hashtextextended(v_key, 0));
+
+    if exists (
+      select 1
+      from public.matches m
+      where m.id <> new.id
+        and m.season_id = new.season_id
+        and (m.played_at at time zone 'America/Phoenix')::date = v_played_date
+        and m.game_number = new.game_number
+        and m.table_mode = new.table_mode
+        and m.status <> 'void'
+    ) then
+      raise exception 'a non-void match already exists for season %, date %, game %, table %',
+        new.season_id, v_played_date, new.game_number, new.table_mode;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.validate_match_metadata() from public;
+
+create trigger matches_validate_metadata
+before insert or update of season_id, played_at, game_number, table_mode, status
+on public.matches
+for each row execute function public.validate_match_metadata();
+
+-- Season identity/date changes can invalidate match dates, the lifetime epoch,
+-- and rating carry order. Keep them immutable; create a replacement season for
+-- corrections. (is_active remains freely changeable.)
+create or replace function public.guard_season_identity_update()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if (old.name, old.start_date, old.end_date)
+       is distinct from
+     (new.name, new.start_date, new.end_date) then
+    raise exception 'season name and dates are immutable; create a replacement season';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.guard_season_identity_update() from public;
+
+create trigger seasons_guard_identity_update
+before update of name, start_date, end_date on public.seasons
+for each row execute function public.guard_season_identity_update();
+
+create table public.match_results (
   match_id uuid not null references public.matches(id) on delete cascade,
   seat public.seat not null,
   player_id uuid not null references public.players(id) on delete restrict,
@@ -266,10 +282,160 @@ create table if not exists public.match_results (
   check (raw_points > -100000 and raw_points < 300000),
   check (placement is null or (placement between 1 and 4))
 );
-create index if not exists match_results_player_idx on public.match_results (player_id);
-create index if not exists match_results_match_idx on public.match_results (match_id);
+create index match_results_player_idx on public.match_results (player_id);
+create index match_results_match_idx on public.match_results (match_id);
 
-create table if not exists public.adjustments (
+-- Lock the parent draft before any score/identity mutation. This closes the
+-- race where a concurrent save could otherwise land while finalize_match is
+-- reading the four rows.
+create or replace function public.guard_match_result_write()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_match_id uuid;
+  v_status public.match_status;
+begin
+  if tg_op = 'DELETE' then
+    v_match_id := old.match_id;
+  else
+    v_match_id := new.match_id;
+  end if;
+
+  if tg_op = 'DELETE'
+     and current_setting('azriichi.allow_match_delete', true) = 'on' then
+    return old;
+  end if;
+
+  if tg_op = 'UPDATE' then
+    if new.match_id <> old.match_id then
+      raise exception 'moving a result between matches is not allowed';
+    end if;
+  end if;
+
+  select m.status into v_status
+  from public.matches m
+  where m.id = v_match_id
+  for update;
+
+  -- A cascading parent delete has already made the match invisible here.
+  if not found and tg_op = 'DELETE' then
+    return old;
+  end if;
+  if not found then
+    raise exception 'match % not found', v_match_id;
+  end if;
+  if v_status <> 'draft' then
+    raise exception 'results for match % cannot be edited after draft', v_match_id;
+  end if;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  -- Any score/identity edit invalidates previously previewed derived values.
+  new.placement := null;
+  new.club_points := null;
+  new.tobi := false;
+  return new;
+end;
+$$;
+
+revoke all on function public.guard_match_result_write() from public;
+
+create trigger match_results_guard_write
+before insert or delete or update of match_id, seat, player_id, raw_points
+on public.match_results
+for each row execute function public.guard_match_result_write();
+
+create or replace function public.guard_match_result_derived_write()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if current_setting('azriichi.allow_derived_update', true) is distinct from 'on' then
+    raise exception 'placement, club points, and tobi are database-derived';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.guard_match_result_derived_write() from public;
+
+create trigger match_results_guard_derived_write
+before update of placement, club_points, tobi on public.match_results
+for each row execute function public.guard_match_result_derived_write();
+
+create or replace function public.guard_final_match_metadata()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if old.status <> 'draft' then
+    raise exception 'final or void match metadata cannot be edited';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.guard_final_match_metadata() from public;
+
+create trigger matches_guard_final_metadata
+before update of season_id, ruleset_id, played_at, game_number, table_mode, extra_sticks, include_in_lifetime_rating
+on public.matches
+for each row execute function public.guard_final_match_metadata();
+
+create or replace function public.guard_match_status_transition()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.status <> 'draft' then
+      raise exception 'matches must be inserted as drafts';
+    end if;
+    return new;
+  end if;
+
+  if old.status is distinct from new.status
+     and current_setting('azriichi.allow_match_finalize', true) is distinct from 'on' then
+    raise exception 'match status must be changed through a rating-safe RPC';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.guard_match_status_transition() from public;
+
+create trigger matches_guard_status_transition
+before insert or update of status on public.matches
+for each row execute function public.guard_match_status_transition();
+
+create or replace function public.guard_published_match_delete()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if current_setting('azriichi.allow_match_delete', true) is distinct from 'on' then
+    raise exception 'matches must be deleted with delete_match_and_recompute';
+  end if;
+  return old;
+end;
+$$;
+
+revoke all on function public.guard_published_match_delete() from public;
+
+create trigger matches_guard_published_delete
+before delete on public.matches
+for each row execute function public.guard_published_match_delete();
+
+create table public.adjustments (
   id uuid primary key default gen_random_uuid(),
   season_id uuid not null references public.seasons(id) on delete cascade,
   player_id uuid not null references public.players(id) on delete cascade,
@@ -278,16 +444,16 @@ create table if not exists public.adjustments (
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now()
 );
-create index if not exists adjustments_season_player_idx on public.adjustments (season_id, player_id);
-create index if not exists adjustments_created_by_idx on public.adjustments (created_by);
-create index if not exists adjustments_player_id_idx on public.adjustments (player_id);
+create index adjustments_season_player_idx on public.adjustments (season_id, player_id);
+create index adjustments_created_by_idx on public.adjustments (created_by);
+create index adjustments_player_id_idx on public.adjustments (player_id);
 
 -- 3) Tenhou-like rating (season + lifetime)
 
 -- rating_state:
 -- - is_lifetime=false: per-season rating, season_id required
 -- - is_lifetime=true: lifetime rating, season_id must be NULL
-create table if not exists public.rating_state (
+create table public.rating_state (
   id uuid primary key default gen_random_uuid(),
   is_lifetime boolean not null default false,
   season_id uuid references public.seasons(id) on delete cascade,
@@ -302,15 +468,15 @@ create table if not exists public.rating_state (
 );
 
 -- Uniqueness per scope
-create unique index if not exists rating_state_unique_season
+create unique index rating_state_unique_season
 on public.rating_state (season_id, player_id)
 where is_lifetime = false;
 
-create unique index if not exists rating_state_unique_lifetime
+create unique index rating_state_unique_lifetime
 on public.rating_state (player_id)
 where is_lifetime = true;
 
-create table if not exists public.rating_events (
+create table public.rating_events (
   id uuid primary key default gen_random_uuid(),
   is_lifetime boolean not null default false,
   season_id uuid references public.seasons(id) on delete cascade,
@@ -328,15 +494,15 @@ create table if not exists public.rating_events (
   )
 );
 
-create unique index if not exists rating_events_unique_season
+create unique index rating_events_unique_season
 on public.rating_events (season_id, match_id, player_id)
 where is_lifetime = false;
 
-create unique index if not exists rating_events_unique_lifetime
+create unique index rating_events_unique_lifetime
 on public.rating_events (match_id, player_id)
 where is_lifetime = true;
 
-create index if not exists rating_events_player_idx on public.rating_events (player_id, created_at desc);
+create index rating_events_player_idx on public.rating_events (player_id, created_at desc);
 
 -- 4) Helpers
 
@@ -368,19 +534,7 @@ begin
     return array_to_string(parts, ' ');
   end if;
 
-  -- Fallback for legacy/inconsistent rows.
-  if d is not null then
-    return d;
-  end if;
-  if f is not null and l is not null then
-    return f || ' ' || l;
-  end if;
-  if f is not null then
-    return f;
-  end if;
-  if l is not null then
-    return l;
-  end if;
+  -- Never fall back to a component the player chose to hide.
   return '(unnamed player)';
 end;
 $$;
@@ -426,10 +580,32 @@ as $$
   -- Tenhou-style: if n <= 20, 1 - 0.04*n, floored at 0.2; else 0.2
   select case
     when n is null then 1
-    when n <= 20 then greatest(1 - (0.4::numeric * n::numeric), 0.2)
+    when n <= 20 then greatest(1 - (0.04::numeric * n::numeric), 0.2)
     else 0.2
   end;
 $$;
+
+-- Lifetime R intentionally begins with Spring 2026. Keeping the lookup in one
+-- helper makes finalization and full rebuilds use identical boundaries.
+create or replace function public.lifetime_rating_start_date()
+returns date
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce(
+    (
+      select s.start_date
+      from public.seasons s
+      where lower(trim(s.name)) like 'spring 2026%'
+      order by s.start_date asc, s.id asc
+      limit 1
+    ),
+    date '2026-01-01'
+  );
+$$;
+
+revoke all on function public.lifetime_rating_start_date() from public;
 
 create or replace function public.uma_for_place(r public.rulesets, place smallint)
 returns numeric
@@ -493,9 +669,19 @@ set search_path = public
 as $$
 declare m public.matches;
 begin
-  if not public.is_admin(auth.uid()) then
+  if not public.admin_only() then
     raise exception 'admin only';
   end if;
+
+  lock table public.match_results in share row exclusive mode;
+
+  -- Direct result writes lock child rows before their parent in the write
+  -- trigger. Use the same deterministic order here to avoid lock inversion.
+  perform mr.seat
+  from public.match_results mr
+  where mr.match_id = p_match_id
+  order by public.seat_priority(mr.seat)
+  for update;
 
   select * into m from public.matches where id = p_match_id for update;
   if not found then
@@ -513,6 +699,8 @@ begin
   if (select count(distinct player_id) from public.match_results where match_id = p_match_id) <> 4 then
     raise exception 'match % must have 4 distinct players', p_match_id;
   end if;
+
+  perform set_config('azriichi.allow_derived_update', 'on', true);
 
   -- Placement still uses seat tie-break.
   -- UMA is split across tied rank span by raw_points.
@@ -588,10 +776,26 @@ declare
   m public.matches;
   rec record;
   avg_rate numeric;
+  lifetime_start date;
+  match_season_start date;
+  has_later_final boolean;
+  raw_total bigint;
+  expected_total bigint;
 begin
-  if not public.is_admin(auth.uid()) then
+  if not public.admin_only() then
     raise exception 'admin only';
   end if;
+
+  -- Rating state is global (four players can overlap any two matches), so row
+  -- locks alone cannot prevent lost updates. Serialize every rating mutation.
+  perform pg_advisory_xact_lock(734221, 1);
+  lock table public.match_results in share row exclusive mode;
+
+  perform mr.seat
+  from public.match_results mr
+  where mr.match_id = p_match_id
+  order by public.seat_priority(mr.seat)
+  for update;
 
   select * into m from public.matches where id = p_match_id for update;
   if not found then
@@ -601,8 +805,45 @@ begin
     raise exception 'match % not in draft status', p_match_id;
   end if;
 
-  -- Derived fields
+  select s.start_date, public.lifetime_rating_start_date()
+  into match_season_start, lifetime_start
+  from public.seasons s
+  where s.id = m.season_id;
+
+  -- Validates exactly four distinct seats/players before any rating mutation.
   perform public.recompute_match_derived(p_match_id);
+
+  select coalesce(sum(mr.raw_points), 0), (r.start_points::bigint * 4)
+  into raw_total, expected_total
+  from public.rulesets r
+  left join public.match_results mr on mr.match_id = p_match_id
+  where r.id = m.ruleset_id
+  group by r.start_points;
+
+  if raw_total + m.extra_sticks::bigint <> expected_total then
+    raise exception
+      'match % point total is unbalanced: raw total % + extra points % must equal %',
+      p_match_id, raw_total, m.extra_sticks, expected_total;
+  end if;
+
+  select exists (
+    select 1
+    from public.matches later
+    where later.status = 'final'
+      and (later.played_at, later.id) > (m.played_at, m.id)
+  )
+  into has_later_final;
+
+  -- A historical insertion changes every downstream average. Publish it, then
+  -- rebuild deterministically instead of applying it to today's state.
+  if has_later_final then
+    perform set_config('azriichi.allow_match_finalize', 'on', true);
+    update public.matches
+    set status = 'final', include_in_lifetime_rating = coalesce(p_update_lifetime, false)
+    where id = p_match_id;
+    perform public.recompute_all_ratings();
+    return;
+  end if;
 
   -- ===== SEASON rating =====
   insert into public.rating_state (is_lifetime, season_id, player_id, rate, games_played)
@@ -664,7 +905,9 @@ begin
   end loop;
 
   -- ===== LIFETIME rating (optional) =====
-  if p_update_lifetime then
+  if p_update_lifetime
+     and match_season_start is not null
+     and match_season_start >= lifetime_start then
     insert into public.rating_state (is_lifetime, season_id, player_id)
     select true, null, mr.player_id
     from public.match_results mr
@@ -708,7 +951,10 @@ begin
     end loop;
   end if;
 
-  update public.matches set status = 'final' where id = p_match_id;
+  perform set_config('azriichi.allow_match_finalize', 'on', true);
+  update public.matches
+  set status = 'final', include_in_lifetime_rating = coalesce(p_update_lifetime, false)
+  where id = p_match_id;
 end;
 $$;
 
@@ -729,9 +975,12 @@ declare
   avg_rate numeric;
   season_start date;
 begin
-  if not public.is_admin(auth.uid()) then
+  if not public.admin_only() then
     raise exception 'admin only';
   end if;
+
+  perform pg_advisory_xact_lock(734221, 1);
+  lock table public.match_results in share row exclusive mode;
 
   select s.start_date into season_start
   from public.seasons s
@@ -815,7 +1064,7 @@ end;
 $$;
 
 revoke all on function public.recompute_season_ratings(uuid) from public;
-grant execute on function public.recompute_season_ratings(uuid) to authenticated;
+revoke execute on function public.recompute_season_ratings(uuid) from anon, authenticated;
 
 -- Recompute lifetime ratings from scratch (across all final matches)
 create or replace function public.recompute_lifetime_ratings()
@@ -828,19 +1077,26 @@ declare
   mid uuid;
   rec record;
   avg_rate numeric;
+  lifetime_start date;
 begin
-  if not public.is_admin(auth.uid()) then
+  if not public.admin_only() then
     raise exception 'admin only';
   end if;
+
+  perform pg_advisory_xact_lock(734221, 1);
+  lifetime_start := public.lifetime_rating_start_date();
 
   delete from public.rating_events where is_lifetime = true;
   delete from public.rating_state  where is_lifetime = true;
 
   for mid in
-    select id
-    from public.matches
-    where status = 'final'
-    order by played_at asc, id asc
+    select m.id
+    from public.matches m
+    join public.seasons s on s.id = m.season_id
+    where m.status = 'final'
+      and m.include_in_lifetime_rating
+      and s.start_date >= lifetime_start
+    order by m.played_at asc, m.id asc
   loop
     perform public.recompute_match_derived(mid);
 
@@ -890,7 +1146,183 @@ end;
 $$;
 
 revoke all on function public.recompute_lifetime_ratings() from public;
-grant execute on function public.recompute_lifetime_ratings() to authenticated;
+revoke execute on function public.recompute_lifetime_ratings() from anon, authenticated;
+
+-- Rebuild every season in chronological order so the carried starting R for
+-- later seasons cannot remain stale, then rebuild the lifetime scope using the
+-- same match ordering and start boundary.
+create or replace function public.recompute_all_ratings()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  sid uuid;
+begin
+  if not public.admin_only() then
+    raise exception 'admin only';
+  end if;
+
+  perform pg_advisory_xact_lock(734221, 1);
+  lock table public.match_results in share row exclusive mode;
+
+  delete from public.rating_events where is_lifetime = false;
+  delete from public.rating_state where is_lifetime = false;
+
+  for sid in
+    select s.id
+    from public.seasons s
+    order by s.start_date asc, s.end_date asc, s.id asc
+  loop
+    perform public.recompute_season_ratings(sid);
+  end loop;
+
+  perform public.recompute_lifetime_ratings();
+end;
+$$;
+
+revoke all on function public.recompute_all_ratings() from public;
+grant execute on function public.recompute_all_ratings() to authenticated;
+
+-- Create-and-activate is one transaction, so a failed insert cannot leave the
+-- deployment with no active season.
+create or replace function public.create_season(
+  p_name text,
+  p_start_date date,
+  p_end_date date,
+  p_is_active boolean default false
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if not public.admin_only() then
+    raise exception 'admin only';
+  end if;
+
+  if nullif(trim(p_name), '') is null then
+    raise exception 'season name is required';
+  end if;
+  if p_start_date is null or p_end_date is null or p_start_date > p_end_date then
+    raise exception 'season date range is invalid';
+  end if;
+
+  perform pg_advisory_xact_lock(734221, 2);
+
+  if coalesce(p_is_active, false) then
+    update public.seasons set is_active = false where is_active;
+  end if;
+
+  insert into public.seasons (name, start_date, end_date, is_active)
+  values (trim(p_name), p_start_date, p_end_date, coalesce(p_is_active, false))
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.create_season(text, date, date, boolean) from public;
+grant execute on function public.create_season(text, date, date, boolean) to authenticated;
+
+-- Delete the match, match-scoped CHOMBO adjustments, and all affected rating
+-- state atomically.
+create or replace function public.delete_match_and_recompute(p_match_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  m public.matches;
+  needs_rebuild boolean;
+begin
+  if not public.admin_only() then
+    raise exception 'admin only';
+  end if;
+
+  perform pg_advisory_xact_lock(734221, 1);
+  lock table public.match_results in share row exclusive mode;
+
+  perform mr.seat
+  from public.match_results mr
+  where mr.match_id = p_match_id
+  order by public.seat_priority(mr.seat)
+  for update;
+
+  select * into m
+  from public.matches
+  where id = p_match_id
+  for update;
+
+  if not found then
+    raise exception 'match % not found', p_match_id;
+  end if;
+
+  needs_rebuild := m.status = 'final' or exists (
+    select 1 from public.rating_events re where re.match_id = p_match_id
+  );
+
+  delete from public.adjustments a
+  where a.season_id = m.season_id
+    and a.reason like ('CHOMBO:' || p_match_id::text || ':%');
+
+  perform set_config('azriichi.allow_match_delete', 'on', true);
+  delete from public.matches where id = p_match_id;
+
+  if needs_rebuild then
+    perform public.recompute_all_ratings();
+  end if;
+end;
+$$;
+
+revoke all on function public.delete_match_and_recompute(uuid) from public;
+grant execute on function public.delete_match_and_recompute(uuid) to authenticated;
+
+-- Atomically unlink/relink both unique sides of an account-to-player mapping.
+create or replace function public.set_player_account_link(
+  p_player_id uuid,
+  p_auth_user_id uuid default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.admin_only() then
+    raise exception 'admin only';
+  end if;
+
+  perform pg_advisory_xact_lock(734221, 3);
+
+  if not exists (select 1 from public.players p where p.id = p_player_id) then
+    raise exception 'player % not found', p_player_id;
+  end if;
+
+  if p_auth_user_id is null then
+    delete from public.player_accounts pa where pa.player_id = p_player_id;
+    return;
+  end if;
+
+  if not exists (select 1 from public.profiles p where p.id = p_auth_user_id) then
+    raise exception 'auth profile % not found', p_auth_user_id;
+  end if;
+
+  delete from public.player_accounts pa
+  where pa.player_id = p_player_id or pa.auth_user_id = p_auth_user_id;
+
+  insert into public.player_accounts (auth_user_id, player_id)
+  values (p_auth_user_id, p_player_id);
+end;
+$$;
+
+revoke all on function public.set_player_account_link(uuid, uuid) from public;
+grant execute on function public.set_player_account_link(uuid, uuid) to authenticated;
 
 -- 6) SECURITY: RLS + GRANTS
 
@@ -904,39 +1336,34 @@ alter table public.adjustments enable row level security;
 alter table public.rating_state enable row level security;
 alter table public.rating_events enable row level security;
 
--- profiles: user can read/update self; admin can read/update all
-drop policy if exists profiles_select_self on public.profiles;
+-- profiles: users can read their own profile; only an existing admin can
+-- update profile rows (especially is_admin).
 create policy profiles_select_self
 on public.profiles
 for select
 to authenticated
 using ((select auth.uid()) = id or public.is_admin((select auth.uid())));
 
-drop policy if exists profiles_update_self on public.profiles;
-create policy profiles_update_self
+create policy profiles_admin_update
 on public.profiles
 for update
 to authenticated
-using ((select auth.uid()) = id or public.is_admin((select auth.uid())))
-with check ((select auth.uid()) = id or public.is_admin((select auth.uid())));
+using (public.admin_only())
+with check (public.admin_only());
 
 -- player_accounts: user can see self mapping; admin can see/write all
-drop policy if exists player_accounts_select on public.player_accounts;
 create policy player_accounts_select
 on public.player_accounts
 for select
 to authenticated
 using ((select auth.uid()) = auth_user_id or public.is_admin((select auth.uid())));
 
-drop policy if exists player_accounts_admin_write on public.player_accounts;
-drop policy if exists player_accounts_admin_insert on public.player_accounts;
 create policy player_accounts_admin_insert
 on public.player_accounts
 for insert
 to authenticated
 with check (public.admin_only());
 
-drop policy if exists player_accounts_admin_update on public.player_accounts;
 create policy player_accounts_admin_update
 on public.player_accounts
 for update
@@ -944,7 +1371,6 @@ to authenticated
 using (public.admin_only())
 with check (public.admin_only());
 
-drop policy if exists player_accounts_admin_delete on public.player_accounts;
 create policy player_accounts_admin_delete
 on public.player_accounts
 for delete
@@ -1040,22 +1466,48 @@ $$;
 revoke all on function public.update_my_player_profile(text, text, text, boolean, boolean, boolean, text, text) from public;
 grant execute on function public.update_my_player_profile(text, text, text, boolean, boolean, boolean, text, text) to authenticated;
 
--- public readable tables
-drop policy if exists seasons_public_read on public.seasons;
+-- Safe public player projection. The owner executes the view so callers never
+-- need base-table access, and private name components are physically absent
+-- (NULL) from the result rather than relying on application formatting.
+create or replace view public.v_public_players
+with (security_invoker = false, security_barrier = true)
+as
+select
+  p.id,
+  case when p.show_display_name then p.display_name end as display_name,
+  case when p.show_real_first_name then p.real_first_name end as real_first_name,
+  case when p.show_real_last_name then p.real_last_name end as real_last_name,
+  p.show_display_name,
+  p.show_real_first_name,
+  p.show_real_last_name,
+  public.player_public_name(p.*) as public_name,
+  p.profile_message_md,
+  p.profile_media_url,
+  p.is_active,
+  p.created_at
+from public.players p;
+
+-- Public tables/projections
 create policy seasons_public_read
 on public.seasons
 for select
 to anon, authenticated
 using (true);
 
-drop policy if exists players_public_read on public.players;
-create policy players_public_read
+create policy players_private_read
 on public.players
 for select
-to anon, authenticated
-using (true);
+to authenticated
+using (
+  public.admin_only()
+  or exists (
+    select 1
+    from public.player_accounts pa
+    where pa.auth_user_id = (select auth.uid())
+      and pa.player_id = players.id
+  )
+);
 
-drop policy if exists rulesets_public_read on public.rulesets;
 create policy rulesets_public_read
 on public.rulesets
 for select
@@ -1063,14 +1515,12 @@ to anon, authenticated
 using (true);
 
 -- hide drafts from public
-drop policy if exists matches_public_read on public.matches;
 create policy matches_public_read
 on public.matches
 for select
 to anon, authenticated
 using (status = 'final');
 
-drop policy if exists results_public_read on public.match_results;
 create policy results_public_read
 on public.match_results
 for select
@@ -1079,21 +1529,18 @@ using (
   exists (select 1 from public.matches m where m.id = match_id and m.status = 'final')
 );
 
-drop policy if exists adjustments_public_read on public.adjustments;
 create policy adjustments_public_read
 on public.adjustments
 for select
 to anon, authenticated
 using (true);
 
-drop policy if exists rating_state_public_read on public.rating_state;
 create policy rating_state_public_read
 on public.rating_state
 for select
 to anon, authenticated
 using (true);
 
-drop policy if exists rating_events_public_read on public.rating_events;
 create policy rating_events_public_read
 on public.rating_events
 for select
@@ -1101,153 +1548,106 @@ to anon, authenticated
 using (true);
 
 -- admin-only write policies
-create or replace function public.admin_only()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select public.is_admin((select auth.uid()));
-$$;
-
-revoke all on function public.admin_only() from public;
-grant execute on function public.admin_only() to authenticated;
-
-drop policy if exists matches_admin_select on public.matches;
 create policy matches_admin_select on public.matches
 for select to authenticated
 using (public.admin_only());
 
-drop policy if exists match_results_admin_select on public.match_results;
 create policy match_results_admin_select on public.match_results
 for select to authenticated
 using (public.admin_only());
 
-drop policy if exists seasons_admin_write on public.seasons;
-drop policy if exists seasons_admin_insert on public.seasons;
 create policy seasons_admin_insert on public.seasons
 for insert to authenticated
 with check (public.admin_only());
 
-drop policy if exists seasons_admin_update on public.seasons;
 create policy seasons_admin_update on public.seasons
 for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
-drop policy if exists seasons_admin_delete on public.seasons;
 create policy seasons_admin_delete on public.seasons
 for delete to authenticated
 using (public.admin_only());
 
-drop policy if exists players_admin_write on public.players;
-drop policy if exists players_admin_insert on public.players;
 create policy players_admin_insert on public.players
 for insert to authenticated
 with check (public.admin_only());
 
-drop policy if exists players_admin_update on public.players;
 create policy players_admin_update on public.players
 for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
-drop policy if exists players_admin_delete on public.players;
 create policy players_admin_delete on public.players
 for delete to authenticated
 using (public.admin_only());
 
-drop policy if exists rulesets_admin_write on public.rulesets;
-drop policy if exists rulesets_admin_insert on public.rulesets;
 create policy rulesets_admin_insert on public.rulesets
 for insert to authenticated
 with check (public.admin_only());
 
-drop policy if exists rulesets_admin_update on public.rulesets;
 create policy rulesets_admin_update on public.rulesets
 for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
-drop policy if exists rulesets_admin_delete on public.rulesets;
 create policy rulesets_admin_delete on public.rulesets
 for delete to authenticated
 using (public.admin_only());
 
-drop policy if exists matches_admin_write on public.matches;
-drop policy if exists matches_admin_insert on public.matches;
 create policy matches_admin_insert on public.matches
 for insert to authenticated
 with check (public.admin_only());
 
-drop policy if exists matches_admin_update on public.matches;
 create policy matches_admin_update on public.matches
 for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
-drop policy if exists matches_admin_delete on public.matches;
 create policy matches_admin_delete on public.matches
 for delete to authenticated
 using (public.admin_only());
 
-drop policy if exists match_results_admin_write on public.match_results;
-drop policy if exists match_results_admin_insert on public.match_results;
 create policy match_results_admin_insert on public.match_results
 for insert to authenticated
 with check (public.admin_only());
 
-drop policy if exists match_results_admin_update on public.match_results;
 create policy match_results_admin_update on public.match_results
 for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
-drop policy if exists match_results_admin_delete on public.match_results;
 create policy match_results_admin_delete on public.match_results
 for delete to authenticated
 using (public.admin_only());
 
-drop policy if exists adjustments_admin_write on public.adjustments;
-drop policy if exists adjustments_admin_insert on public.adjustments;
 create policy adjustments_admin_insert on public.adjustments
 for insert to authenticated
 with check (public.admin_only());
 
-drop policy if exists adjustments_admin_update on public.adjustments;
 create policy adjustments_admin_update on public.adjustments
 for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
-drop policy if exists adjustments_admin_delete on public.adjustments;
 create policy adjustments_admin_delete on public.adjustments
 for delete to authenticated
 using (public.admin_only());
 
-drop policy if exists rating_state_admin_write on public.rating_state;
-drop policy if exists rating_state_admin_insert on public.rating_state;
 create policy rating_state_admin_insert on public.rating_state
 for insert to authenticated
 with check (public.admin_only());
 
-drop policy if exists rating_state_admin_update on public.rating_state;
 create policy rating_state_admin_update on public.rating_state
 for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
-drop policy if exists rating_state_admin_delete on public.rating_state;
 create policy rating_state_admin_delete on public.rating_state
 for delete to authenticated
 using (public.admin_only());
 
-drop policy if exists rating_events_admin_write on public.rating_events;
-drop policy if exists rating_events_admin_insert on public.rating_events;
 create policy rating_events_admin_insert on public.rating_events
 for insert to authenticated
 with check (public.admin_only());
 
-drop policy if exists rating_events_admin_update on public.rating_events;
 create policy rating_events_admin_update on public.rating_events
 for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
-drop policy if exists rating_events_admin_delete on public.rating_events;
 create policy rating_events_admin_delete on public.rating_events
 for delete to authenticated
 using (public.admin_only());
@@ -1255,16 +1655,21 @@ using (public.admin_only());
 -- grants (needed in addition to RLS)
 grant usage on schema public to anon, authenticated;
 
-grant select on public.seasons, public.players, public.rulesets to anon, authenticated;
+grant select on public.seasons, public.rulesets to anon, authenticated;
+revoke select on public.players from public, anon;
+grant select on public.players to authenticated;
+grant select on public.v_public_players to anon, authenticated;
 grant select on public.matches, public.match_results, public.adjustments to anon, authenticated;
 grant select on public.rating_state, public.rating_events to anon, authenticated;
 
 grant insert, update, delete on public.seasons, public.players, public.rulesets to authenticated;
 grant insert, update, delete on public.matches, public.match_results, public.adjustments to authenticated;
 grant insert, update, delete on public.rating_state, public.rating_events to authenticated;
+grant select on public.player_accounts to authenticated;
 grant insert, update, delete on public.player_accounts to authenticated;
 
-grant select, insert, update, delete on public.profiles to authenticated;
+revoke insert, delete on public.profiles from authenticated;
+grant select, update on public.profiles to authenticated;
 
 -- 7) SECURITY INVOKER views (public analytics)
 
@@ -1282,14 +1687,14 @@ select
   m.table_label,
   r.seat,
   r.player_id,
-  public.player_public_name(p.*) as display_name,
+  p.public_name as display_name,
   r.raw_points,
   r.club_points,
   r.placement,
   r.tobi
 from public.matches m
 join public.match_results r on r.match_id = m.id
-join public.players p on p.id = r.player_id
+join public.v_public_players p on p.id = r.player_id
 where m.status = 'final';
 
 -- Standings (season cumulative + rank; includes adjustments)
@@ -1441,12 +1846,12 @@ select
   rs.is_lifetime,
   rs.season_id,
   rs.player_id,
-  public.player_public_name(p.*) as display_name,
+  p.public_name as display_name,
   rs.rate,
   rs.games_played,
   rs.updated_at
 from public.rating_state rs
-join public.players p on p.id = rs.player_id;
+join public.v_public_players p on p.id = rs.player_id;
 
 -- Rating history (season + lifetime)
 create or replace view public.v_rating_history
@@ -1456,7 +1861,7 @@ select
   re.is_lifetime,
   re.season_id,
   re.player_id,
-  public.player_public_name(p.*) as display_name,
+  p.public_name as display_name,
   m.played_at,
   re.match_id,
   re.placement,
@@ -1466,7 +1871,7 @@ select
   re.games_played_before
 from public.rating_events re
 join public.matches m on m.id = re.match_id
-join public.players p on p.id = re.player_id
+join public.v_public_players p on p.id = re.player_id
 where m.status = 'final';
 
 grant select on public.v_final_results to anon, authenticated;
@@ -1479,6 +1884,13 @@ grant select on public.v_current_ratings to anon, authenticated;
 grant select on public.v_rating_history to anon, authenticated;
 
 -- 8) Seed one default ruleset (optional)
-insert into public.rulesets (name)
-values ('Default 25/25, Uma 30/10/-10/-30')
-on conflict (name) do nothing;
+insert into public.rulesets (
+  name, start_points, return_points, point_divisor,
+  uma_1, uma_2, uma_3, uma_4,
+  oka_1, oka_2, oka_3, oka_4
+)
+values (
+  'Default 25/25, Uma 30/10/-10/-30', 25000, 25000, 1000,
+  30, 10, -10, -30,
+  0, 0, 0, 0
+);
