@@ -12,8 +12,9 @@ export const load: PageServerLoad = async ({ locals }) => {
   const [seasonsRes, rulesRes, recentRes] = await Promise.all([
     locals.supabase
       .from('seasons')
-      .select('id, name, is_active, start_date')
-      .order('start_date', { ascending: false }),
+      .select('id, name, is_active, is_casual, start_date, end_date')
+      .order('is_casual', { ascending: false })
+      .order('start_date', { ascending: false, nullsFirst: false }),
     locals.supabase.from('rulesets').select('id, name').order('name', { ascending: true }),
     locals.supabase
       .from('matches')
@@ -22,15 +23,31 @@ export const load: PageServerLoad = async ({ locals }) => {
       .limit(30)
   ]);
 
-  const activeSeason = seasonsRes.data?.find((s) => s.is_active)?.id ?? seasonsRes.data?.[0]?.id ?? null;
+  const seasons = seasonsRes.error ? [] : (seasonsRes.data ?? []);
+  const activeSeason =
+    seasons.find((s) => s.is_active && !s.is_casual)?.id ??
+    seasons.find((s) => !s.is_casual)?.id ??
+    seasons[0]?.id ??
+    null;
   const defaultRules = rulesRes.data?.[0]?.id ?? null;
+  const seasonById = new Map(seasons.map((season) => [season.id, season]));
+  const recentMatches = recentRes.error
+    ? []
+    : (recentRes.data ?? []).map((match) => {
+        const season = seasonById.get(match.season_id);
+        return {
+          ...match,
+          season_name: season?.name ?? 'Unknown season',
+          is_casual: season?.is_casual === true
+        };
+      });
 
   return {
-    seasons: seasonsRes.error ? [] : (seasonsRes.data ?? []),
+    seasons,
     rulesets: rulesRes.error ? [] : (rulesRes.data ?? []),
     activeSeason,
     defaultRules,
-    recentMatches: recentRes.error ? [] : (recentRes.data ?? [])
+    recentMatches
   };
 };
 
@@ -65,6 +82,14 @@ export const actions: Actions = {
     const notes = String(f.get('notes') ?? '').trim();
 
     if (!season_id || !ruleset_id || !played_at_input) return fail(400, { message: 'Missing fields.' });
+
+    const seasonRes = await locals.supabase
+      .from('seasons')
+      .select('id, is_casual')
+      .eq('id', season_id)
+      .maybeSingle();
+    if (seasonRes.error || !seasonRes.data) return fail(400, { message: 'Season not found.' });
+    const isCasual = seasonRes.data.is_casual === true;
 
     const played_at = parseArizonaLocalDatetimeToUtcIso(played_at_input);
     const dayBounds = parseArizonaDayBoundsFromDatetimeLocal(played_at_input);
@@ -113,6 +138,7 @@ export const actions: Actions = {
         played_at,
         table_label,
         notes: notes || null,
+        include_in_lifetime_rating: !isCasual,
         created_by: locals.userId
       })
       .select('id')

@@ -45,7 +45,11 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
           .eq('id', player_id)
           .maybeSingle()
       : Promise.resolve(null),
-    locals.supabase.from('seasons').select('id, name, start_date').order('start_date', { ascending: false }),
+    locals.supabase
+      .from('seasons')
+      .select('id, name, start_date, is_casual')
+      .order('is_casual', { ascending: false })
+      .order('start_date', { ascending: false, nullsFirst: false }),
     getRatingStartDate(locals.supabase),
     seasonParam ? Promise.resolve(null) : getActiveSeasonId(locals.supabase)
   ]);
@@ -75,7 +79,10 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
   const seasonId = seasonParam || activeSeasonId || null;
   const selectedSeason = (seasonsRes.data ?? []).find((s) => s.id === seasonId) ?? null;
-  const isRatingSeason = selectedSeason ? String(selectedSeason.start_date ?? '').trim() >= ratingStartDate : false;
+  const isCasualSeason = selectedSeason?.is_casual === true;
+  const isRatingSeason = selectedSeason
+    ? !isCasualSeason && String(selectedSeason.start_date ?? '').trim() >= ratingStartDate
+    : false;
 
   const lifetimeRatings = await getLifetimeRatingSnapshot(locals.supabase, ratingStartDate);
 
@@ -93,12 +100,13 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   let seasonEligibleRank: number | null = null;
   let matchHistory: any[] = [];
   let pointHistory: any[] = [];
+  let placementHistory: any[] = [];
   let ratingHistory: any[] = [];
   let bestRawMatch: any = null;
   let worstRawMatch: any = null;
 
   if (seasonId) {
-    const [statsRes, standingsRes, seasonStandingsRes, mhRes, phRes, bestRawRes, worstRawRes] = await Promise.all([
+    const [statsRes, standingsRes, seasonStandingsRes, mhRes, phRes, placementRes, bestRawRes, worstRawRes] = await Promise.all([
       locals.supabase
         .from('v_season_player_stats')
         .select('*')
@@ -130,6 +138,14 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
         .eq('season_id', seasonId)
         .eq('player_id', player_id)
         .order('played_at', { ascending: false })
+        .limit(200),
+      locals.supabase
+        .from('v_player_placement_history')
+        .select('*')
+        .eq('season_id', seasonId)
+        .eq('player_id', player_id)
+        .order('played_at', { ascending: false })
+        .order('match_id', { ascending: false })
         .limit(200),
       locals.supabase
         .from('v_player_match_history')
@@ -176,15 +192,16 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
     matchHistory = mhRes.error ? [] : (mhRes.data ?? []);
     pointHistory = phRes.error ? [] : [...(phRes.data ?? [])].reverse();
+    placementHistory = placementRes.error ? [] : [...(placementRes.data ?? [])].reverse();
 
     const seasonMatchIdsForRating = Array.from(
       new Set(
-        [...pointHistory, ...matchHistory]
+        [...pointHistory, ...placementHistory, ...matchHistory]
           .map((row) => String(row?.match_id ?? '').trim())
           .filter((id) => id.length > 0)
       )
     );
-    if (isRatingSeason && seasonMatchIdsForRating.length > 0) {
+    if (!isCasualSeason && isRatingSeason && seasonMatchIdsForRating.length > 0) {
       const rhRes = await locals.supabase
         .from('v_rating_history')
         .select('*')
@@ -221,7 +238,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
     const historyMatchIds = Array.from(
       new Set(
-        [...pointHistory, ...ratingHistory]
+        [...pointHistory, ...placementHistory, ...ratingHistory]
           .map((m) => String(m?.match_id ?? '').trim())
           .filter((id) => id.length > 0)
       )
@@ -260,6 +277,14 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       };
     });
 
+    placementHistory = placementHistory.map((row) => {
+      const match_id = String(row?.match_id ?? '');
+      return {
+        ...row,
+        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8)
+      };
+    });
+
     ratingHistory = ratingHistory.map((row) => {
       const match_id = String(row?.match_id ?? '');
       return {
@@ -276,6 +301,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     canEditDisplay,
     seasons: seasonsRes.error ? [] : (seasonsRes.data ?? []),
     seasonId,
+    isCasualSeason,
     currentRating,
     currentRatingRank,
     currentRatingRankTotal,
@@ -284,6 +310,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     seasonEligibleRank,
     matchHistory,
     pointHistory,
+    placementHistory,
     ratingHistory,
     bestRawMatch,
     worstRawMatch

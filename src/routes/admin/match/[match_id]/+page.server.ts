@@ -22,6 +22,13 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   if (matchRes.error || !matchRes.data) throw redirect(303, '/admin');
 
+  const seasonRes = await locals.supabase
+    .from('seasons')
+    .select('id, name, start_date, end_date, is_casual')
+    .eq('id', matchRes.data.season_id)
+    .maybeSingle();
+  if (seasonRes.error || !seasonRes.data) throw redirect(303, '/admin');
+
   const penaltyReasonPrefix = `${CHOMBO_PREFIX}:${match_id}:%`;
   const [playersRes, resultsRes, rulesetRes, lifetimeRatingsRes, penaltiesRes] = await Promise.all([
     locals.supabase
@@ -93,6 +100,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   return {
     match: matchRes.data,
+    season: seasonRes.data,
     players,
     results: resultsRes.error ? [] : (resultsRes.data ?? []),
     ruleset: rulesetRes.error ? null : rulesetRes.data,
@@ -123,7 +131,7 @@ async function validateDraftResults(
 ) {
   const matchRes = await locals.supabase
     .from('matches')
-    .select('id, status, ruleset_id, extra_sticks')
+    .select('id, season_id, status, ruleset_id, extra_sticks')
     .eq('id', match_id)
     .maybeSingle();
 
@@ -154,7 +162,7 @@ async function validateDraftResults(
     return { ok: false as const, status: 400, message: 'Players must be distinct.' };
   }
 
-  if (!requireBalanced) return { ok: true as const, rows };
+  if (!requireBalanced) return { ok: true as const, rows, season_id: matchRes.data.season_id };
 
   const rulesetRes = await locals.supabase
     .from('rulesets')
@@ -179,7 +187,7 @@ async function validateDraftResults(
     };
   }
 
-  return { ok: true as const, rows };
+  return { ok: true as const, rows, season_id: matchRes.data.season_id };
 }
 export const actions: Actions = {
   deleteGame: async ({ locals, params }) => {
@@ -390,7 +398,17 @@ export const actions: Actions = {
       .upsert(validated.rows, { onConflict: 'match_id,seat' });
     if (saveRes.error) return fail(400, { message: saveRes.error.message });
 
-    const { error } = await locals.supabase.rpc('finalize_match', { p_match_id: match_id, p_update_lifetime: true });
+    const seasonRes = await locals.supabase
+      .from('seasons')
+      .select('is_casual')
+      .eq('id', validated.season_id)
+      .maybeSingle();
+    if (seasonRes.error || !seasonRes.data) return fail(400, { message: 'Season not found.' });
+
+    const { error } = await locals.supabase.rpc('finalize_match', {
+      p_match_id: match_id,
+      p_update_lifetime: !seasonRes.data.is_casual
+    });
     if (error) return fail(400, { message: error.message });
 
     throw redirect(303, `/admin/match/${match_id}`);

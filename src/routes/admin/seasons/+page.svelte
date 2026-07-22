@@ -27,7 +27,8 @@
 {/if}
 
 <div class="card" style="margin-bottom:12px;">
-  <h3 style="margin:0 0 10px;">Create season</h3>
+  <h3 style="margin:0 0 10px;">Create regular season</h3>
+  <div class="muted" style="margin-bottom:10px;">Casual is a permanent, date-free category and is created automatically.</div>
   <form method="POST" action="?/create" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
     <label style="min-width:240px;">
       <div class="muted">Name</div>
@@ -63,7 +64,7 @@
       <div class="muted">Season</div>
       <select name="season_id" bind:value={importSeasonId} required style="min-width:240px;">
         {#each data.seasons as s}
-          <option value={s.id}>{s.name}{s.is_active ? ' (active)' : ''}</option>
+          <option value={s.id}>{s.name}{s.is_casual ? ' (no time limit)' : ''}{s.is_active ? ' (active)' : ''}</option>
         {/each}
       </select>
     </label>
@@ -97,8 +98,8 @@
       <thead>
         <tr>
           <th>Name</th>
-          <th style="width:160px;">Start</th>
-          <th style="width:160px;">End</th>
+          <th style="width:120px;">Type</th>
+          <th style="width:250px;">Period</th>
           <th style="width:120px;">Active</th>
         </tr>
       </thead>
@@ -106,8 +107,8 @@
         {#each data.seasons as s}
           <tr>
             <td>{s.name}</td>
-            <td>{s.start_date}</td>
-            <td>{s.end_date}</td>
+            <td>{s.is_casual ? 'Casual' : 'Regular'}</td>
+            <td>{s.is_casual ? 'No time limit' : `${s.start_date} → ${s.end_date}`}</td>
             <td>{s.is_active ? 'Yes' : ''}</td>
           </tr>
         {/each}

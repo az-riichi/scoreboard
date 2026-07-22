@@ -8,6 +8,8 @@
   type Seat = 'E' | 'S' | 'W' | 'N';
 
   const match = data.match;
+  const season = data.season;
+  const isCasual = season?.is_casual === true;
   const bySeat: Record<Seat, any> = { E: null, S: null, W: null, N: null };
   for (const r of data.results ?? []) {
     const seat = r?.seat as Seat;
@@ -230,7 +232,8 @@
   })();
 
   $: selectedPlayerIds = enteredRows.map((r) => r.player_id).filter(Boolean);
-  $: canProjectR = selectedPlayerIds.length === 4 && new Set(selectedPlayerIds).size === 4;
+  $: hasFourDistinctPlayers = selectedPlayerIds.length === 4 && new Set(selectedPlayerIds).size === 4;
+  $: canProjectR = !isCasual && hasFourDistinctPlayers;
   $: avgRate = canProjectR
     ? enteredRows.reduce((sum, row) => sum + ratingState(row.player_id).rate, 0) / enteredRows.length
     : null;
@@ -365,6 +368,7 @@
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
     <div>
       <div style="font-size:1.1rem; font-weight:650;">Edit match</div>
+      <div class="muted">{season?.name ?? 'Unknown season'}{isCasual ? ' · Casual' : ''}</div>
       <div class="muted">{fmtDateTime(match.played_at)} — {match.table_label ?? match.id.slice(0,8)} — {match.status}</div>
       <div class="muted">Tbl: {match.table_mode ?? '—'} | Game: {match.game_number ?? '—'} | Ex: {match.extra_sticks ?? 0}</div>
       <div style="font-size:0.8rem; color:#888;">UUID: <code>{match.id}</code></div>
@@ -394,6 +398,12 @@
     </div>
   </div>
 </div>
+
+{#if isCasual}
+  <div class="card alert alert-warning" style="margin-bottom:12px;">
+    Casual matches still calculate scores and placements, but do not change Season Rating (SR) or lifetime Rating (R).
+  </div>
+{/if}
 
 {#if form?.message}
   <div class="card alert alert-success">
@@ -434,7 +444,7 @@
     <div class="muted">Current auto values: Tbl {match.table_mode ?? table_mode} | Game {match.game_number ?? '—'} | Label {match.table_label ?? '—'}</div>
 
     {#if isFinal}
-      <div class="muted">Finalized match metadata is locked to preserve chronological rating history.</div>
+      <div class="muted">Finalized match metadata is locked.</div>
     {:else}
       <div>
         <button class="btn" type="submit">Save metadata</button>
@@ -495,7 +505,7 @@
                     type="submit"
                     formmethod="POST"
                     formaction="?/finalize"
-                    disabled={!totalCheckOk || !canProjectR}
+                    disabled={!totalCheckOk || !hasFourDistinctPlayers}
                   >
                     Finalize
                   </button>
@@ -521,8 +531,10 @@
               <th style="width:120px;">Raw</th>
               <th style="width:90px;">Place</th>
               <th style="width:130px;">SP Δ</th>
-              <th style="width:120px;">ΔR</th>
-              <th style="width:130px;">New R</th>
+              {#if !isCasual}
+                <th style="width:120px;">ΔR</th>
+                <th style="width:130px;">New R</th>
+              {/if}
             </tr>
           </thead>
           <tbody>
@@ -538,16 +550,20 @@
                 <td>{row.raw_points}</td>
                 <td>{row.display_placement ?? '—'}</td>
                 <td>{row.expected_club == null ? '—' : fmtNum(row.expected_club, 2)}</td>
-                <td>{row.expected_r_delta == null ? '—' : fmtNum(row.expected_r_delta, 2)}</td>
-                <td>{row.expected_new_rate == null ? '—' : fmtNum(row.expected_new_rate, 2)}</td>
+                {#if !isCasual}
+                  <td>{row.expected_r_delta == null ? '—' : fmtNum(row.expected_r_delta, 2)}</td>
+                  <td>{row.expected_new_rate == null ? '—' : fmtNum(row.expected_new_rate, 2)}</td>
+                {/if}
               </tr>
             {/each}
           </tbody>
         </table>
       </div>
 
-      {#if !canProjectR}
-        <div class="muted" style="margin-top:8px;">Pick 4 distinct players to preview SP and R changes</div>
+      {#if !hasFourDistinctPlayers}
+        <div class="muted" style="margin-top:8px;">
+          {isCasual ? 'Pick 4 distinct players to preview SP and placements' : 'Pick 4 distinct players to preview SP and R changes'}
+        </div>
       {/if}
     </div>
   </div>

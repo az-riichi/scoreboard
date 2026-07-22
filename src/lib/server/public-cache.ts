@@ -80,6 +80,7 @@ export async function getActiveSeasonId(supabase: ServerSupabase): Promise<strin
       .from('seasons')
       .select('id')
       .eq('is_active', true)
+      .eq('is_casual', false)
       .order('start_date', { ascending: false })
       .limit(1);
 
@@ -92,6 +93,7 @@ export async function getRatingStartDate(supabase: ServerSupabase): Promise<stri
     const ratingStartSeasonRes = await supabase
       .from('seasons')
       .select('start_date')
+      .eq('is_casual', false)
       .ilike('name', 'spring 2026%')
       .order('start_date', { ascending: true })
       .limit(1)

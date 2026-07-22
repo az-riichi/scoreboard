@@ -156,19 +156,25 @@ export const load: PageServerLoad = async ({ locals }) => {
   const [seasonsRes, rulesRes] = await Promise.all([
     locals.supabase
       .from('seasons')
-      .select('id, name, start_date, end_date, is_active')
-      .order('start_date', { ascending: false }),
+      .select('id, name, start_date, end_date, is_active, is_casual')
+      .order('is_casual', { ascending: false })
+      .order('start_date', { ascending: false, nullsFirst: false }),
     locals.supabase
       .from('rulesets')
       .select('id, name')
       .order('name', { ascending: true })
   ]);
 
-  const activeSeason = seasonsRes.data?.find((s) => s.is_active)?.id ?? seasonsRes.data?.[0]?.id ?? null;
+  const seasons = seasonsRes.error ? [] : (seasonsRes.data ?? []);
+  const activeSeason =
+    seasons.find((s) => s.is_active && !s.is_casual)?.id ??
+    seasons.find((s) => !s.is_casual)?.id ??
+    seasons[0]?.id ??
+    null;
   const defaultRules = rulesRes.data?.[0]?.id ?? null;
 
   return {
-    seasons: seasonsRes.error ? [] : (seasonsRes.data ?? []),
+    seasons,
     rulesets: rulesRes.error ? [] : (rulesRes.data ?? []),
     activeSeason,
     defaultRules
@@ -219,7 +225,7 @@ export const actions: Actions = {
     const [seasonRes, rulesetRes] = await Promise.all([
       locals.supabase
         .from('seasons')
-        .select('id, start_date, end_date')
+        .select('id, start_date, end_date, is_casual')
         .eq('id', season_id)
         .maybeSingle(),
       locals.supabase
@@ -231,8 +237,12 @@ export const actions: Actions = {
     if (seasonRes.error || !seasonRes.data) return fail(400, { message: 'Season not found.' });
     if (rulesetRes.error || !rulesetRes.data) return fail(400, { message: 'Ruleset not found.' });
 
+    const isCasual = seasonRes.data.is_casual === true;
     const seasonStart = String(seasonRes.data.start_date ?? '');
     const seasonEnd = String(seasonRes.data.end_date ?? '');
+    if (!isCasual && (!seasonStart || !seasonEnd)) {
+      return fail(400, { message: 'Selected season has an invalid date range.' });
+    }
     const expectedPointTotal = Number(rulesetRes.data.start_points) * 4;
     if (!Number.isSafeInteger(expectedPointTotal)) {
       return fail(400, { message: 'Ruleset starting points are invalid.' });
@@ -320,7 +330,7 @@ export const actions: Actions = {
           }
         }
 
-        if (dateIso < seasonStart || dateIso > seasonEnd) {
+        if (!isCasual && (dateIso < seasonStart || dateIso > seasonEnd)) {
           throw new Error(`Row ${rowNumber}: Date must fall within the selected season (${seasonStart} through ${seasonEnd}).`);
         }
         const rawTotal = SEATS.reduce((sum, seat) => sum + rawPoints[seat], 0);
@@ -521,6 +531,7 @@ export const actions: Actions = {
           extra_sticks: row.extraSticks,
           played_at: row.playedAt,
           table_label: tableLabel,
+          include_in_lifetime_rating: !isCasual,
           created_by: locals.userId
         })
         .select('id')
@@ -550,7 +561,7 @@ export const actions: Actions = {
 
       const finalizeRes = await locals.supabase.rpc('finalize_match', {
         p_match_id: match_id,
-        p_update_lifetime: true
+        p_update_lifetime: !isCasual
       });
       if (finalizeRes.error) {
         const cleanupRes = await locals.supabase.rpc('delete_match_and_recompute', { p_match_id: match_id });

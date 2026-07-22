@@ -251,7 +251,7 @@
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
     <div>
       <div style="font-size:1.1rem; font-weight:650;">{data.season.name}</div>
-      <div class="muted">{data.season.start_date} → {data.season.end_date}</div>
+      <div class="muted">{data.isCasual ? 'No time limit' : `${data.season.start_date} → ${data.season.end_date}`}</div>
     </div>
     <div class="muted">{data.season.is_active ? 'Active season' : ''}</div>
   </div>
@@ -261,22 +261,24 @@
   <div>
     <div style="font-size:1.05rem; font-weight:650;">Standings</div>
     <div class="muted standings-notes-desktop">
-      Ranked by Season Points (SP), after adjustments. SP resets each season,
-      {#if data.isRatingSeason}
-        Rating (R) does not reset.
+      {#if data.isCasual}
+        Ranked by Season Points (SP) across all Casual games, after adjustments. Casual games do not change Season Rating (SR) or lifetime Rating (R).
+      {:else if data.isRatingSeason}
+        Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) does not reset.
       {:else}
-        Rating (R) starts in the next season.
+        Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) starts in the next season.
       {/if}
     </div>
     <div class="muted standings-notes-desktop">A total of 5 or more games is required to be eligible for ranks in that season.</div>
     <details class="standings-notes-mobile">
       <summary>Notes</summary>
       <div class="muted">
-        Ranked by Season Points (SP), after adjustments. SP resets each season,
-        {#if data.isRatingSeason}
-          Rating (R) does not reset.
+        {#if data.isCasual}
+          Ranked by Season Points (SP) across all Casual games, after adjustments. Casual games do not change Season Rating (SR) or lifetime Rating (R).
+        {:else if data.isRatingSeason}
+          Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) does not reset.
         {:else}
-          Rating (R) starts in the next season.
+          Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) starts in the next season.
         {/if}
       </div>
       <div class="muted" style="margin-top:4px;">A total of 5 or more games is required to be eligible for ranks in that season.</div>
@@ -331,14 +333,16 @@
               {/if}
             </button>
           </th>
-          <th class="col-standings-rating" style="width:100px;">
-            <button class="sort-head-btn" type="button" on:click={() => toggleSort('rating')}>
-              R
-              {#if sortKey === 'rating'}
-                <span class="sort-indicator">{sortDir === 'asc' ? '↑' : '↓'}</span>
-              {/if}
-            </button>
-          </th>
+          {#if !data.isCasual}
+            <th class="col-standings-rating" style="width:100px;">
+              <button class="sort-head-btn" type="button" on:click={() => toggleSort('rating')}>
+                R
+                {#if sortKey === 'rating'}
+                  <span class="sort-indicator">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                {/if}
+              </button>
+            </th>
+          {/if}
           <th class="col-standings-games" style="width:70px;">
             <button class="sort-head-btn" type="button" on:click={() => toggleSort('games')}>
               Games
@@ -380,7 +384,9 @@
               </a>
             </td>
             <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtFixed(row.total_points_with_adjustments, 1)}</a></td>
-            <td class="col-standings-rating"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.rating == null ? '—' : fmtNum(row.rating, 0)}</a></td>
+            {#if !data.isCasual}
+              <td class="col-standings-rating"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.rating == null ? '—' : fmtNum(row.rating, 0)}</a></td>
+            {/if}
             <td class="col-standings-games"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.games_played}</a></td>
             <td class="col-standings-avg"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtFixed(row.avg_placement, 2)}</a></td>
             <td class="col-standings-top2"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtPct(row.top2_rate)}</a></td>
@@ -388,7 +394,7 @@
         {/each}
         {#if visibleStandings.length === 0}
           <tr>
-            <td colspan="7" class="muted">
+            <td colspan={data.isCasual ? 6 : 7} class="muted">
               {standingsView === 'eligible'
                 ? 'No players with 5+ games yet.'
                 : 'No finalized matches yet.'}

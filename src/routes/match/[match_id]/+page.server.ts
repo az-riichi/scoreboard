@@ -14,7 +14,12 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (matchRes.error || !matchRes.data) throw kitError(404, 'Match not found');
   if (matchRes.data.status !== 'final') throw kitError(404, 'Match not public');
 
-  const [resultsRes, deltasRes] = await Promise.all([
+  const [seasonRes, resultsRes, deltasRes] = await Promise.all([
+    locals.supabase
+      .from('seasons')
+      .select('id, name, is_casual')
+      .eq('id', matchRes.data.season_id)
+      .maybeSingle(),
     locals.supabase.from('v_final_results').select('*').eq('match_id', match_id),
     locals.supabase
       .from('v_rating_history')
@@ -62,6 +67,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   return {
     match: matchRes.data,
+    season: seasonRes.error ? null : seasonRes.data,
+    isCasual: seasonRes.data?.is_casual === true,
     results: results.map(withNameParts),
     ratingDeltas: ratingDeltas.map(withNameParts)
   };

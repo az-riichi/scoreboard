@@ -2,7 +2,7 @@
 -- Fresh-install baseline only. Run against a Supabase project that does not
 -- already contain these application objects; this is not an upgrade script.
 -- Supports:
--- - Seasons (semester-style)
+-- - Dated competitive seasons plus one timeless Casual category
 -- - Players (separate from auth accounts; public-friendly)
 -- - Matches with 4 seats (E/S/W/N) and raw end points
 -- - Derived club points (return + uma + oka) stored at finalize-time
@@ -83,17 +83,31 @@ grant execute on function public.admin_only() to authenticated;
 create table public.seasons (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
-  start_date date not null,
-  end_date date not null,
+  start_date date,
+  end_date date,
+  is_casual boolean not null default false,
   is_active boolean not null default false,
   created_at timestamptz not null default now(),
-  constraint seasons_date_order_check check (start_date <= end_date)
+  constraint seasons_kind_dates_check check (
+    (is_casual and start_date is null and end_date is null and not is_active)
+    or
+    ((not is_casual) and start_date is not null and end_date is not null and start_date <= end_date)
+  )
 );
 
 -- There can be only one season selected as the application default.
 create unique index seasons_one_active_idx
 on public.seasons (is_active)
 where is_active;
+
+-- Casual is a singleton, timeless pseudo-season. It can coexist with the
+-- dated season selected as the application default.
+create unique index seasons_one_casual_idx
+on public.seasons (is_casual)
+where is_casual;
+
+insert into public.seasons (name, start_date, end_date, is_casual, is_active)
+values ('Casual', null, null, true, false);
 
 create table public.players (
   id uuid primary key default gen_random_uuid(),
@@ -196,11 +210,12 @@ as $$
 declare
   v_start date;
   v_end date;
+  v_is_casual boolean;
   v_played_date date;
   v_key text;
 begin
-  select s.start_date, s.end_date
-  into v_start, v_end
+  select s.start_date, s.end_date, s.is_casual
+  into v_start, v_end, v_is_casual
   from public.seasons s
   where s.id = new.season_id;
 
@@ -209,7 +224,11 @@ begin
   end if;
 
   v_played_date := (new.played_at at time zone 'America/Phoenix')::date;
-  if v_played_date < v_start or v_played_date > v_end then
+  if v_is_casual then
+    -- This flag is persisted for deterministic lifetime rebuilds. Casual is
+    -- never rating eligible, regardless of what a client sends.
+    new.include_in_lifetime_rating := false;
+  elsif v_played_date < v_start or v_played_date > v_end then
     raise exception 'match date % is outside season range % through %',
       v_played_date, v_start, v_end;
   end if;
@@ -241,7 +260,7 @@ $$;
 revoke all on function public.validate_match_metadata() from public;
 
 create trigger matches_validate_metadata
-before insert or update of season_id, played_at, game_number, table_mode, status
+before insert or update of season_id, played_at, game_number, table_mode, status, include_in_lifetime_rating
 on public.matches
 for each row execute function public.validate_match_metadata();
 
@@ -254,10 +273,10 @@ language plpgsql
 set search_path = public
 as $$
 begin
-  if (old.name, old.start_date, old.end_date)
+  if (old.name, old.start_date, old.end_date, old.is_casual)
        is distinct from
-     (new.name, new.start_date, new.end_date) then
-    raise exception 'season name and dates are immutable; create a replacement season';
+     (new.name, new.start_date, new.end_date, new.is_casual) then
+    raise exception 'season name, dates, and kind are immutable; create a replacement season';
   end if;
   return new;
 end;
@@ -266,7 +285,7 @@ $$;
 revoke all on function public.guard_season_identity_update() from public;
 
 create trigger seasons_guard_identity_update
-before update of name, start_date, end_date on public.seasons
+before update of name, start_date, end_date, is_casual on public.seasons
 for each row execute function public.guard_season_identity_update();
 
 create table public.match_results (
@@ -597,7 +616,8 @@ as $$
     (
       select s.start_date
       from public.seasons s
-      where lower(trim(s.name)) like 'spring 2026%'
+      where not s.is_casual
+        and lower(trim(s.name)) like 'spring 2026%'
       order by s.start_date asc, s.id asc
       limit 1
     ),
@@ -778,6 +798,7 @@ declare
   avg_rate numeric;
   lifetime_start date;
   match_season_start date;
+  match_season_is_casual boolean;
   has_later_final boolean;
   raw_total bigint;
   expected_total bigint;
@@ -805,8 +826,8 @@ begin
     raise exception 'match % not in draft status', p_match_id;
   end if;
 
-  select s.start_date, public.lifetime_rating_start_date()
-  into match_season_start, lifetime_start
+  select s.start_date, s.is_casual, public.lifetime_rating_start_date()
+  into match_season_start, match_season_is_casual, lifetime_start
   from public.seasons s
   where s.id = m.season_id;
 
@@ -826,10 +847,22 @@ begin
       p_match_id, raw_total, m.extra_sticks, expected_total;
   end if;
 
+  -- A Casual match keeps its placements and score-derived statistics, but it
+  -- never creates season or lifetime rating state/events.
+  if match_season_is_casual then
+    perform set_config('azriichi.allow_match_finalize', 'on', true);
+    update public.matches
+    set status = 'final', include_in_lifetime_rating = false
+    where id = p_match_id;
+    return;
+  end if;
+
   select exists (
     select 1
     from public.matches later
+    join public.seasons later_season on later_season.id = later.season_id
     where later.status = 'final'
+      and not later_season.is_casual
       and (later.played_at, later.id) > (m.played_at, m.id)
   )
   into has_later_final;
@@ -860,6 +893,7 @@ begin
     join public.seasons s_prev on s_prev.id = rs_prev.season_id
     join public.seasons s_cur on s_cur.id = m.season_id
     where rs_prev.is_lifetime = false
+      and not s_prev.is_casual
       and rs_prev.player_id = mr.player_id
       and s_prev.end_date <= s_cur.start_date
     order by s_prev.end_date desc, s_prev.created_at desc
@@ -974,6 +1008,7 @@ declare
   rec record;
   avg_rate numeric;
   season_start date;
+  season_is_casual boolean;
 begin
   if not public.admin_only() then
     raise exception 'admin only';
@@ -982,15 +1017,21 @@ begin
   perform pg_advisory_xact_lock(734221, 1);
   lock table public.match_results in share row exclusive mode;
 
-  select s.start_date into season_start
+  select s.start_date, s.is_casual into season_start, season_is_casual
   from public.seasons s
   where s.id = p_season_id;
-  if season_start is null then
+  if not found then
     raise exception 'season % not found', p_season_id;
   end if;
 
   delete from public.rating_events where is_lifetime = false and season_id = p_season_id;
   delete from public.rating_state  where is_lifetime = false and season_id = p_season_id;
+
+  -- Clearing legacy rows is intentional, but Casual never rebuilds a rating
+  -- scope of its own.
+  if season_is_casual then
+    return;
+  end if;
 
   for mid in
     select id
@@ -1016,6 +1057,7 @@ begin
       from public.rating_state rs_prev
       join public.seasons s_prev on s_prev.id = rs_prev.season_id
       where rs_prev.is_lifetime = false
+        and not s_prev.is_casual
         and rs_prev.player_id = mr.player_id
         and s_prev.end_date <= season_start
       order by s_prev.end_date desc, s_prev.created_at desc
@@ -1095,6 +1137,7 @@ begin
     join public.seasons s on s.id = m.season_id
     where m.status = 'final'
       and m.include_in_lifetime_rating
+      and not s.is_casual
       and s.start_date >= lifetime_start
     order by m.played_at asc, m.id asc
   loop
@@ -1173,6 +1216,7 @@ begin
   for sid in
     select s.id
     from public.seasons s
+    where not s.is_casual
     order by s.start_date asc, s.end_date asc, s.id asc
   loop
     perform public.recompute_season_ratings(sid);
@@ -1218,8 +1262,8 @@ begin
     update public.seasons set is_active = false where is_active;
   end if;
 
-  insert into public.seasons (name, start_date, end_date, is_active)
-  values (trim(p_name), p_start_date, p_end_date, coalesce(p_is_active, false))
+  insert into public.seasons (name, start_date, end_date, is_casual, is_active)
+  values (trim(p_name), p_start_date, p_end_date, false, coalesce(p_is_active, false))
   returning id into v_id;
 
   return v_id;
@@ -1240,6 +1284,7 @@ as $$
 declare
   m public.matches;
   needs_rebuild boolean;
+  match_is_casual boolean;
 begin
   if not public.admin_only() then
     raise exception 'admin only';
@@ -1263,7 +1308,11 @@ begin
     raise exception 'match % not found', p_match_id;
   end if;
 
-  needs_rebuild := m.status = 'final' or exists (
+  select s.is_casual into match_is_casual
+  from public.seasons s
+  where s.id = m.season_id;
+
+  needs_rebuild := (m.status = 'final' and not match_is_casual) or exists (
     select 1 from public.rating_events re where re.match_id = p_match_id
   );
 

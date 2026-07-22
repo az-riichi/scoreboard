@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const [seasonRes, ratingStartDate, standingsRes, matchesRes] = await Promise.all([
     locals.supabase
       .from('seasons')
-      .select('id, name, start_date, end_date, is_active')
+      .select('id, name, start_date, end_date, is_active, is_casual')
       .eq('id', season_id)
       .maybeSingle(),
     getRatingStartDate(locals.supabase),
@@ -25,7 +25,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   if (seasonRes.error || !seasonRes.data) throw kitError(404, 'Season not found');
 
-  const isRatingSeason = String(seasonRes.data.start_date ?? '').trim() >= ratingStartDate;
+  const isCasual = seasonRes.data.is_casual === true;
+  const isRatingSeason = !isCasual && String(seasonRes.data.start_date ?? '').trim() >= ratingStartDate;
 
   const standings = standingsRes.error ? [] : (standingsRes.data ?? []);
   const playerIds = Array.from(
@@ -196,6 +197,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   return {
     season: seasonRes.data,
+    isCasual,
     isRatingSeason,
     standings: standingsWithNames,
     recentMatches

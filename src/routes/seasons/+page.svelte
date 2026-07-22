@@ -17,8 +17,8 @@
       <thead>
         <tr>
           <th>Season</th>
-          <th style="width:160px;">Start</th>
-          <th style="width:160px;">End</th>
+          <th style="width:120px;">Type</th>
+          <th style="width:250px;">Period</th>
           <th style="width:120px;">Active</th>
         </tr>
       </thead>
@@ -26,8 +26,8 @@
         {#each data.seasons as s}
           <tr use:clickableRow={`/season/${s.id}`}>
             <td><a href={`/season/${s.id}`} style="text-decoration:none;">{s.name}</a></td>
-            <td>{s.start_date}</td>
-            <td>{s.end_date}</td>
+            <td>{s.is_casual ? 'Casual' : 'Regular'}</td>
+            <td>{s.is_casual ? 'No time limit' : `${s.start_date} → ${s.end_date}`}</td>
             <td>{s.is_active ? 'Yes' : ''}</td>
           </tr>
         {/each}

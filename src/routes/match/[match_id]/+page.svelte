@@ -32,6 +32,7 @@
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
     <div>
       <div style="font-size:1.1rem; font-weight:650;">Match {data.match.table_label ?? data.match.id.slice(0,8)}</div>
+      <div class="muted">{data.season?.name ?? 'Unknown season'}{data.isCasual ? ' · Casual' : ''}</div>
       <div class="muted">{fmtDateTime(data.match.played_at)}</div>
       <div class="muted">Tbl: {data.match.table_mode ?? '—'} | Game: {data.match.game_number ?? '—'} | Ex: {data.match.extra_sticks ?? 0}</div>
       <div style="font-size:0.8rem; color:#888;">UUID: <code>{data.match.id}</code></div>
@@ -81,40 +82,47 @@
   </div>
 
   <div class="card">
-    <div style="font-size:1.05rem; font-weight:650;">Rating (R) deltas</div>
-    <div class="muted">Lifetime Rating (R) change for this match.</div>
+    {#if data.isCasual}
+      <div style="font-size:1.05rem; font-weight:650;">Casual match</div>
+      <div class="muted" style="margin-top:8px;">
+        Scores and placements are recorded, but this match does not change Season Rating (SR) or lifetime Rating (R).
+      </div>
+    {:else}
+      <div style="font-size:1.05rem; font-weight:650;">Rating (R) deltas</div>
+      <div class="muted">Lifetime Rating (R) change for this match.</div>
 
-    <div style="margin-top:12px; overflow:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>Player</th>
-            <th style="width:80px;">Place</th>
-            <th style="width:140px;">ΔR</th>
-            <th style="width:140px;">New R</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each data.ratingDeltas as row}
-            <tr use:clickableRow={`/player/${row.player_id}?season=${data.match.season_id}`}>
-              <td>
-                <a href={`/player/${row.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">
-                  {row.player_name_primary}
-                  {#if row.player_name_secondary}
-                    <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
-                  {/if}
-                </a>
-              </td>
-              <td>{displayPlaceByPlayer.get(row.player_id) ?? row.placement}</td>
-              <td>{fmtNum(row.delta, 2)}</td>
-              <td>{fmtNum(row.new_rate, 2)}</td>
+      <div style="margin-top:12px; overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th style="width:80px;">Place</th>
+              <th style="width:140px;">ΔR</th>
+              <th style="width:140px;">New R</th>
             </tr>
-          {/each}
-          {#if data.ratingDeltas.length === 0}
-            <tr><td colspan="4" class="muted">No Rating (R) events found.</td></tr>
-          {/if}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {#each data.ratingDeltas as row}
+              <tr use:clickableRow={`/player/${row.player_id}?season=${data.match.season_id}`}>
+                <td>
+                  <a href={`/player/${row.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">
+                    {row.player_name_primary}
+                    {#if row.player_name_secondary}
+                      <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
+                    {/if}
+                  </a>
+                </td>
+                <td>{displayPlaceByPlayer.get(row.player_id) ?? row.placement}</td>
+                <td>{fmtNum(row.delta, 2)}</td>
+                <td>{fmtNum(row.new_rate, 2)}</td>
+              </tr>
+            {/each}
+            {#if data.ratingDeltas.length === 0}
+              <tr><td colspan="4" class="muted">No Rating (R) events found.</td></tr>
+            {/if}
+          </tbody>
+        </table>
+      </div>
+    {/if}
   </div>
 </div>

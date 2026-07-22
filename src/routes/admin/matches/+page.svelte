@@ -10,6 +10,9 @@
   let table_mode = 'A';
   let extra_sticks = 0;
   let notes = '';
+
+  $: selectedSeason = data.seasons.find((season: any) => season.id === season_id) ?? null;
+  $: isCasual = selectedSeason?.is_casual === true;
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -42,7 +45,7 @@
         <div class="muted">Season</div>
         <select name="season_id" bind:value={season_id} required>
           {#each data.seasons as s}
-            <option value={s.id}>{s.name}{s.is_active ? ' (active)' : ''}</option>
+            <option value={s.id}>{s.name}{s.is_casual ? ' (no time limit)' : ''}{s.is_active ? ' (active)' : ''}</option>
           {/each}
         </select>
       </label>
@@ -61,6 +64,10 @@
         <input name="played_at" type="datetime-local" bind:value={played_at} required />
       </label>
     </div>
+
+    {#if isCasual}
+      <div class="muted">Casual matches can be played on any date and do not change seasonal or lifetime ratings.</div>
+    {/if}
 
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
       <label style="width:70px; display:grid; gap:4px;">
@@ -97,6 +104,7 @@
       <thead>
         <tr>
           <th>Date</th>
+          <th>Season</th>
           <th style="width:90px;">Game</th>
           <th style="width:80px;">Ex</th>
           <th style="width:120px;">Status</th>
@@ -107,6 +115,7 @@
         {#each data.recentMatches as m}
           <tr use:clickableRow={`/admin/match/${m.id}`}>
             <td>{fmtDateTime(m.played_at)}</td>
+            <td>{m.season_name}{m.is_casual ? ' (Casual)' : ''}</td>
             <td>{m.table_mode ?? ''}{m.game_number ?? ''}</td>
             <td>{m.extra_sticks ?? 0}</td>
             <td>{m.status}</td>
