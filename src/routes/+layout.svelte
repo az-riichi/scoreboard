@@ -41,6 +41,7 @@
 
     if (section === 'login') return `Login | ${SITE_NAME}`;
     if (section === 'seasons') return `Seasons | ${SITE_NAME}`;
+    if (section === 'discipline') return `My Discipline | ${SITE_NAME}`;
 
     if (section === 'season') {
       const season = asRecord(pageRecord?.season);
@@ -71,6 +72,7 @@
       if (parts[1] === 'players') return `Admin Players | ${SITE_NAME}`;
       if (parts[1] === 'matches') return `Admin Matches | ${SITE_NAME}`;
       if (parts[1] === 'seasons') return `Admin Seasons | ${SITE_NAME}`;
+      if (parts[1] === 'discipline') return `Admin Discipline | ${SITE_NAME}`;
       if (parts[1] === 'match') {
         const match = asRecord(pageRecord?.match);
         const label = getFieldText(match, 'table_label');
@@ -564,6 +566,7 @@
         {/if}
 
         {#if data.user}
+          <a href="/discipline" style={navA}>My discipline</a>
           <span style={pill} title="Signed in">
             <span class="muted">Signed in</span>
             <form method="POST" action="/logout" style="margin:0;">
@@ -571,7 +574,7 @@
             </form>
           </span>
         {:else}
-          <a href="/login" style={navA}>Admin</a>
+          <a href="/login" style={navA}>Sign in</a>
         {/if}
       </div>
 
@@ -610,8 +613,11 @@
             {#if data.isAdmin}
               <a href="/admin" style={navA}>Admin</a>
             {/if}
+            {#if data.user}
+              <a href="/discipline" style={navA}>My discipline</a>
+            {/if}
             {#if !data.user}
-              <a href="/login" style={navA}>Admin</a>
+              <a href="/login" style={navA}>Sign in</a>
             {/if}
           </div>
 

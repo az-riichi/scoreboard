@@ -34,7 +34,7 @@
 
 <div class="card auth-card">
   <h2 style="margin:0 0 10px;">Sign in</h2>
-  <p class="muted" style="margin-top:0;">Admins can create players, link accounts, and enter results.</p>
+  <p class="muted" style="margin-top:0;">Linked players can review their private discipline status. Admins can manage club records and results.</p>
 
   {#if form?.message}
     <div class="card alert alert-warning">

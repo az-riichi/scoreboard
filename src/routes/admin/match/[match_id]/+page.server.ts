@@ -1,4 +1,4 @@
-import { fail, redirect } from '@sveltejs/kit';
+import { error as kitError, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
 import { composeSeasonNameParts } from '$lib/player-name';
@@ -9,6 +9,39 @@ import {
 } from '$lib/arizona-time';
 
 const CHOMBO_PREFIX = 'CHOMBO';
+const RESTRICTION_PAGE_SIZE = 500;
+
+async function loadEffectiveRestrictions(locals: App.Locals, matchDay: string) {
+  const restrictions: Array<{
+    id: string;
+    player_id: string;
+    action_type: 'suspension' | 'ban';
+    expires_on: string | null;
+  }> = [];
+
+  let offset = 0;
+  for (;;) {
+    const response = await locals.supabase
+      .from('discipline_actions')
+      .select('id, player_id, action_type, expires_on', { count: 'exact' })
+      .in('action_type', ['suspension', 'ban'])
+      .is('revoked_at', null)
+      .lte('effective_on', matchDay)
+      .or(`expires_on.is.null,expires_on.gte.${matchDay}`)
+      .order('id', { ascending: true })
+      .range(offset, offset + RESTRICTION_PAGE_SIZE - 1);
+
+    if (response.error) return { data: [], error: response.error };
+
+    const page = (response.data ?? []) as typeof restrictions;
+    restrictions.push(...page);
+    offset += page.length;
+    if (page.length === 0 || (response.count != null && offset >= response.count)) break;
+    if (response.count == null && page.length < RESTRICTION_PAGE_SIZE) break;
+  }
+
+  return { data: restrictions, error: null };
+}
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   await requireAdmin(locals);
@@ -28,9 +61,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     .eq('id', matchRes.data.season_id)
     .maybeSingle();
   if (seasonRes.error || !seasonRes.data) throw redirect(303, '/admin');
+  const season = seasonRes.data;
 
   const penaltyReasonPrefix = `${CHOMBO_PREFIX}:${match_id}:%`;
-  const [playersRes, resultsRes, rulesetRes, lifetimeRatingsRes, penaltiesRes] = await Promise.all([
+  const matchDay = toArizonaDatetimeLocalValue(matchRes.data.played_at).slice(0, 10);
+  const [playersRes, resultsRes, rulesetRes, lifetimeRatingsRes, penaltiesRes, restrictionsRes] = await Promise.all([
     locals.supabase
       .from('players')
       .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, is_active')
@@ -53,8 +88,36 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       .select('id, player_id, points, reason, created_at')
       .eq('season_id', matchRes.data.season_id)
       .like('reason', penaltyReasonPrefix)
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: false }),
+    loadEffectiveRestrictions(locals, matchDay)
   ]);
+
+  if (restrictionsRes.error) {
+    throw kitError(500, 'Could not load player eligibility.');
+  }
+
+  const restrictionByPlayerId = new Map<
+    string,
+    { status: 'suspension' | 'ban'; expires_on: string | null }
+  >();
+  for (const action of restrictionsRes.data ?? []) {
+    const playerId = String(action.player_id);
+    const status = action.action_type === 'ban' ? 'ban' : 'suspension';
+    const existing = restrictionByPlayerId.get(playerId);
+    const expiresOn = action.expires_on == null ? null : String(action.expires_on);
+    const shouldReplace =
+      !existing ||
+      (status === 'ban' && existing.status !== 'ban') ||
+      (status === 'suspension' &&
+        existing.status === 'suspension' &&
+        String(expiresOn ?? '') > String(existing.expires_on ?? ''));
+    if (shouldReplace) {
+      restrictionByPlayerId.set(playerId, {
+        status,
+        expires_on: expiresOn
+      });
+    }
+  }
 
   const players =
     playersRes.error
@@ -62,11 +125,15 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       : (playersRes.data ?? [])
           .map((p) => {
             const nameParts = composeSeasonNameParts(p);
+            const restriction = restrictionByPlayerId.get(String(p.id)) ?? null;
             return {
               ...p,
               player_name_primary: nameParts.primary,
               player_name_secondary: nameParts.secondary,
-              label: nameParts.secondary ? `${nameParts.primary} (${nameParts.secondary})` : nameParts.primary
+              label: nameParts.secondary ? `${nameParts.primary} (${nameParts.secondary})` : nameParts.primary,
+              discipline_status: restriction?.status ?? 'eligible',
+              restriction_expires_on: restriction?.expires_on ?? null,
+              is_competitive_ineligible: season.is_casual !== true && restriction !== null
             };
           })
           .sort((a, b) => {
@@ -100,7 +167,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   return {
     match: matchRes.data,
-    season: seasonRes.data,
+    season,
     players,
     results: resultsRes.error ? [] : (resultsRes.data ?? []),
     ruleset: rulesetRes.error ? null : rulesetRes.data,
@@ -131,7 +198,7 @@ async function validateDraftResults(
 ) {
   const matchRes = await locals.supabase
     .from('matches')
-    .select('id, season_id, status, ruleset_id, extra_sticks')
+    .select('id, season_id, status, ruleset_id, extra_sticks, played_at')
     .eq('id', match_id)
     .maybeSingle();
 
@@ -160,6 +227,46 @@ async function validateDraftResults(
 
   if (new Set(rows.map((row) => row.player_id)).size !== 4) {
     return { ok: false as const, status: 400, message: 'Players must be distinct.' };
+  }
+
+  const seasonRes = await locals.supabase
+    .from('seasons')
+    .select('is_casual')
+    .eq('id', matchRes.data.season_id)
+    .maybeSingle();
+  if (seasonRes.error || !seasonRes.data) {
+    return { ok: false as const, status: 400, message: 'Season not found.' };
+  }
+
+  if (!seasonRes.data.is_casual) {
+    const matchDay = toArizonaDatetimeLocalValue(matchRes.data.played_at).slice(0, 10);
+    const restrictionRes = await locals.supabase
+      .from('discipline_actions')
+      .select('player_id, action_type, expires_on')
+      .in('player_id', rows.map((row) => row.player_id))
+      .in('action_type', ['suspension', 'ban'])
+      .is('revoked_at', null)
+      .lte('effective_on', matchDay)
+      .or(`expires_on.is.null,expires_on.gte.${matchDay}`)
+      .limit(1);
+
+    if (restrictionRes.error) {
+      return { ok: false as const, status: 500, message: 'Could not verify player eligibility.' };
+    }
+
+    const restriction = restrictionRes.data?.[0];
+    if (restriction) {
+      const seat = rows.find((row) => row.player_id === restriction.player_id)?.seat;
+      const description =
+        restriction.action_type === 'ban'
+          ? 'banned'
+          : `suspended through ${String(restriction.expires_on ?? '')}`;
+      return {
+        ok: false as const,
+        status: 409,
+        message: `The player in seat ${seat ?? '?'} is ${description} and cannot play in a competitive match.`
+      };
+    }
   }
 
   if (!requireBalanced) return { ok: true as const, rows, season_id: matchRes.data.season_id };

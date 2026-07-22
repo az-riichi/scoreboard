@@ -7,11 +7,12 @@
 <div class="card" style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end; margin-bottom:12px;">
   <div>
     <div style="font-size:1.1rem; font-weight:650;">Admin</div>
-    <div class="muted">Manage seasons, players, matches, and finalize results</div>
+    <div class="muted">Manage seasons, players, matches, and private discipline records</div>
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <a class="btn" href="/admin/seasons" style="text-decoration:none;">Seasons</a>
     <a class="btn" href="/admin/players" style="text-decoration:none;">Players</a>
+    <a class="btn" href="/admin/discipline" style="text-decoration:none;">Discipline</a>
     <a class="btn primary" href="/admin/matches" style="text-decoration:none;">Matches</a>
   </div>
 </div>

@@ -20,6 +20,11 @@ Admin (login required):
 - Enter match results (E/S/W/N + raw points)
 - Finalize match (computes placement + club_points, updates ratings for regular seasons, and makes it public)
 - Import season matches from Excel on `/admin/seasons`
+- Issue, review, and revoke private strikes, suspensions, and bans on `/admin/discipline`
+
+Linked players (login required):
+
+- Review their private current discipline status, effective dates, reasons, and action history on `/discipline`
 
 ## Prerequisites
 
@@ -114,3 +119,13 @@ Player naming model:
 - `real_last_name` is optional
 - At least one of `display_name` or `real_first_name` must exist
 - Players can choose visibility flags for display/first/last (must show display or first)
+
+## Discipline rules
+
+- A strike counts on its Arizona calendar date and for a rolling 30-day window through day 30, inclusive.
+- A third non-revoked strike on one day, or a sixth within 30 inclusive calendar days, automatically issues a suspension when one is not already in effect.
+- A suspension restricts competitive play for 14 calendar dates: its issue date through day 14, inclusive.
+- More than two non-revoked suspensions automatically issues a permanent ban.
+- Admins represent the president and designated officials. They can also issue any action directly or revoke any action with an audit reason.
+- Suspended and banned players cannot be saved or finalized in competitive match results. Casual matches remain permitted.
+- Discipline records are never exposed through public player, match, or standings views.

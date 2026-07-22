@@ -29,10 +29,13 @@
   type ConfirmAction = 'delete' | 'finalize' | null;
   let confirmAction: ConfirmAction = null;
 
-  const playerMetaById = new Map<string, { primary: string; secondary: string | null; label: string; token: string }>();
-  const tokenToPlayerId = new Map<string, string>();
-  const tokenByPlayerId = new Map<string, string>();
-  const playerOptions: Array<{ id: string; label: string; token: string }> = [];
+  const playerMetaById = new Map<string, { primary: string; secondary: string | null; label: string }>();
+  const playerOptions: Array<{
+    id: string;
+    label: string;
+    optionLabel: string;
+    isIneligible: boolean;
+  }> = [];
   const labelCount = new Map<string, number>();
   for (const p of data.players ?? []) {
     const primary = String(p?.player_name_primary ?? p?.label ?? '').trim() || 'Unnamed player';
@@ -48,11 +51,21 @@
     const secondaryRaw = String(p?.player_name_secondary ?? '').trim();
     const secondary = secondaryRaw || null;
     const label = secondary ? `${primary} (${secondary})` : primary;
-    const token = (labelCount.get(label) ?? 0) > 1 ? `${label} · ${id.slice(0, 8)}` : label;
-    playerMetaById.set(id, { primary, secondary, label, token });
-    tokenToPlayerId.set(token, id);
-    tokenByPlayerId.set(id, token);
-    playerOptions.push({ id, label, token });
+    const uniqueLabel = (labelCount.get(label) ?? 0) > 1 ? `${label} · ${id.slice(0, 8)}` : label;
+    const disciplineStatus = String(p?.discipline_status ?? 'eligible');
+    const suffix =
+      disciplineStatus === 'ban'
+        ? ' (banned)'
+        : disciplineStatus === 'suspension'
+          ? ` (suspended through ${String(p?.restriction_expires_on ?? '')})`
+          : '';
+    playerMetaById.set(id, { primary, secondary, label });
+    playerOptions.push({
+      id,
+      label,
+      optionLabel: `${uniqueLabel}${suffix}`,
+      isIneligible: p?.is_competitive_ineligible === true
+    });
   }
 
   const penaltyPlayers = (() => {
@@ -80,26 +93,9 @@
     player_id: bySeat[seat]?.player_id ?? '',
     raw_points: asNum(bySeat[seat]?.raw_points, 25000)
   }));
-  let seatPlayerText: Record<Seat, string> = {
-    E: tokenByPlayerId.get(String(bySeat.E?.player_id ?? '').trim()) ?? '',
-    S: tokenByPlayerId.get(String(bySeat.S?.player_id ?? '').trim()) ?? '',
-    W: tokenByPlayerId.get(String(bySeat.W?.player_id ?? '').trim()) ?? '',
-    N: tokenByPlayerId.get(String(bySeat.N?.player_id ?? '').trim()) ?? ''
-  };
-
   function asNum(v: unknown, fallback = 0) {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
-  }
-
-  function setSeatPlayerFromToken(seat: Seat, token: string) {
-    seatPlayerText = { ...seatPlayerText, [seat]: token };
-    const selectedId = tokenToPlayerId.get(token.trim()) ?? '';
-    entries = entries.map((row) =>
-      row.seat === seat
-        ? { ...row, player_id: selectedId }
-        : row
-    );
   }
 
   function playerNameParts(player_id: string) {
@@ -287,37 +283,19 @@
     width: 100%;
   }
 
-  .player-picker-wrap {
-    position: relative;
-    min-width: 0;
-  }
-
-  .player-picker-wrap::before {
-    content: '⌕';
-    position: absolute;
-    left: 11px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--muted);
-    pointer-events: none;
-    font-size: 0.92rem;
-  }
-
-  .player-picker-input {
+  .player-picker-select {
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    padding-left: 30px;
-    padding-right: 34px;
-    background:
-      linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 16px) calc(50% - 1px) / 6px 6px no-repeat,
-      linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 12px) calc(50% - 1px) / 6px 6px no-repeat,
-      var(--field-bg);
   }
 
-  .player-picker-input:focus {
+  .player-picker-select:focus {
     border-color: var(--btn-primary-bg);
     outline: none;
+  }
+
+  .player-picker-select option:disabled {
+    color: var(--muted);
   }
 
   .confirm-anchor {
@@ -456,23 +434,28 @@
 <div class="grid2">
   <div class="card">
     <div style="font-size:1.05rem; font-weight:650;">Results entry (raw points)</div>
+    {#if !isCasual}
+      <div class="muted" style="margin-top:4px;">Suspended and banned players are unavailable for competitive matches.</div>
+    {/if}
 
     <form method="POST" action="?/saveResults" style="display:grid; gap:10px; margin-top:12px;" on:submit={closeConfirm}>
       {#each entries as row, i (row.seat)}
         <div class="card" style="border-radius:14px;">
           <div class="muted" style="margin-bottom:6px;">Seat {row.seat}</div>
           <div class="result-entry-row">
-            <input type="hidden" name={`p_${row.seat}`} value={entries[i].player_id} />
-            <div class="player-picker-wrap">
-              <input
-                class="player-picker-input"
-                list="result-entry-player-options"
-                value={seatPlayerText[row.seat]}
-                on:input={(e) => setSeatPlayerFromToken(row.seat, (e.currentTarget as HTMLInputElement).value)}
-                placeholder="Search and select player"
-                required
-              />
-            </div>
+            <select
+              class="player-picker-select"
+              name={`p_${row.seat}`}
+              bind:value={entries[i].player_id}
+              required
+              disabled={isFinal}
+              aria-label={`Player for seat ${row.seat}`}
+            >
+              <option value="" disabled>Select player</option>
+              {#each playerOptions as p}
+                <option value={p.id} disabled={p.isIneligible}>{p.optionLabel}</option>
+              {/each}
+            </select>
             <input
               name={`raw_${row.seat}`}
               type="number"
@@ -484,12 +467,6 @@
           </div>
         </div>
       {/each}
-      <datalist id="result-entry-player-options">
-        {#each playerOptions as p}
-          <option value={p.token}></option>
-        {/each}
-      </datalist>
-
       {#if !isFinal}
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn primary" type="submit" on:click={closeConfirm}>Save results</button>
