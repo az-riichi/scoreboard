@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clickableRow } from '$lib/clickable-row';
   import { fmtDateTimeArizona as fmtDateTime } from '$lib/arizona-time';
   export let data: any;
 </script>
@@ -30,7 +31,7 @@
       </thead>
       <tbody>
         {#each data.drafts as m}
-          <tr>
+          <tr use:clickableRow={`/admin/match/${m.id}`}>
             <td>{fmtDateTime(m.played_at)}</td>
             <td>{m.table_label ?? m.id.slice(0,8)}</td>
             <td><a class="btn" href={`/admin/match/${m.id}`} style="text-decoration:none;">Open</a></td>

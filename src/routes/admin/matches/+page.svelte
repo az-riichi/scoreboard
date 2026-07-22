@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clickableRow } from '$lib/clickable-row';
   import { fmtDateTimeArizona as fmtDateTime, nowArizonaDatetimeLocalValue } from '$lib/arizona-time';
   export let data: any;
   export let form: any;
@@ -104,7 +105,7 @@
       </thead>
       <tbody>
         {#each data.recentMatches as m}
-          <tr>
+          <tr use:clickableRow={`/admin/match/${m.id}`}>
             <td>{fmtDateTime(m.played_at)}</td>
             <td>{m.table_mode ?? ''}{m.game_number ?? ''}</td>
             <td>{m.extra_sticks ?? 0}</td>

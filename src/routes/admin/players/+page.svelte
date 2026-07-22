@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { clickableRow } from '$lib/clickable-row';
+
   export let data: any;
   export let form: any;
 
@@ -156,7 +158,7 @@
               </td>
             </tr>
           {:else}
-            <tr>
+            <tr use:clickableRow={`/player/${p.id}`}>
               <td>
                 <a href={`/player/${p.id}`} style="text-decoration:none;">
                   {p.public_name_primary}

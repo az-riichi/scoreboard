@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { clickableRow } from '$lib/clickable-row';
+
   export let data: any;
 </script>
 
@@ -22,7 +24,7 @@
       </thead>
       <tbody>
         {#each data.seasons as s}
-          <tr>
+          <tr use:clickableRow={`/season/${s.id}`}>
             <td><a href={`/season/${s.id}`} style="text-decoration:none;">{s.name}</a></td>
             <td>{s.start_date}</td>
             <td>{s.end_date}</td>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clickableRow } from '$lib/clickable-row';
   import { fmtDateTime, fmtNum, fmtPct } from '$lib/ui';
   import { PLAYER_PROFILE_MEDIA_URL_MAX_CHARS, PLAYER_PROFILE_MESSAGE_MAX_CHARS } from '$lib/player-profile-content';
   export let data: any;
@@ -648,7 +649,7 @@
           </thead>
           <tbody>
             {#each data.matchHistory as r}
-              <tr>
+              <tr use:clickableRow={`/match/${r.match_id}`}>
                 <td>{fmtDateTime(r.played_at)}</td>
                 <td><a href={`/match/${r.match_id}`} style="text-decoration:none;">{r.match_label}</a></td>
                 <td>{r.seat}</td>

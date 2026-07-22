@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clickableRow } from '$lib/clickable-row';
   import { fmtDateTime, fmtNum } from '$lib/ui';
   export let data: any;
 
@@ -59,7 +60,7 @@
         </thead>
         <tbody>
           {#each results as r}
-            <tr>
+            <tr use:clickableRow={`/player/${r.player_id}?season=${data.match.season_id}`}>
               <td>{r.seat}</td>
               <td>
                 <a href={`/player/${r.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">
@@ -95,7 +96,7 @@
         </thead>
         <tbody>
           {#each data.ratingDeltas as row}
-            <tr>
+            <tr use:clickableRow={`/player/${row.player_id}?season=${data.match.season_id}`}>
               <td>
                 <a href={`/player/${row.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">
                   {row.player_name_primary}

@@ -14,6 +14,7 @@
   type ThemePreference = 'system' | 'light' | 'dark';
   let themePreference: ThemePreference = 'system';
   let resolvedTheme: 'light' | 'dark' = 'light';
+  let mobileNavDetails: HTMLDetailsElement | null = null;
   const SITE_NAME = 'AZRM Scoreboard';
   let pageTitle = SITE_NAME;
 
@@ -114,6 +115,15 @@
     resolvedTheme = themePreference === 'system' ? getSystemTheme() : themePreference;
   }
 
+  function hideBootSplash() {
+    if (!browser) return;
+    const splash = document.getElementById('azrm-boot-splash');
+    if (!splash) return;
+
+    splash.classList.add('is-hidden');
+    window.setTimeout(() => splash.remove(), 220);
+  }
+
   onMount(() => {
     if (!browser) return;
     let storedTheme: string | null = null;
@@ -128,13 +138,32 @@
     const onMediaChange = () => updateResolvedTheme();
     media.addEventListener('change', onMediaChange);
 
-    return () => media.removeEventListener('change', onMediaChange);
+    const onDocumentClick = (event: MouseEvent) => {
+      if (!mobileNavDetails?.open || !(event.target instanceof Node)) return;
+      if (!mobileNavDetails.contains(event.target)) mobileNavDetails.removeAttribute('open');
+    };
+    document.addEventListener('click', onDocumentClick);
+
+    window.requestAnimationFrame(hideBootSplash);
+
+    return () => {
+      media.removeEventListener('change', onMediaChange);
+      document.removeEventListener('click', onDocumentClick);
+    };
   });
 
   function setThemePreference(next: 'light' | 'dark') {
     themePreference = themePreference === next ? 'system' : next;
     applyThemePreference(themePreference);
     updateResolvedTheme();
+  }
+
+  function dismissMobileMenu(node: HTMLElement) {
+    const dismiss = () => mobileNavDetails?.removeAttribute('open');
+    node.addEventListener('click', dismiss);
+    return {
+      destroy: () => node.removeEventListener('click', dismiss)
+    };
   }
 </script>
 
@@ -458,6 +487,14 @@
       animation: route-loading-slide 1s ease-in-out infinite;
       box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.15);
     }
+    tbody tr[data-clickable-row] {
+      cursor: pointer;
+      transition: background-color 120ms ease;
+    }
+    tbody tr[data-clickable-row]:hover,
+    tbody tr[data-clickable-row]:focus-within {
+      background: var(--pill-bg);
+    }
     .sr-only {
       position: absolute;
       width: 1px;
@@ -559,12 +596,12 @@
         </button>
       </div>
 
-      <details class="mobile-nav">
+      <details class="mobile-nav" bind:this={mobileNavDetails}>
         <summary class="mobile-nav__summary" aria-label="Open navigation menu">
           <span aria-hidden="true">☰</span>
           <span class="mobile-nav__summary-label">Menu</span>
         </summary>
-        <div class="mobile-nav__panel">
+        <div class="mobile-nav__panel" use:dismissMobileMenu>
           <div class="mobile-nav__list">
             <a href="/seasons" style={navA}>Seasons</a>
             {#if data.activeSeasonId}

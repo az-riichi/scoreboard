@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clickableRow } from '$lib/clickable-row';
   import { fmtDate, fmtPct, fmtNum } from '$lib/ui';
   export let data: any;
 
@@ -416,7 +417,7 @@
       </thead>
       <tbody>
         {#each data.recentMatches as m}
-          <tr>
+          <tr use:clickableRow={`/match/${m.id}`}>
             <td>{fmtDate(m.played_at)}</td>
             <td class="cell-match"><a class="recent-cell-link" href={`/match/${m.id}`}>{m.table_label ?? m.id.slice(0, 8)}</a></td>
             <td class="col-recent-winner cell-winner">
