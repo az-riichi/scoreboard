@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fmtNum } from '$lib/ui';
   import { fmtDateTimeArizona as fmtDateTime, toArizonaDatetimeLocalValue } from '$lib/arizona-time';
+  import { ratingGamesAdjustment as gamesAdjustment } from '$lib/rating';
   export let data: any;
   export let form: any;
 
@@ -124,12 +125,6 @@
     if (place === 3) return -10;
     if (place === 4) return -30;
     return 0;
-  }
-
-  function gamesAdjustment(gamesPlayed: number) {
-    if (!Number.isFinite(gamesPlayed)) return 1;
-    if (gamesPlayed <= 20) return Math.max(1 - 0.4 * gamesPlayed, 0.2);
-    return 0.2;
   }
 
   function umaForPlace(place: number) {
@@ -414,12 +409,12 @@
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
       <div style="display:grid; gap:4px;">
         <label for="played_at">Played at (Arizona)</label>
-        <input id="played_at" name="played_at" type="datetime-local" bind:value={played_at} required />
+        <input id="played_at" name="played_at" type="datetime-local" bind:value={played_at} required disabled={isFinal} />
       </div>
 
       <div style="display:grid; gap:4px;">
         <label for="table_mode">Table type</label>
-        <select id="table_mode" name="table_mode" bind:value={table_mode} style="width:110px;">
+        <select id="table_mode" name="table_mode" bind:value={table_mode} style="width:110px;" disabled={isFinal}>
           <option value="A">A</option>
           <option value="M">M</option>
         </select>
@@ -427,20 +422,24 @@
 
       <div style="display:grid; gap:4px;">
         <label for="extra_sticks">Extra points</label>
-        <input id="extra_sticks" name="extra_sticks" type="number" min="0" step="1" bind:value={extra_sticks} style="width:110px;" />
+        <input id="extra_sticks" name="extra_sticks" type="number" min="0" step="1000" bind:value={extra_sticks} style="width:110px;" disabled={isFinal} />
       </div>
     </div>
 
     <div style="display:grid; gap:4px;">
       <label for="notes">Note</label>
-      <textarea id="notes" name="notes" bind:value={notes} rows="3" placeholder="Optional match notes"></textarea>
+      <textarea id="notes" name="notes" bind:value={notes} rows="3" placeholder="Optional match notes" disabled={isFinal}></textarea>
     </div>
 
     <div class="muted">Current auto values: Tbl {match.table_mode ?? table_mode} | Game {match.game_number ?? '—'} | Label {match.table_label ?? '—'}</div>
 
-    <div>
-      <button class="btn" type="submit">Save metadata</button>
-    </div>
+    {#if isFinal}
+      <div class="muted">Finalized match metadata is locked to preserve chronological rating history.</div>
+    {:else}
+      <div>
+        <button class="btn" type="submit">Save metadata</button>
+      </div>
+    {/if}
   </form>
 </div>
 
@@ -468,6 +467,7 @@
               name={`raw_${row.seat}`}
               type="number"
               step="100"
+              required
               bind:value={entries[i].raw_points}
               style="width:130px; justify-self:start;"
             />
@@ -495,6 +495,7 @@
                     type="submit"
                     formmethod="POST"
                     formaction="?/finalize"
+                    disabled={!totalCheckOk || !canProjectR}
                   >
                     Finalize
                   </button>

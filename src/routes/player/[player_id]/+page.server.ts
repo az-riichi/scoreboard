@@ -22,9 +22,9 @@ function asBool(value: unknown) {
 export const load: PageServerLoad = async ({ locals, params, url }) => {
   const player_id = params.player_id;
   const seasonParam = url.searchParams.get('season');
-  const [playerRes, ownRes, seasonsRes, ratingStartDate, activeSeasonId] = await Promise.all([
+  const [playerRes, ownRes, ownerPlayerRes, seasonsRes, ratingStartDate, activeSeasonId] = await Promise.all([
     locals.supabase
-      .from('players')
+      .from('v_public_players')
       .select(
         'id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, profile_message_md, profile_media_url, is_active'
       )
@@ -38,6 +38,13 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
           .eq('player_id', player_id)
           .maybeSingle()
       : Promise.resolve(null),
+    locals.userId
+      ? locals.supabase
+          .from('players')
+          .select('id, display_name, real_first_name, real_last_name')
+          .eq('id', player_id)
+          .maybeSingle()
+      : Promise.resolve(null),
     locals.supabase.from('seasons').select('id, name, start_date').order('start_date', { ascending: false }),
     getRatingStartDate(locals.supabase),
     seasonParam ? Promise.resolve(null) : getActiveSeasonId(locals.supabase)
@@ -45,11 +52,21 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 
   if (playerRes.error || !playerRes.data) throw kitError(404, 'Player not found');
 
-  const canEditDisplay = !!(ownRes && !ownRes.error && ownRes.data);
+  const canEditDisplay = !!(
+    ownRes &&
+    !ownRes.error &&
+    ownRes.data &&
+    ownerPlayerRes &&
+    !ownerPlayerRes.error &&
+    ownerPlayerRes.data
+  );
 
   const nameParts = composeSeasonNameParts(playerRes.data);
   const player = {
     ...playerRes.data,
+    display_name: canEditDisplay ? ownerPlayerRes.data!.display_name : playerRes.data.display_name,
+    real_first_name: canEditDisplay ? ownerPlayerRes.data!.real_first_name : playerRes.data.real_first_name,
+    real_last_name: canEditDisplay ? ownerPlayerRes.data!.real_last_name : playerRes.data.real_last_name,
     player_name_primary: nameParts.primary,
     player_name_secondary: nameParts.secondary
   };
@@ -112,7 +129,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
         .select('*')
         .eq('season_id', seasonId)
         .eq('player_id', player_id)
-        .order('played_at', { ascending: true })
+        .order('played_at', { ascending: false })
         .limit(200),
       locals.supabase
         .from('v_player_match_history')
@@ -158,7 +175,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     }
 
     matchHistory = mhRes.error ? [] : (mhRes.data ?? []);
-    pointHistory = phRes.error ? [] : (phRes.data ?? []);
+    pointHistory = phRes.error ? [] : [...(phRes.data ?? [])].reverse();
 
     const seasonMatchIdsForRating = Array.from(
       new Set(
@@ -277,6 +294,16 @@ export const actions: Actions = {
   updateDisplay: async ({ request, locals, params }) => {
     if (!locals.userId || !locals.user) return fail(401, { ok: false, message: 'Sign in to update player settings.' });
 
+    const ownershipRes = await locals.supabase
+      .from('player_accounts')
+      .select('player_id')
+      .eq('auth_user_id', locals.userId)
+      .eq('player_id', params.player_id)
+      .maybeSingle();
+    if (ownershipRes.error || !ownershipRes.data) {
+      return fail(403, { ok: false, message: 'You can only update your own linked player profile.' });
+    }
+
     const f = await request.formData();
     const display_name = asText(f.get('display_name')) || null;
     const real_first_name = asText(f.get('real_first_name')) || null;
@@ -343,7 +370,7 @@ export const actions: Actions = {
 
     if (updateRes.error) return fail(400, { ok: false, message: updateRes.error.message });
 
-    if (updateRes.data && String(updateRes.data) !== params.player_id) {
+    if (!updateRes.data || String(updateRes.data) !== params.player_id) {
       return fail(403, { ok: false, message: 'You can only update your own linked player profile.' });
     }
 

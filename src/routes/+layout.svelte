@@ -114,11 +114,6 @@
     resolvedTheme = themePreference === 'system' ? getSystemTheme() : themePreference;
   }
 
-  function hideBootSplash() {
-    if (!browser) return;
-    (window as Window & { __azrmHideSplash?: () => void }).__azrmHideSplash?.();
-  }
-
   onMount(() => {
     if (!browser) return;
     let storedTheme: string | null = null;
@@ -132,8 +127,6 @@
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const onMediaChange = () => updateResolvedTheme();
     media.addEventListener('change', onMediaChange);
-
-    window.requestAnimationFrame(hideBootSplash);
 
     return () => media.removeEventListener('change', onMediaChange);
   });

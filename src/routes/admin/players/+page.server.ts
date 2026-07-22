@@ -196,36 +196,16 @@ export const actions: Actions = {
       return fail(400, { ok: false, message: 'Invalid account id.', edit_id: player_id });
     }
 
-    const playerExistsRes = await locals.supabase.from('players').select('id').eq('id', player_id).maybeSingle();
-    if (playerExistsRes.error || !playerExistsRes.data) {
-      return fail(404, { ok: false, message: 'Player not found', edit_id: player_id });
-    }
+    const linkRes = await locals.supabase.rpc('set_player_account_link', {
+      p_player_id: player_id,
+      p_auth_user_id: auth_user_id
+    });
+    if (linkRes.error) return fail(400, { ok: false, message: linkRes.error.message, edit_id: player_id });
 
-    if (!auth_user_id) {
-      const removeRes = await locals.supabase.from('player_accounts').delete().eq('player_id', player_id);
-      if (removeRes.error) return fail(400, { ok: false, message: removeRes.error.message, edit_id: player_id });
-      return { ok: true, message: 'Player account link removed', edit_id: player_id };
-    }
-
-    const profileRes = await locals.supabase.from('profiles').select('id').eq('id', auth_user_id).maybeSingle();
-    if (profileRes.error || !profileRes.data) {
-      return fail(400, { ok: false, message: 'Account profile not found', edit_id: player_id });
-    }
-
-    const [clearPlayerRes, clearAccountRes] = await Promise.all([
-      locals.supabase.from('player_accounts').delete().eq('player_id', player_id).neq('auth_user_id', auth_user_id),
-      locals.supabase.from('player_accounts').delete().eq('auth_user_id', auth_user_id).neq('player_id', player_id)
-    ]);
-
-    if (clearPlayerRes.error) return fail(400, { ok: false, message: clearPlayerRes.error.message, edit_id: player_id });
-    if (clearAccountRes.error) return fail(400, { ok: false, message: clearAccountRes.error.message, edit_id: player_id });
-
-    const upsertRes = await locals.supabase
-      .from('player_accounts')
-      .upsert({ auth_user_id, player_id }, { onConflict: 'auth_user_id' });
-
-    if (upsertRes.error) return fail(400, { ok: false, message: upsertRes.error.message, edit_id: player_id });
-
-    return { ok: true, message: 'Player linked to account', edit_id: player_id };
+    return {
+      ok: true,
+      message: auth_user_id ? 'Player linked to account' : 'Player account link removed',
+      edit_id: player_id
+    };
   }
 };

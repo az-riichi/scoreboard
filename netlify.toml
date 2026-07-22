@@ -1,3 +1,6 @@
 [build]
-    command = "bun install --frozen-lockfile && bun run build"
+    command = "pnpm run ci"
     publish = "build"
+
+[build.environment]
+    NODE_VERSION = "22"

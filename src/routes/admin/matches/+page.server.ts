@@ -6,26 +6,21 @@ import {
   parseArizonaLocalDatetimeToUtcIso
 } from '$lib/arizona-time';
 
-const CHOMBO_PREFIX = 'CHOMBO';
-
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals);
 
-  const seasonsRes = await locals.supabase
-    .from('seasons')
-    .select('id, name, is_active, start_date')
-    .order('start_date', { ascending: false });
-
-  const rulesRes = await locals.supabase
-    .from('rulesets')
-    .select('id, name')
-    .order('name', { ascending: true });
-
-  const recentRes = await locals.supabase
-    .from('matches')
-    .select('id, played_at, season_id, status, game_number, table_mode, extra_sticks')
-    .order('played_at', { ascending: false })
-    .limit(30);
+  const [seasonsRes, rulesRes, recentRes] = await Promise.all([
+    locals.supabase
+      .from('seasons')
+      .select('id, name, is_active, start_date')
+      .order('start_date', { ascending: false }),
+    locals.supabase.from('rulesets').select('id, name').order('name', { ascending: true }),
+    locals.supabase
+      .from('matches')
+      .select('id, played_at, season_id, status, game_number, table_mode, extra_sticks')
+      .order('played_at', { ascending: false })
+      .limit(30)
+  ]);
 
   const activeSeason = seasonsRes.data?.find((s) => s.is_active)?.id ?? seasonsRes.data?.[0]?.id ?? null;
   const defaultRules = rulesRes.data?.[0]?.id ?? null;
@@ -42,9 +37,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   recomputeLifetimeR: async ({ locals }) => {
     await requireAdmin(locals);
-    const lifetimeRecompute = await locals.supabase.rpc('recompute_lifetime_ratings');
-    if (lifetimeRecompute.error) return fail(400, { message: lifetimeRecompute.error.message });
-    return { message: 'Lifetime Rating (R) recomputed.' };
+    const recomputeRes = await locals.supabase.rpc('recompute_all_ratings');
+    if (recomputeRes.error) return fail(400, { message: recomputeRes.error.message });
+    return { message: 'Season and lifetime ratings recomputed.' };
   },
 
   delete: async ({ request, locals }) => {
@@ -53,36 +48,8 @@ export const actions: Actions = {
     const match_id = String(f.get('match_id') ?? '').trim();
     if (!match_id) return fail(400, { message: 'Missing match id.' });
 
-    const matchRes = await locals.supabase
-      .from('matches')
-      .select('id, season_id, status')
-      .eq('id', match_id)
-      .maybeSingle();
-    if (matchRes.error || !matchRes.data) return fail(400, { message: 'Match not found.' });
-
-    const reasonLike = `${CHOMBO_PREFIX}:${match_id}:%`;
-    const delPenRes = await locals.supabase
-      .from('adjustments')
-      .delete()
-      .eq('season_id', matchRes.data.season_id)
-      .like('reason', reasonLike);
-    if (delPenRes.error) return fail(400, { message: delPenRes.error.message });
-
-    const delMatchRes = await locals.supabase
-      .from('matches')
-      .delete()
-      .eq('id', match_id);
-    if (delMatchRes.error) return fail(400, { message: delMatchRes.error.message });
-
-    if (matchRes.data.status === 'final') {
-      const seasonRecompute = await locals.supabase.rpc('recompute_season_ratings', {
-        p_season_id: matchRes.data.season_id
-      });
-      if (seasonRecompute.error) return fail(400, { message: seasonRecompute.error.message });
-
-      const lifetimeRecompute = await locals.supabase.rpc('recompute_lifetime_ratings');
-      if (lifetimeRecompute.error) return fail(400, { message: lifetimeRecompute.error.message });
-    }
+    const deleteRes = await locals.supabase.rpc('delete_match_and_recompute', { p_match_id: match_id });
+    if (deleteRes.error) return fail(400, { message: deleteRes.error.message });
 
     return { message: 'Game deleted.' };
   },
@@ -110,17 +77,28 @@ export const actions: Actions = {
       return fail(400, { message: 'Tbl must be A or M.' });
     }
 
-    const dayCountRes = await locals.supabase
+    const dayMatchesRes = await locals.supabase
       .from('matches')
-      .select('id', { count: 'exact', head: true })
+      .select('game_number')
+      .eq('season_id', season_id)
       .gte('played_at', dayBounds.dayStart)
-      .lt('played_at', dayBounds.dayEnd);
-    if (dayCountRes.error) return fail(400, { message: dayCountRes.error.message });
-    const game_number = (dayCountRes.count ?? 0) + 1;
+      .lt('played_at', dayBounds.dayEnd)
+      .eq('table_mode', table_mode);
+    if (dayMatchesRes.error) return fail(400, { message: dayMatchesRes.error.message });
+    const game_number =
+      Math.max(
+        0,
+        ...(dayMatchesRes.data ?? [])
+          .map((row) => Number(row.game_number))
+          .filter((value) => Number.isInteger(value) && value > 0)
+      ) + 1;
+    if (!Number.isSafeInteger(game_number) || game_number > 2_147_483_647) {
+      return fail(400, { message: 'Could not allocate a valid game number.' });
+    }
     const table_label = `${table_mode}-${game_number}`;
 
-    const extra_sticks = extra_raw === '' ? 0 : Number(extra_raw);
-    if (!Number.isInteger(extra_sticks) || extra_sticks < 0) {
+    const extra_sticks = extra_raw === '' || /^\d+$/.test(extra_raw) ? Number(extra_raw || '0') : Number.NaN;
+    if (!Number.isSafeInteger(extra_sticks) || extra_sticks < 0 || extra_sticks > 2_147_483_647) {
       return fail(400, { message: 'Ex must be an integer >= 0.' });
     }
 

@@ -41,17 +41,19 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const [playersRes, ratingsRes, finalRows] = await Promise.all([
     playerIds.length > 0
-      ? locals.supabase.from('players').select('id, display_name, real_first_name, real_last_name').in('id', playerIds)
+      ? locals.supabase
+          .from('v_public_players')
+          .select(
+            'id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name'
+          )
+          .in('id', playerIds)
       : Promise.resolve(null),
     isRatingSeason && playerIds.length > 0
       ? locals.supabase
-          .from('v_rating_history')
-          .select('player_id, new_rate, played_at, match_id')
+          .from('v_current_ratings')
+          .select('player_id, rate')
           .eq('is_lifetime', true)
           .in('player_id', playerIds)
-          .gte('played_at', ratingStartDate)
-          .order('played_at', { ascending: false })
-          .order('match_id', { ascending: false })
       : Promise.resolve(null),
     recentMatchIds.length > 0
       ? (async () => {
@@ -80,8 +82,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (ratingsRes && !ratingsRes.error) {
     for (const row of ratingsRes.data ?? []) {
       const id = String(row?.player_id ?? '').trim();
-      const rate = Number(row?.new_rate);
-      if (!id || !Number.isFinite(rate) || ratingByPlayerId.has(id)) continue;
+      const rate = Number(row?.rate);
+      if (!id || !Number.isFinite(rate)) continue;
       ratingByPlayerId.set(id, rate);
     }
   }

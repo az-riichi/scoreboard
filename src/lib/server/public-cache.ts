@@ -111,12 +111,9 @@ export async function getLifetimeRatingSnapshot(
     LIFETIME_RATING_SNAPSHOT_TTL_MS,
     async () => {
       const res = await supabase
-        .from('v_rating_history')
-        .select('player_id, new_rate, played_at, match_id')
-        .eq('is_lifetime', true)
-        .gte('played_at', ratingStartDate)
-        .order('played_at', { ascending: false })
-        .order('match_id', { ascending: false });
+        .from('v_current_ratings')
+        .select('player_id, rate, games_played, updated_at')
+        .eq('is_lifetime', true);
 
       if (res.error) return emptyLifetimeRatingSnapshot();
 
@@ -126,15 +123,14 @@ export async function getLifetimeRatingSnapshot(
 
       for (const row of res.data ?? []) {
         const rowPlayerId = String(row?.player_id ?? '').trim();
-        const rate = Number(row?.new_rate);
-        const playedAt = String(row?.played_at ?? '').trim() || null;
-        if (!rowPlayerId) continue;
-
-        gamesByPlayer.set(rowPlayerId, (gamesByPlayer.get(rowPlayerId) ?? 0) + 1);
-        if (!Number.isFinite(rate) || latestRateByPlayer.has(rowPlayerId)) continue;
+        const rate = Number(row?.rate);
+        const gamesPlayed = Number(row?.games_played);
+        const updatedAt = String(row?.updated_at ?? '').trim() || null;
+        if (!rowPlayerId || !Number.isFinite(rate)) continue;
 
         latestRateByPlayer.set(rowPlayerId, rate);
-        updatedAtByPlayer.set(rowPlayerId, playedAt);
+        gamesByPlayer.set(rowPlayerId, Number.isFinite(gamesPlayed) ? gamesPlayed : 0);
+        updatedAtByPlayer.set(rowPlayerId, updatedAt);
       }
 
       const rows = Array.from(latestRateByPlayer.entries())

@@ -18,8 +18,8 @@
       <div class="muted">Enter and review match results</div>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <form method="POST" action="?/recomputeLifetimeR" on:submit={(e) => { if (!confirm('Recompute lifetime Rating (R) for everyone?')) e.preventDefault(); }}>
-        <button class="btn" type="submit">Recompute R</button>
+      <form method="POST" action="?/recomputeLifetimeR" on:submit={(e) => { if (!confirm('Recompute all season and lifetime ratings?')) e.preventDefault(); }}>
+        <button class="btn" type="submit">Recompute ratings</button>
       </form>
       <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
     </div>
@@ -71,7 +71,7 @@
       </label>
 
       <label style="display:grid; gap:4px;">
-        <div class="muted">Extra</div>
+        <div class="muted">Extra points</div>
         <input style="width:50px" name="extra_sticks" type="number" min="0" step="1000" bind:value={extra_sticks} />
       </label>
 

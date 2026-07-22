@@ -37,8 +37,10 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   let playerLabelById = new Map<string, ReturnType<typeof composeSeasonNameParts>>();
   if (playerIds.length > 0) {
     const playersRes = await locals.supabase
-      .from('players')
-      .select('id, display_name, real_first_name, real_last_name')
+      .from('v_public_players')
+      .select(
+        'id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name'
+      )
       .in('id', playerIds);
 
     if (!playersRes.error) {

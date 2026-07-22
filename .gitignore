@@ -2,6 +2,8 @@
 /out-tsc
 /.svelte-kit
 /.netlify
+/build
+.DS_Store
 
 /node_modules
 npm-debug.log*
@@ -9,7 +11,11 @@ yarn-debug.log*
 yarn-error.log*
 /.pnp
 .pnp.js
-*.lock
 
 .vscode/*
 .idea/
+
+# Local environment files may contain secrets. Keep the documented template.
+.env
+.env.*
+!.env.example

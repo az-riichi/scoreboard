@@ -31,18 +31,17 @@ export function composePlayerDisplayName(player: PlayerNameFields): string {
   if (showLast && last) parts.push(last);
 
   if (parts.length) return parts.join(' ');
-
-  if (display) return display;
-  if (first && last) return `${first} ${last}`;
-  if (first) return first;
-  if (last) return last;
   return 'Unnamed player';
 }
 
 export function composeSeasonNameParts(player: PlayerNameFields): SeasonNameParts {
-  const nickname = clean(player.display_name);
-  const first = clean(player.real_first_name);
-  const last = clean(player.real_last_name);
+  const showDisplay = player.show_display_name ?? true;
+  const showFirst = player.show_real_first_name ?? false;
+  const showLast = player.show_real_last_name ?? false;
+
+  const nickname = showDisplay ? clean(player.display_name) : '';
+  const first = showFirst ? clean(player.real_first_name) : '';
+  const last = showLast ? clean(player.real_last_name) : '';
   const realName = [first, last].filter(Boolean).join(' ').trim();
 
   if (realName && nickname) {

@@ -1,7 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
-import * as XLSX from 'xlsx';
 import { composePlayerDisplayName } from '$lib/player-name';
 import { toArizonaDatetimeLocalValue } from '$lib/arizona-time';
 
@@ -22,6 +21,9 @@ const REQUIRED_HEADERS = [
 
 const SEATS = ['E', 'S', 'W', 'N'] as const;
 type Seat = (typeof SEATS)[number];
+const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+const MAX_IMPORT_ROWS = 2_000;
+const POSTGRES_INT_MAX = 2_147_483_647;
 
 type ParsedImportRow = {
   rowNumber: number;
@@ -76,15 +78,20 @@ function toIsoDate(y: number, m: number, d: number, rowNumber: number): string {
   return `${y}-${pad2(m)}-${pad2(d)}`;
 }
 
-function parseDateCell(value: unknown, rowNumber: number): string {
+function parseDateCell(
+  value: unknown,
+  rowNumber: number,
+  parseExcelDateCode: (serial: number) => unknown
+): string {
   if (value instanceof Date && Number.isFinite(value.getTime())) {
     return toIsoDate(value.getUTCFullYear(), value.getUTCMonth() + 1, value.getUTCDate(), rowNumber);
   }
 
   if (typeof value === 'number' && Number.isFinite(value)) {
-    const parsed = XLSX.SSF.parse_date_code(value);
-    if (!parsed) throw new Error(`Row ${rowNumber}: Date is invalid.`);
-    return toIsoDate(parsed.y, parsed.m, parsed.d, rowNumber);
+    const parsed = parseExcelDateCode(value);
+    if (!parsed || typeof parsed !== 'object') throw new Error(`Row ${rowNumber}: Date is invalid.`);
+    const parts = parsed as { y?: unknown; m?: unknown; d?: unknown };
+    return toIsoDate(Number(parts.y), Number(parts.m), Number(parts.d), rowNumber);
   }
 
   const text = asText(value);
@@ -114,8 +121,8 @@ function parseIntCell(value: unknown, label: string, rowNumber: number): number 
   if (source === '' || source == null) throw new Error(`Row ${rowNumber}: ${label} is required.`);
 
   const n = typeof source === 'number' ? source : Number(source);
-  if (!Number.isFinite(n) || !Number.isInteger(n)) {
-    throw new Error(`Row ${rowNumber}: ${label} must be an integer.`);
+  if (!Number.isSafeInteger(n)) {
+    throw new Error(`Row ${rowNumber}: ${label} must be a safe integer.`);
   }
   return n;
 }
@@ -146,15 +153,16 @@ function importKey(row: Pick<ParsedImportRow, 'dateIso' | 'gameNumber' | 'tableM
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals);
 
-  const seasonsRes = await locals.supabase
-    .from('seasons')
-    .select('id, name, start_date, end_date, is_active')
-    .order('start_date', { ascending: false });
-
-  const rulesRes = await locals.supabase
-    .from('rulesets')
-    .select('id, name')
-    .order('name', { ascending: true });
+  const [seasonsRes, rulesRes] = await Promise.all([
+    locals.supabase
+      .from('seasons')
+      .select('id, name, start_date, end_date, is_active')
+      .order('start_date', { ascending: false }),
+    locals.supabase
+      .from('rulesets')
+      .select('id, name')
+      .order('name', { ascending: true })
+  ]);
 
   const activeSeason = seasonsRes.data?.find((s) => s.is_active)?.id ?? seasonsRes.data?.[0]?.id ?? null;
   const defaultRules = rulesRes.data?.[0]?.id ?? null;
@@ -177,12 +185,16 @@ export const actions: Actions = {
     const is_active = String(f.get('is_active') ?? '') === 'on';
 
     if (!name || !start_date || !end_date) return fail(400, { message: 'Missing fields.' });
-
-    if (is_active) {
-      await locals.supabase.from('seasons').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date) || start_date > end_date) {
+      return fail(400, { message: 'Season dates must be valid and the start cannot be after the end.' });
     }
 
-    const { error } = await locals.supabase.from('seasons').insert({ name, start_date, end_date, is_active });
+    const { error } = await locals.supabase.rpc('create_season', {
+      p_name: name,
+      p_start_date: start_date,
+      p_end_date: end_date,
+      p_is_active: is_active
+    });
     if (error) return fail(400, { message: error.message });
 
     return { message: 'Season created.' };
@@ -200,21 +212,51 @@ export const actions: Actions = {
     if (!(upload instanceof File) || upload.size <= 0) {
       return fail(400, { message: 'Attach an Excel file first.' });
     }
+    if (upload.size > MAX_IMPORT_BYTES) {
+      return fail(413, { message: 'Excel file is too large (maximum 5 MB).' });
+    }
+
+    const [seasonRes, rulesetRes] = await Promise.all([
+      locals.supabase
+        .from('seasons')
+        .select('id, start_date, end_date')
+        .eq('id', season_id)
+        .maybeSingle(),
+      locals.supabase
+        .from('rulesets')
+        .select('id, start_points')
+        .eq('id', ruleset_id)
+        .maybeSingle()
+    ]);
+    if (seasonRes.error || !seasonRes.data) return fail(400, { message: 'Season not found.' });
+    if (rulesetRes.error || !rulesetRes.data) return fail(400, { message: 'Ruleset not found.' });
+
+    const seasonStart = String(seasonRes.data.start_date ?? '');
+    const seasonEnd = String(seasonRes.data.end_date ?? '');
+    const expectedPointTotal = Number(rulesetRes.data.start_points) * 4;
+    if (!Number.isSafeInteger(expectedPointTotal)) {
+      return fail(400, { message: 'Ruleset starting points are invalid.' });
+    }
 
     let rows: unknown[][];
+    let xlsx: typeof import('xlsx');
     try {
+      xlsx = await import('xlsx');
       const bytes = await upload.arrayBuffer();
-      const wb = XLSX.read(bytes, { type: 'array', cellDates: true });
+      const wb = xlsx.read(bytes, { type: 'array', cellDates: true });
       const firstSheetName = wb.SheetNames[0];
       if (!firstSheetName) return fail(400, { message: 'Workbook has no sheets.' });
       const sheet = wb.Sheets[firstSheetName];
-      rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: '' });
+      rows = xlsx.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: '' });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Could not read workbook.';
       return fail(400, { message: `Invalid workbook: ${message}` });
     }
 
     if (!rows.length) return fail(400, { message: 'Workbook is empty.' });
+    if (rows.length - 1 > MAX_IMPORT_ROWS) {
+      return fail(413, { message: `Workbook has too many rows (maximum ${MAX_IMPORT_ROWS}).` });
+    }
 
     const header = (rows[0] ?? []).map((x) => asText(x));
     const missing = REQUIRED_HEADERS.filter((h) => !header.includes(h));
@@ -246,13 +288,17 @@ export const actions: Actions = {
         const isBlank = row.every((cell) => !asText(cell));
         if (isBlank) continue;
 
-        const dateIso = parseDateCell(row[col('Date')], rowNumber);
+        const dateIso = parseDateCell(row[col('Date')], rowNumber, (serial) => xlsx.SSF.parse_date_code(serial));
         const gameNumber = parseIntCell(row[col('Game')], 'Game', rowNumber);
-        if (gameNumber <= 0) throw new Error(`Row ${rowNumber}: Game must be greater than 0.`);
+        if (gameNumber <= 0 || gameNumber > 10_000) {
+          throw new Error(`Row ${rowNumber}: Game must be between 1 and 10000.`);
+        }
 
         const tableMode = parseTableMode(row[col('Tbl')], rowNumber);
         const extraSticks = parseOptionalIntCell(row[col('Ex')], 0, 'Ex', rowNumber);
-        if (extraSticks < 0) throw new Error(`Row ${rowNumber}: Ex must be 0 or higher.`);
+        if (extraSticks < 0 || extraSticks > POSTGRES_INT_MAX) {
+          throw new Error(`Row ${rowNumber}: Ex must be between 0 and ${POSTGRES_INT_MAX}.`);
+        }
 
         const playerNames: Record<Seat, string> = {
           E: asText(row[col('E Player')]),
@@ -267,6 +313,22 @@ export const actions: Actions = {
           W: parseIntCell(row[col('W Pts')], 'W Pts', rowNumber),
           N: parseIntCell(row[col('N Pts')], 'N Pts', rowNumber)
         };
+
+        for (const seat of SEATS) {
+          if (rawPoints[seat] <= -100_000 || rawPoints[seat] >= 300_000) {
+            throw new Error(`Row ${rowNumber}: ${seat} Pts must be greater than -100000 and less than 300000.`);
+          }
+        }
+
+        if (dateIso < seasonStart || dateIso > seasonEnd) {
+          throw new Error(`Row ${rowNumber}: Date must fall within the selected season (${seasonStart} through ${seasonEnd}).`);
+        }
+        const rawTotal = SEATS.reduce((sum, seat) => sum + rawPoints[seat], 0);
+        if (!Number.isSafeInteger(rawTotal) || rawTotal + extraSticks !== expectedPointTotal) {
+          throw new Error(
+            `Row ${rowNumber}: raw points (${rawTotal}) + Ex (${extraSticks}) must equal ${expectedPointTotal}.`
+          );
+        }
 
         const parsed: ParsedImportRow = {
           rowNumber,
@@ -294,20 +356,32 @@ export const actions: Actions = {
 
     if (!parsedRows.length) return fail(400, { message: 'No data rows found below the header.' });
 
-    const playersRes = await locals.supabase
-      .from('players')
-      .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name')
-      .order('created_at', { ascending: true });
+    const [playersRes, existingRes] = await Promise.all([
+      locals.supabase
+        .from('players')
+        .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name')
+        .order('created_at', { ascending: true }),
+      locals.supabase
+        .from('matches')
+        .select('played_at, game_number, table_mode')
+        .eq('season_id', season_id)
+        .not('game_number', 'is', null)
+        .not('table_mode', 'is', null)
+    ]);
     if (playersRes.error) return fail(400, { message: playersRes.error.message });
+    if (existingRes.error) return fail(400, { message: existingRes.error.message });
 
     const players = (playersRes.data ?? []) as PlayerRow[];
 
-    const displayNameToPlayer = new Map<string, PlayerRow>();
+    const displayNameToPlayers = new Map<string, PlayerRow[]>();
     const firstNameToPlayers = new Map<string, PlayerRow[]>();
-    let createdPlayers = 0;
     const indexPlayer = (p: PlayerRow) => {
       const display = normalizeName(p.display_name ?? '');
-      if (display && !displayNameToPlayer.has(display)) displayNameToPlayer.set(display, p);
+      if (display) {
+        const list = displayNameToPlayers.get(display) ?? [];
+        list.push(p);
+        displayNameToPlayers.set(display, list);
+      }
 
       const first = normalizeName(p.real_first_name ?? '');
       if (first) {
@@ -318,55 +392,39 @@ export const actions: Actions = {
     };
     for (const p of players) indexPlayer(p);
 
-    const resolveOrCreatePlayerId = async (rawName: string, rowNumber: number, seat: Seat): Promise<string> => {
+    type PlayerReference = {
+      key: string;
+      normalized: string;
+      firstName: string;
+      playerId?: string;
+    };
+
+    const pendingNewPlayers = new Map<string, string>();
+    const resolvePlayerReference = (rawName: string, rowNumber: number, seat: Seat): PlayerReference => {
       const firstName = asText(rawName);
       const normalized = normalizeName(firstName);
       if (!normalized) throw new Error(`Row ${rowNumber}: ${seat} Player is required.`);
 
       const candidatesMap = new Map<string, PlayerRow>();
-      const displayMatch = displayNameToPlayer.get(normalized);
-      if (displayMatch) candidatesMap.set(displayMatch.id, displayMatch);
+      for (const p of displayNameToPlayers.get(normalized) ?? []) {
+        candidatesMap.set(p.id, p);
+      }
       for (const p of firstNameToPlayers.get(normalized) ?? []) {
         candidatesMap.set(p.id, p);
       }
 
       const candidates = [...candidatesMap.values()];
-      if (candidates.length === 1) return candidates[0].id;
+      if (candidates.length === 1) {
+        return { key: `existing:${candidates[0].id}`, normalized, firstName, playerId: candidates[0].id };
+      }
       if (candidates.length > 1) {
         const names = candidates.map((p) => composePlayerDisplayName(p)).join(', ');
         throw new Error(`Row ${rowNumber}: ${seat} Player "${firstName}" is ambiguous. Matches: ${names}.`);
       }
 
-      const createRes = await locals.supabase
-        .from('players')
-        .insert({
-          display_name: null,
-          real_first_name: firstName,
-          real_last_name: null,
-          show_display_name: false,
-          show_real_first_name: true,
-          show_real_last_name: false
-        })
-        .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name')
-        .single();
-
-      if (createRes.error || !createRes.data) {
-        throw new Error(`Row ${rowNumber}: could not auto-create player "${firstName}" (${createRes.error?.message ?? 'unknown error'}).`);
-      }
-
-      const created = createRes.data as PlayerRow;
-      indexPlayer(created);
-      createdPlayers += 1;
-      return created.id;
+      if (!pendingNewPlayers.has(normalized)) pendingNewPlayers.set(normalized, firstName);
+      return { key: `new:${normalized}`, normalized, firstName };
     };
-
-    const existingRes = await locals.supabase
-      .from('matches')
-      .select('played_at, game_number, table_mode')
-      .eq('season_id', season_id)
-      .not('game_number', 'is', null)
-      .not('table_mode', 'is', null);
-    if (existingRes.error) return fail(400, { message: existingRes.error.message });
 
     const existingKeys = new Set<string>();
     for (const m of existingRes.data ?? []) {
@@ -381,37 +439,78 @@ export const actions: Actions = {
       existingKeys.add(`${dateIso}|${game_number}|${table_mode}`);
     }
 
-    const resolvedRows: ResolvedImportRow[] = [];
+    const referencedRows: Array<{ row: ParsedImportRow; refs: Record<Seat, PlayerReference> }> = [];
     try {
       for (const row of parsedRows) {
         const key = importKey(row);
         if (existingKeys.has(key)) {
-          return fail(400, {
-            message: `Row ${row.rowNumber}: Date/Game/Tbl already exists in this season (date ${row.dateIso}, game ${row.gameNumber}, tbl ${row.tableMode}).`
-          });
+          throw new Error(
+            `Row ${row.rowNumber}: Date/Game/Tbl already exists in this season (date ${row.dateIso}, game ${row.gameNumber}, tbl ${row.tableMode}).`
+          );
         }
 
-        const playerIds: Record<Seat, string> = {
-          E: await resolveOrCreatePlayerId(row.playerNames.E, row.rowNumber, 'E'),
-          S: await resolveOrCreatePlayerId(row.playerNames.S, row.rowNumber, 'S'),
-          W: await resolveOrCreatePlayerId(row.playerNames.W, row.rowNumber, 'W'),
-          N: await resolveOrCreatePlayerId(row.playerNames.N, row.rowNumber, 'N')
+        const refs: Record<Seat, PlayerReference> = {
+          E: resolvePlayerReference(row.playerNames.E, row.rowNumber, 'E'),
+          S: resolvePlayerReference(row.playerNames.S, row.rowNumber, 'S'),
+          W: resolvePlayerReference(row.playerNames.W, row.rowNumber, 'W'),
+          N: resolvePlayerReference(row.playerNames.N, row.rowNumber, 'N')
         };
 
-        if (new Set(Object.values(playerIds)).size !== 4) {
-          return fail(400, { message: `Row ${row.rowNumber}: players must be 4 distinct people.` });
+        if (new Set(Object.values(refs).map((ref) => ref.key)).size !== 4) {
+          throw new Error(`Row ${row.rowNumber}: players must be 4 distinct people.`);
         }
 
-        resolvedRows.push({ ...row, playerIds });
+        referencedRows.push({ row, refs });
       }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Could not map players.';
       return fail(400, { message });
     }
 
+    const createdPlayerIdByName = new Map<string, string>();
+    if (pendingNewPlayers.size > 0) {
+      const createRes = await locals.supabase
+        .from('players')
+        .insert(
+          [...pendingNewPlayers.values()].map((firstName) => ({
+            display_name: null,
+            real_first_name: firstName,
+            real_last_name: null,
+            show_display_name: false,
+            show_real_first_name: true,
+            show_real_last_name: false
+          }))
+        )
+        .select('id, real_first_name');
+
+      if (createRes.error) {
+        return fail(400, { message: `Could not auto-create players: ${createRes.error.message}` });
+      }
+      for (const created of createRes.data ?? []) {
+        const normalized = normalizeName(created.real_first_name ?? '');
+        if (normalized && created.id) createdPlayerIdByName.set(normalized, created.id);
+      }
+      if (createdPlayerIdByName.size !== pendingNewPlayers.size) {
+        return fail(400, { message: 'Could not resolve all auto-created players.' });
+      }
+    }
+
+    const resolvedRows: ResolvedImportRow[] = referencedRows
+      .map(({ row, refs }) => ({
+        ...row,
+        playerIds: Object.fromEntries(
+          SEATS.map((seat) => [seat, refs[seat].playerId ?? createdPlayerIdByName.get(refs[seat].normalized) ?? ''])
+        ) as Record<Seat, string>
+      }))
+      .sort((a, b) => a.playedAt.localeCompare(b.playedAt));
+
+    if (resolvedRows.some((row) => SEATS.some((seat) => !row.playerIds[seat]))) {
+      return fail(400, { message: 'Could not resolve every imported player.' });
+    }
+
     let imported = 0;
     for (const row of resolvedRows) {
-      const tableLabel = `${row.tableMode}${row.gameNumber}`;
+      const tableLabel = `${row.tableMode}-${row.gameNumber}`;
       const matchInsert = await locals.supabase
         .from('matches')
         .insert({
@@ -442,9 +541,10 @@ export const actions: Actions = {
         }))
       );
       if (resultsInsert.error) {
-        await locals.supabase.from('matches').delete().eq('id', match_id);
+        const cleanupRes = await locals.supabase.rpc('delete_match_and_recompute', { p_match_id: match_id });
+        const cleanupMessage = cleanupRes.error ? ` Cleanup also failed: ${cleanupRes.error.message}` : '';
         return fail(400, {
-          message: `Import failed at row ${row.rowNumber} after ${imported} imported: ${resultsInsert.error.message}`
+          message: `Import failed at row ${row.rowNumber} after ${imported} imported: ${resultsInsert.error.message}.${cleanupMessage}`
         });
       }
 
@@ -453,9 +553,10 @@ export const actions: Actions = {
         p_update_lifetime: true
       });
       if (finalizeRes.error) {
-        await locals.supabase.from('matches').delete().eq('id', match_id);
+        const cleanupRes = await locals.supabase.rpc('delete_match_and_recompute', { p_match_id: match_id });
+        const cleanupMessage = cleanupRes.error ? ` Cleanup also failed: ${cleanupRes.error.message}` : '';
         return fail(400, {
-          message: `Import failed at row ${row.rowNumber} after ${imported} imported: ${finalizeRes.error.message}`
+          message: `Import failed at row ${row.rowNumber} after ${imported} imported: ${finalizeRes.error.message}.${cleanupMessage}`
         });
       }
 
@@ -463,7 +564,7 @@ export const actions: Actions = {
     }
 
     return {
-      message: `Imported ${imported} matches from ${upload.name}. Created ${createdPlayers} new players.`
+      message: `Imported ${imported} matches from ${upload.name}. Created ${createdPlayerIdByName.size} new players.`
     };
   }
 };
