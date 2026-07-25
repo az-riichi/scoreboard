@@ -10,6 +10,8 @@
   let table_mode = 'A';
   let extra_sticks = 0;
   let notes = '';
+  let casual_event_id = '';
+  let new_casual_event_name = '';
 
   $: selectedSeason = data.seasons.find((season: any) => season.id === season_id) ?? null;
   $: isCasual = selectedSeason?.is_casual === true;
@@ -63,6 +65,32 @@
         <div class="muted">Played at</div>
         <input name="played_at" type="datetime-local" bind:value={played_at} required />
       </label>
+
+      {#if isCasual}
+        <label style="display:grid; gap:4px;">
+          <div class="muted">Event</div>
+          <select name="casual_event_id" bind:value={casual_event_id}>
+            <option value="">Uncategorized</option>
+            {#each data.casualEvents as event}
+              <option value={event.id}>{event.name}</option>
+            {/each}
+            <option value="__new__">+ Add new event…</option>
+          </select>
+        </label>
+
+        {#if casual_event_id === '__new__'}
+          <label style="display:grid; gap:4px;">
+            <div class="muted">New event name</div>
+            <input
+              name="new_casual_event_name"
+              bind:value={new_casual_event_name}
+              maxlength="100"
+              placeholder="Event name"
+              required
+            />
+          </label>
+        {/if}
+      {/if}
     </div>
 
     {#if isCasual}
@@ -105,6 +133,7 @@
         <tr>
           <th>Date</th>
           <th>Season</th>
+          <th>Event</th>
           <th style="width:90px;">Game</th>
           <th style="width:80px;">Ex</th>
           <th style="width:120px;">Status</th>
@@ -116,6 +145,7 @@
           <tr use:clickableRow={`/admin/match/${m.id}`}>
             <td>{fmtDateTime(m.played_at)}</td>
             <td>{m.season_name}{m.is_casual ? ' (Casual)' : ''}</td>
+            <td>{m.casual_event_name ?? '—'}</td>
             <td>{m.table_mode ?? ''}{m.game_number ?? ''}</td>
             <td>{m.extra_sticks ?? 0}</td>
             <td>{m.status}</td>

@@ -22,7 +22,8 @@ function asBool(value: unknown) {
 export const load: PageServerLoad = async ({ locals, params, url }) => {
   const player_id = params.player_id;
   const seasonParam = url.searchParams.get('season');
-  const [playerRes, ownRes, ownerPlayerRes, seasonsRes, ratingStartDate, activeSeasonId] = await Promise.all([
+  const requestedEventId = asText(url.searchParams.get('event'));
+  const [playerRes, ownRes, ownerPlayerRes, seasonsRes, eventsRes, ratingStartDate, activeSeasonId] = await Promise.all([
     locals.supabase
       .from('v_public_players')
       .select(
@@ -50,6 +51,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       .select('id, name, start_date, is_casual')
       .order('is_casual', { ascending: false })
       .order('start_date', { ascending: false, nullsFirst: false }),
+    locals.supabase.from('casual_events').select('id, name').order('name', { ascending: true }),
     getRatingStartDate(locals.supabase),
     seasonParam ? Promise.resolve(null) : getActiveSeasonId(locals.supabase)
   ]);
@@ -80,6 +82,11 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   const seasonId = seasonParam || activeSeasonId || null;
   const selectedSeason = (seasonsRes.data ?? []).find((s) => s.id === seasonId) ?? null;
   const isCasualSeason = selectedSeason?.is_casual === true;
+  const events = isCasualSeason && !eventsRes.error ? (eventsRes.data ?? []) : [];
+  const eventId =
+    isCasualSeason && requestedEventId && events.some((event) => event.id === requestedEventId)
+      ? requestedEventId
+      : null;
   const isRatingSeason = selectedSeason
     ? !isCasualSeason && String(selectedSeason.start_date ?? '').trim() >= ratingStartDate
     : false;
@@ -106,70 +113,92 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
   let worstRawMatch: any = null;
 
   if (seasonId) {
-    const [statsRes, standingsRes, seasonStandingsRes, mhRes, phRes, placementRes, bestRawRes, worstRawRes] = await Promise.all([
-      locals.supabase
-        .from('v_season_player_stats')
-        .select('*')
-        .eq('season_id', seasonId)
-        .eq('player_id', player_id)
-        .maybeSingle(),
-      locals.supabase
-        .from('v_season_standings')
-        .select('*')
-        .eq('season_id', seasonId)
-        .eq('player_id', player_id)
-        .maybeSingle(),
-      locals.supabase
-        .from('v_season_standings')
-        .select('player_id, rank, games_played')
-        .eq('season_id', seasonId)
-        .order('rank', { ascending: true })
-        .order('player_id', { ascending: true }),
-      locals.supabase
-        .from('v_player_match_history')
-        .select('*')
-        .eq('season_id', seasonId)
-        .eq('player_id', player_id)
-        .order('played_at', { ascending: false })
-        .limit(100),
-      locals.supabase
-        .from('v_player_point_history')
-        .select('*')
-        .eq('season_id', seasonId)
-        .eq('player_id', player_id)
-        .order('played_at', { ascending: false })
-        .limit(200),
-      locals.supabase
-        .from('v_player_placement_history')
-        .select('*')
-        .eq('season_id', seasonId)
-        .eq('player_id', player_id)
-        .order('played_at', { ascending: false })
-        .order('match_id', { ascending: false })
-        .limit(200),
-      locals.supabase
-        .from('v_player_match_history')
-        .select('match_id, played_at, raw_points')
-        .eq('season_id', seasonId)
-        .eq('player_id', player_id)
-        .order('raw_points', { ascending: false })
-        .order('played_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      locals.supabase
-        .from('v_player_match_history')
-        .select('match_id, played_at, raw_points')
-        .eq('season_id', seasonId)
-        .eq('player_id', player_id)
-        .order('raw_points', { ascending: true })
-        .order('played_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    ]);
+    const statsView = eventId ? 'v_casual_event_player_stats' : 'v_season_player_stats';
+    const standingsView = eventId ? 'v_casual_event_standings' : 'v_season_standings';
+    const pointHistoryView = eventId
+      ? 'v_casual_event_player_point_history'
+      : 'v_player_point_history';
+
+    let statsQuery = locals.supabase
+      .from(statsView)
+      .select('*')
+      .eq('season_id', seasonId)
+      .eq('player_id', player_id);
+    let standingsQuery = locals.supabase
+      .from(standingsView)
+      .select('*')
+      .eq('season_id', seasonId)
+      .eq('player_id', player_id);
+    let seasonStandingsQuery = locals.supabase
+      .from(standingsView)
+      .select('player_id, rank, games_played')
+      .eq('season_id', seasonId);
+    let matchHistoryQuery = locals.supabase
+      .from('v_player_match_history')
+      .select('*')
+      .eq('season_id', seasonId)
+      .eq('player_id', player_id);
+    let pointHistoryQuery = locals.supabase
+      .from(pointHistoryView)
+      .select('*')
+      .eq('season_id', seasonId)
+      .eq('player_id', player_id);
+    let placementQuery = locals.supabase
+      .from('v_player_placement_history')
+      .select('*')
+      .eq('season_id', seasonId)
+      .eq('player_id', player_id);
+    let bestRawQuery = locals.supabase
+      .from('v_player_match_history')
+      .select('match_id, played_at, raw_points')
+      .eq('season_id', seasonId)
+      .eq('player_id', player_id);
+    let worstRawQuery = locals.supabase
+      .from('v_player_match_history')
+      .select('match_id, played_at, raw_points')
+      .eq('season_id', seasonId)
+      .eq('player_id', player_id);
+
+    if (eventId) {
+      statsQuery = statsQuery.eq('casual_event_id', eventId);
+      standingsQuery = standingsQuery.eq('casual_event_id', eventId);
+      seasonStandingsQuery = seasonStandingsQuery.eq('casual_event_id', eventId);
+      matchHistoryQuery = matchHistoryQuery.eq('casual_event_id', eventId);
+      pointHistoryQuery = pointHistoryQuery.eq('casual_event_id', eventId);
+      placementQuery = placementQuery.eq('casual_event_id', eventId);
+      bestRawQuery = bestRawQuery.eq('casual_event_id', eventId);
+      worstRawQuery = worstRawQuery.eq('casual_event_id', eventId);
+    }
+
+    const [statsRes, standingsRes, seasonStandingsRes, mhRes, phRes, placementRes, bestRawRes, worstRawRes] =
+      await Promise.all([
+        statsQuery.maybeSingle(),
+        standingsQuery.maybeSingle(),
+        seasonStandingsQuery.order('rank', { ascending: true }).order('player_id', { ascending: true }),
+        matchHistoryQuery.order('played_at', { ascending: false }).limit(100),
+        pointHistoryQuery.order('played_at', { ascending: false }).limit(200),
+        placementQuery
+          .order('played_at', { ascending: false })
+          .order('match_id', { ascending: false })
+          .limit(200),
+        bestRawQuery
+          .order('raw_points', { ascending: false })
+          .order('played_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        worstRawQuery
+          .order('raw_points', { ascending: true })
+          .order('played_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      ]);
 
     stats = statsRes.error ? null : statsRes.data;
     standingsRow = standingsRes.error ? null : standingsRes.data;
-    if (!seasonStandingsRes.error) {
+    if (isCasualSeason) {
+      const casualRank = Number(standingsRow?.rank);
+      seasonEligibleRank = Number.isFinite(casualRank) ? casualRank : null;
+    } else if (!seasonStandingsRes.error) {
       const denseRankRemap = new Map<number, number>();
       let nextEligibleRank = 1;
       for (const row of seasonStandingsRes.data ?? []) {
@@ -225,17 +254,6 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       )
     );
 
-    const ratingDeltaByMatch = new Map<string, number>();
-    if (isRatingSeason && recentMatchIds.length > 0) {
-      for (const row of ratingHistory) {
-        const id = String(row?.match_id ?? '').trim();
-        const delta = Number(row?.delta);
-        if (id && Number.isFinite(delta) && !ratingDeltaByMatch.has(id)) {
-          ratingDeltaByMatch.set(id, delta);
-        }
-      }
-    }
-
     const historyMatchIds = Array.from(
       new Set(
         [...pointHistory, ...placementHistory, ...ratingHistory]
@@ -264,8 +282,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
       const match_id = String(m?.match_id ?? '');
       return {
         ...m,
-        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8),
-        rating_delta: ratingDeltaByMatch.get(match_id) ?? null
+        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8)
       };
     });
 
@@ -302,6 +319,8 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     seasons: seasonsRes.error ? [] : (seasonsRes.data ?? []),
     seasonId,
     isCasualSeason,
+    events,
+    eventId,
     currentRating,
     currentRatingRank,
     currentRatingRankTotal,

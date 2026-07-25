@@ -109,6 +109,23 @@ where is_casual;
 insert into public.seasons (name, start_date, end_date, is_casual, is_active)
 values ('Casual', null, null, true, false);
 
+create table public.casual_events (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  constraint casual_events_name_check check (
+    name = btrim(name)
+    and char_length(name) between 1 and 100
+  )
+);
+
+create unique index casual_events_name_lower_unique
+on public.casual_events (lower(name));
+
+create index casual_events_created_by_idx
+on public.casual_events (created_by);
+
 create table public.players (
   id uuid primary key default gen_random_uuid(),
   display_name text unique,
@@ -173,6 +190,7 @@ create type public.discipline_action_source as enum ('manual', 'automatic');
 create table public.matches (
   id uuid primary key default gen_random_uuid(),
   season_id uuid not null references public.seasons(id) on delete restrict,
+  casual_event_id uuid references public.casual_events(id) on delete restrict,
   ruleset_id uuid not null references public.rulesets(id) on delete restrict,
   game_number int,
   table_mode public.table_mode,
@@ -191,6 +209,13 @@ create table public.matches (
 create index matches_season_played_idx on public.matches (season_id, played_at desc);
 create index matches_created_by_idx on public.matches (created_by);
 create index matches_ruleset_id_idx on public.matches (ruleset_id);
+create index matches_casual_event_played_idx
+on public.matches (casual_event_id, played_at desc)
+where casual_event_id is not null;
+
+-- Supports same-season referential integrity for match-linked adjustments.
+create unique index matches_season_id_id_unique
+on public.matches (season_id, id);
 
 create unique index matches_season_day_game_table_unique
 on public.matches (
@@ -223,6 +248,10 @@ begin
 
   if not found then
     raise exception 'season % not found', new.season_id;
+  end if;
+
+  if new.casual_event_id is not null and not v_is_casual then
+    raise exception 'casual events can only be assigned to Casual matches';
   end if;
 
   v_played_date := (new.played_at at time zone 'America/Phoenix')::date;
@@ -262,7 +291,8 @@ $$;
 revoke all on function public.validate_match_metadata() from public;
 
 create trigger matches_validate_metadata
-before insert or update of season_id, played_at, game_number, table_mode, status, include_in_lifetime_rating
+before insert or update of season_id, played_at, game_number, table_mode, status,
+  include_in_lifetime_rating, casual_event_id
 on public.matches
 for each row execute function public.validate_match_metadata();
 
@@ -395,7 +425,8 @@ language plpgsql
 set search_path = public
 as $$
 begin
-  if old.status <> 'draft' then
+  if old.status <> 'draft'
+     and current_setting('azriichi.allow_final_metadata_repair', true) is distinct from 'on' then
     raise exception 'final or void match metadata cannot be edited';
   end if;
   return new;
@@ -405,7 +436,8 @@ $$;
 revoke all on function public.guard_final_match_metadata() from public;
 
 create trigger matches_guard_final_metadata
-before update of season_id, ruleset_id, played_at, game_number, table_mode, extra_sticks, include_in_lifetime_rating
+before update of season_id, ruleset_id, played_at, game_number, table_mode,
+  extra_sticks, include_in_lifetime_rating, casual_event_id
 on public.matches
 for each row execute function public.guard_final_match_metadata();
 
@@ -459,15 +491,23 @@ for each row execute function public.guard_published_match_delete();
 create table public.adjustments (
   id uuid primary key default gen_random_uuid(),
   season_id uuid not null references public.seasons(id) on delete cascade,
+  match_id uuid,
   player_id uuid not null references public.players(id) on delete cascade,
   points numeric not null,
   reason text not null,
   created_by uuid references auth.users(id),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint adjustments_season_match_fk
+    foreign key (season_id, match_id)
+    references public.matches (season_id, id)
+    on delete cascade
 );
 create index adjustments_season_player_idx on public.adjustments (season_id, player_id);
 create index adjustments_created_by_idx on public.adjustments (created_by);
 create index adjustments_player_id_idx on public.adjustments (player_id);
+create index adjustments_match_id_idx
+on public.adjustments (match_id)
+where match_id is not null;
 
 -- Private, auditable discipline ledger. Revocations retain the original row;
 -- automatic rows point to the strike/suspension that triggered escalation.
@@ -1339,6 +1379,114 @@ $$;
 revoke all on function public.create_season(text, date, date, boolean) from public;
 grant execute on function public.create_season(text, date, date, boolean) to authenticated;
 
+create or replace function public.get_or_create_casual_event(p_name text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name text := btrim(coalesce(p_name, ''));
+  v_id uuid;
+begin
+  if not public.admin_only() then
+    raise exception 'admin only';
+  end if;
+
+  if char_length(v_name) < 1 or char_length(v_name) > 100 then
+    raise exception 'event name must be between 1 and 100 characters';
+  end if;
+
+  select ce.id into v_id
+  from public.casual_events ce
+  where lower(ce.name) = lower(v_name)
+  order by ce.id
+  limit 1;
+
+  if v_id is not null then
+    return v_id;
+  end if;
+
+  insert into public.casual_events (name, created_by)
+  values (v_name, (select auth.uid()))
+  on conflict do nothing
+  returning id into v_id;
+
+  if v_id is null then
+    select ce.id into v_id
+    from public.casual_events ce
+    where lower(ce.name) = lower(v_name)
+    order by ce.id
+    limit 1;
+  end if;
+
+  if v_id is null then
+    raise exception 'could not create casual event';
+  end if;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.get_or_create_casual_event(text) from public;
+grant execute on function public.get_or_create_casual_event(text) to authenticated;
+
+create or replace function public.set_casual_match_event(
+  p_match_id uuid,
+  p_casual_event_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_season_id uuid;
+  v_is_casual boolean;
+begin
+  if not public.admin_only() then
+    raise exception 'admin only';
+  end if;
+
+  select m.season_id
+  into v_season_id
+  from public.matches m
+  where m.id = p_match_id
+  for update;
+
+  if not found then
+    raise exception 'match % not found', p_match_id;
+  end if;
+
+  select s.is_casual
+  into v_is_casual
+  from public.seasons s
+  where s.id = v_season_id;
+
+  if not coalesce(v_is_casual, false) then
+    raise exception 'events can only be assigned to Casual matches';
+  end if;
+
+  if p_casual_event_id is not null
+     and not exists (
+       select 1
+       from public.casual_events ce
+       where ce.id = p_casual_event_id
+     ) then
+    raise exception 'casual event % not found', p_casual_event_id;
+  end if;
+
+  perform set_config('azriichi.allow_final_metadata_repair', 'on', true);
+  update public.matches
+  set casual_event_id = p_casual_event_id
+  where id = p_match_id;
+  perform set_config('azriichi.allow_final_metadata_repair', 'off', true);
+end;
+$$;
+
+revoke all on function public.set_casual_match_event(uuid, uuid) from public;
+grant execute on function public.set_casual_match_event(uuid, uuid) to authenticated;
+
 -- Delete the match, match-scoped CHOMBO adjustments, and all affected rating
 -- state atomically.
 create or replace function public.delete_match_and_recompute(p_match_id uuid)
@@ -1383,8 +1531,12 @@ begin
   );
 
   delete from public.adjustments a
-  where a.season_id = m.season_id
-    and a.reason like ('CHOMBO:' || p_match_id::text || ':%');
+  where a.match_id = p_match_id
+     or (
+       a.match_id is null
+       and a.season_id = m.season_id
+       and a.reason like ('CHOMBO:' || p_match_id::text || ':%')
+     );
 
   perform set_config('azriichi.allow_match_delete', 'on', true);
   delete from public.matches where id = p_match_id;
@@ -1846,6 +1998,7 @@ execute function public.guard_match_discipline();
 -- 6) SECURITY: RLS + GRANTS
 
 alter table public.seasons enable row level security;
+alter table public.casual_events enable row level security;
 alter table public.players enable row level security;
 alter table public.player_accounts enable row level security;
 alter table public.rulesets enable row level security;
@@ -2030,6 +2183,12 @@ for select
 to anon, authenticated
 using (true);
 
+create policy casual_events_public_read
+on public.casual_events
+for select
+to anon, authenticated
+using (true);
+
 create policy players_private_read
 on public.players
 for select
@@ -2101,6 +2260,18 @@ for update to authenticated
 using (public.admin_only()) with check (public.admin_only());
 
 create policy seasons_admin_delete on public.seasons
+for delete to authenticated
+using (public.admin_only());
+
+create policy casual_events_admin_insert on public.casual_events
+for insert to authenticated
+with check (public.admin_only());
+
+create policy casual_events_admin_update on public.casual_events
+for update to authenticated
+using (public.admin_only()) with check (public.admin_only());
+
+create policy casual_events_admin_delete on public.casual_events
 for delete to authenticated
 using (public.admin_only());
 
@@ -2191,14 +2362,14 @@ using (public.admin_only());
 -- grants (needed in addition to RLS)
 grant usage on schema public to anon, authenticated;
 
-grant select on public.seasons, public.rulesets to anon, authenticated;
+grant select on public.seasons, public.casual_events, public.rulesets to anon, authenticated;
 revoke select on public.players from public, anon;
 grant select on public.players to authenticated;
 grant select on public.v_public_players to anon, authenticated;
 grant select on public.matches, public.match_results, public.adjustments to anon, authenticated;
 grant select on public.rating_state, public.rating_events to anon, authenticated;
 
-grant insert, update, delete on public.seasons, public.players, public.rulesets to authenticated;
+grant insert, update, delete on public.seasons, public.casual_events, public.players, public.rulesets to authenticated;
 grant insert, update, delete on public.matches, public.match_results, public.adjustments to authenticated;
 grant insert, update, delete on public.rating_state, public.rating_events to authenticated;
 grant select on public.player_accounts to authenticated;
@@ -2230,10 +2401,13 @@ select
   r.raw_points,
   r.club_points,
   r.placement,
-  r.tobi
+  r.tobi,
+  m.casual_event_id,
+  ce.name as casual_event_name
 from public.matches m
 join public.match_results r on r.match_id = m.id
 join public.v_public_players p on p.id = r.player_id
+left join public.casual_events ce on ce.id = m.casual_event_id
 where m.status = 'final';
 
 -- Standings (season cumulative + rank; includes adjustments)
@@ -2260,9 +2434,14 @@ with base as (
   group by season_id, player_id, display_name
 ),
 adj as (
-  select season_id, player_id, sum(points) as adj_points
-  from public.adjustments
-  group by season_id, player_id
+  select a.season_id, a.player_id, sum(a.points) as adj_points
+  from public.adjustments a
+  left join public.matches m
+    on m.id = a.match_id
+   and m.season_id = a.season_id
+  where a.match_id is null
+     or m.status = 'final'
+  group by a.season_id, a.player_id
 )
 select
   b.*,
@@ -2345,7 +2524,9 @@ select
   raw_points,
   club_points,
   placement,
-  tobi
+  tobi,
+  casual_event_id,
+  casual_event_name
 from public.v_final_results;
 
 create or replace view public.v_player_point_history
@@ -2374,8 +2555,188 @@ select
   display_name,
   played_at,
   match_id,
-  placement
+  placement,
+  casual_event_id,
+  casual_event_name
 from public.v_final_results;
+
+create or replace view public.v_casual_event_standings
+with (security_invoker = true)
+as
+with base as (
+  select
+    season_id,
+    casual_event_id,
+    casual_event_name,
+    player_id,
+    display_name,
+    count(*) as games_played,
+    sum(club_points) as total_points,
+    avg(placement::numeric) as avg_placement,
+    avg(club_points) as avg_points,
+    sum((placement = 1)::int) as firsts,
+    sum((placement = 2)::int) as seconds,
+    sum((placement = 3)::int) as thirds,
+    sum((placement = 4)::int) as fourths,
+    sum((placement <= 2)::int)::numeric / greatest(count(*)::numeric, 1) as top2_rate,
+    sum((placement = 4)::int)::numeric / greatest(count(*)::numeric, 1) as fourth_rate,
+    sum((tobi)::int)::numeric / greatest(count(*)::numeric, 1) as tobi_rate
+  from public.v_final_results
+  where casual_event_id is not null
+  group by season_id, casual_event_id, casual_event_name, player_id, display_name
+),
+adj as (
+  select
+    a.season_id,
+    m.casual_event_id,
+    a.player_id,
+    sum(a.points) as adj_points
+  from public.adjustments a
+  join public.matches m
+    on m.id = a.match_id
+   and m.season_id = a.season_id
+  where m.status = 'final'
+    and m.casual_event_id is not null
+  group by a.season_id, m.casual_event_id, a.player_id
+)
+select
+  b.*,
+  coalesce(a.adj_points, 0) as adjustment_points,
+  (b.total_points + coalesce(a.adj_points, 0)) as total_points_with_adjustments,
+  dense_rank() over (
+    partition by b.season_id, b.casual_event_id
+    order by (b.total_points + coalesce(a.adj_points, 0)) desc
+  ) as rank
+from base b
+left join adj a
+  on a.season_id = b.season_id
+ and a.casual_event_id = b.casual_event_id
+ and a.player_id = b.player_id;
+
+create or replace view public.v_casual_event_player_stats
+with (security_invoker = true)
+as
+with g as (
+  select
+    season_id,
+    casual_event_id,
+    casual_event_name,
+    player_id,
+    display_name,
+    match_id,
+    played_at,
+    placement,
+    club_points
+  from public.v_final_results
+  where casual_event_id is not null
+),
+agg as (
+  select
+    season_id,
+    casual_event_id,
+    casual_event_name,
+    player_id,
+    display_name,
+    count(*) as games_played,
+    sum(club_points) as total_points,
+    avg(placement::numeric) as avg_placement,
+    avg(club_points) as avg_points,
+    sum((placement = 1)::int) as firsts,
+    sum((placement = 2)::int) as seconds,
+    sum((placement = 3)::int) as thirds,
+    sum((placement = 4)::int) as fourths,
+    sum((placement <= 2)::int)::numeric / greatest(count(*)::numeric, 1) as top2_rate,
+    sum((placement = 1)::int)::numeric / greatest(count(*)::numeric, 1) as first_rate,
+    sum((placement = 4)::int)::numeric / greatest(count(*)::numeric, 1) as fourth_rate,
+    stddev_pop(club_points) as stdev_points,
+    percentile_cont(0.5) within group (order by club_points) as median_points,
+    max(club_points) as best_points,
+    min(club_points) as worst_points,
+    max(played_at) as last_played_at
+  from g
+  group by season_id, casual_event_id, casual_event_name, player_id, display_name
+),
+best as (
+  select distinct on (season_id, casual_event_id, player_id)
+    season_id,
+    casual_event_id,
+    player_id,
+    match_id as best_match_id,
+    played_at as best_played_at
+  from g
+  order by season_id, casual_event_id, player_id, club_points desc, played_at desc, match_id desc
+),
+worst as (
+  select distinct on (season_id, casual_event_id, player_id)
+    season_id,
+    casual_event_id,
+    player_id,
+    match_id as worst_match_id,
+    played_at as worst_played_at
+  from g
+  order by season_id, casual_event_id, player_id, club_points asc, played_at desc, match_id desc
+)
+select
+  a.*,
+  b.best_match_id,
+  b.best_played_at,
+  w.worst_match_id,
+  w.worst_played_at
+from agg a
+left join best b
+  on b.season_id = a.season_id
+ and b.casual_event_id = a.casual_event_id
+ and b.player_id = a.player_id
+left join worst w
+  on w.season_id = a.season_id
+ and w.casual_event_id = a.casual_event_id
+ and w.player_id = a.player_id;
+
+create or replace view public.v_casual_event_player_point_history
+with (security_invoker = true)
+as
+with per_match as (
+  select
+    fr.season_id,
+    fr.casual_event_id,
+    fr.casual_event_name,
+    fr.player_id,
+    fr.display_name,
+    fr.played_at,
+    fr.match_id,
+    fr.club_points,
+    coalesce(a.adjustment_points, 0::numeric) as adjustment_points
+  from public.v_final_results fr
+  left join (
+    select
+      match_id,
+      player_id,
+      sum(points) as adjustment_points
+    from public.adjustments
+    where match_id is not null
+    group by match_id, player_id
+  ) a
+    on a.match_id = fr.match_id
+   and a.player_id = fr.player_id
+  where fr.casual_event_id is not null
+)
+select
+  season_id,
+  casual_event_id,
+  casual_event_name,
+  player_id,
+  display_name,
+  played_at,
+  match_id,
+  club_points,
+  adjustment_points,
+  (club_points + adjustment_points) as points_with_adjustments,
+  sum(club_points + adjustment_points) over (
+    partition by season_id, casual_event_id, player_id
+    order by played_at asc, match_id asc
+    rows between unbounded preceding and current row
+  ) as cumulative_points
+from per_match;
 
 -- Current ratings (season + lifetime)
 create or replace view public.v_current_ratings
@@ -2419,6 +2780,9 @@ grant select on public.v_season_player_stats to anon, authenticated;
 grant select on public.v_player_match_history to anon, authenticated;
 grant select on public.v_player_point_history to anon, authenticated;
 grant select on public.v_player_placement_history to anon, authenticated;
+grant select on public.v_casual_event_standings to anon, authenticated;
+grant select on public.v_casual_event_player_stats to anon, authenticated;
+grant select on public.v_casual_event_player_point_history to anon, authenticated;
 grant select on public.v_current_ratings to anon, authenticated;
 grant select on public.v_rating_history to anon, authenticated;
 

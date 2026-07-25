@@ -8,8 +8,8 @@ Public (no login required):
 
 - Seasons list
 - Season standings (cumulative points + basic stats)
-- Timeless Casual category whose games never change season or lifetime ratings
-- Player page: season stats plus togglable SP/R and placement history charts (placement-only for Casual)
+- Timeless Casual category whose games can be grouped and filtered by event and never change season or lifetime ratings
+- Player page: season/event stats plus togglable SP/R and placement history charts (placement-only for Casual)
 - Match page: final results (E/S/W/N seats)
 
 Admin (login required):
@@ -17,6 +17,7 @@ Admin (login required):
 - Create seasons
 - Create players
 - Create matches (draft)
+- Create or select a Casual event while entering a match
 - Enter match results (E/S/W/N + raw points)
 - Finalize match (computes placement + club_points, updates ratings for regular seasons, and makes it public)
 - Import season matches from Excel on `/admin/seasons`
@@ -87,7 +88,8 @@ update public.profiles set is_admin=true where id = '<auth-user-uuid>';
 - Public pages query read-only views:
   - v_season_standings, v_season_player_stats, v_player_match_history,
     v_player_point_history, v_rating_history, v_current_ratings, v_final_results,
-    and the redacted v_public_players projection
+    v_casual_event_standings, v_casual_event_player_stats,
+    v_casual_event_player_point_history, and the redacted v_public_players projection
 - Admin pages write through restricted tables and transaction-safe RPCs for finalizing/deleting matches,
   rebuilding ratings, activating seasons, and linking player accounts.
 - `Casual` is a singleton, date-unbounded season managed by the database. It cannot be active and its matches

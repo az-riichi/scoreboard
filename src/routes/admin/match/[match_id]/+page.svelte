@@ -22,6 +22,10 @@
   let table_mode = match.table_mode ?? 'A';
   let extra_sticks = String(match.extra_sticks ?? 0);
   let notes = match.notes ?? '';
+  let casual_event_id = match.casual_event_id ?? '';
+  let new_casual_event_name = '';
+  const casualEventName =
+    data.casualEvents.find((event: any) => event.id === match.casual_event_id)?.name ?? null;
 
   const seats: Seat[] = ['E', 'S', 'W', 'N'];
   const seatOrder: Record<Seat, number> = { E: 1, S: 2, W: 3, N: 4 };
@@ -349,6 +353,9 @@
       <div class="muted">{season?.name ?? 'Unknown season'}{isCasual ? ' · Casual' : ''}</div>
       <div class="muted">{fmtDateTime(match.played_at)} — {match.table_label ?? match.id.slice(0,8)} — {match.status}</div>
       <div class="muted">Tbl: {match.table_mode ?? '—'} | Game: {match.game_number ?? '—'} | Ex: {match.extra_sticks ?? 0}</div>
+      {#if isCasual}
+        <div class="muted">Event: {casualEventName ?? 'Uncategorized'}</div>
+      {/if}
       <div style="font-size:0.8rem; color:#888;">UUID: <code>{match.id}</code></div>
       {#if match.notes}
         <div class="muted">Note: {match.notes}</div>
@@ -412,6 +419,39 @@
         <label for="extra_sticks">Extra points</label>
         <input id="extra_sticks" name="extra_sticks" type="number" min="0" step="1000" bind:value={extra_sticks} style="width:110px;" disabled={isFinal} />
       </div>
+
+      {#if isCasual && !isFinal}
+        <div style="display:grid; gap:4px;">
+          <label for="casual_event_id">Event</label>
+          <select
+            id="casual_event_id"
+            name="casual_event_id"
+            bind:value={casual_event_id}
+            disabled={isFinal}
+            style="min-width:200px;"
+          >
+            <option value="">Uncategorized</option>
+            {#each data.casualEvents as event}
+              <option value={event.id}>{event.name}</option>
+            {/each}
+            <option value="__new__">+ Add new event…</option>
+          </select>
+        </div>
+
+        {#if casual_event_id === '__new__'}
+          <div style="display:grid; gap:4px;">
+            <label for="new_casual_event_name">New event name</label>
+            <input
+              id="new_casual_event_name"
+              name="new_casual_event_name"
+              bind:value={new_casual_event_name}
+              maxlength="100"
+              placeholder="Event name"
+              required
+            />
+          </div>
+        {/if}
+      {/if}
     </div>
 
     <div style="display:grid; gap:4px;">
@@ -429,6 +469,41 @@
       </div>
     {/if}
   </form>
+
+  {#if isCasual && isFinal}
+    <form
+      method="POST"
+      action="?/saveCasualEvent"
+      style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:12px; padding-top:12px; border-top:1px solid var(--table-border);"
+    >
+      <label style="display:grid; gap:4px;">
+        <span>Casual event</span>
+        <select name="casual_event_id" bind:value={casual_event_id} style="min-width:220px;">
+          <option value="">Uncategorized</option>
+          {#each data.casualEvents as event}
+            <option value={event.id}>{event.name}</option>
+          {/each}
+          <option value="__new__">+ Add new event…</option>
+        </select>
+      </label>
+
+      {#if casual_event_id === '__new__'}
+        <label style="display:grid; gap:4px;">
+          <span>New event name</span>
+          <input
+            name="new_casual_event_name"
+            bind:value={new_casual_event_name}
+            maxlength="100"
+            placeholder="Event name"
+            required
+          />
+        </label>
+      {/if}
+
+      <button class="btn" type="submit">Update event</button>
+      <span class="muted">Categorization can be updated without changing scores or ratings.</span>
+    </form>
+  {/if}
 </div>
 
 <div class="grid2">

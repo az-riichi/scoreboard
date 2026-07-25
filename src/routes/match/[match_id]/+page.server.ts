@@ -7,19 +7,26 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const matchRes = await locals.supabase
     .from('matches')
-    .select('id, season_id, ruleset_id, played_at, table_label, notes, status, game_number, table_mode, extra_sticks')
+    .select('id, season_id, ruleset_id, played_at, table_label, notes, status, game_number, table_mode, extra_sticks, casual_event_id')
     .eq('id', match_id)
     .maybeSingle();
 
   if (matchRes.error || !matchRes.data) throw kitError(404, 'Match not found');
   if (matchRes.data.status !== 'final') throw kitError(404, 'Match not public');
 
-  const [seasonRes, resultsRes, deltasRes] = await Promise.all([
+  const [seasonRes, eventRes, resultsRes, deltasRes] = await Promise.all([
     locals.supabase
       .from('seasons')
       .select('id, name, is_casual')
       .eq('id', matchRes.data.season_id)
       .maybeSingle(),
+    matchRes.data.casual_event_id
+      ? locals.supabase
+          .from('casual_events')
+          .select('id, name')
+          .eq('id', matchRes.data.casual_event_id)
+          .maybeSingle()
+      : Promise.resolve(null),
     locals.supabase.from('v_final_results').select('*').eq('match_id', match_id),
     locals.supabase
       .from('v_rating_history')
@@ -68,6 +75,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   return {
     match: matchRes.data,
     season: seasonRes.error ? null : seasonRes.data,
+    casualEvent: eventRes && !eventRes.error ? eventRes.data : null,
     isCasual: seasonRes.data?.is_casual === true,
     results: results.map(withNameParts),
     ratingDeltas: ratingDeltas.map(withNameParts)

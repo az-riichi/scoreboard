@@ -7,6 +7,7 @@
   export let form: any;
 
   let season = data.seasonId;
+  let eventId = data.eventId ?? '';
   let display_name = data.player.display_name ?? '';
   let real_first_name = data.player.real_first_name ?? '';
   let real_last_name = data.player.real_last_name ?? '';
@@ -17,8 +18,16 @@
   let profile_media_url = data.player.profile_media_url ?? '';
   let profileSettingsOpen = false;
 
+  $: season = data.seasonId;
+  $: eventId = data.eventId ?? '';
+
   $: if (data.canEditDisplay && form?.message) {
     profileSettingsOpen = true;
+  }
+
+  function submitSelect(event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+    select.form?.requestSubmit();
   }
 
   type HistoryRange = '10' | '20' | '50' | 'all';
@@ -80,7 +89,8 @@
   function spPointTooltip(row: any) {
     const label = String(row?.match_label ?? String(row?.match_id ?? '').slice(0, 8));
     const date = row?.played_at ? fmtDateTime(row.played_at) : '';
-    return `${label}${date ? ` • ${date}` : ''}\nSP Δ ${fmtNum(row?.club_points, 2)} | Cum SP ${fmtNum(row?.cumulative_points, 2)}`;
+    const pointsDelta = row?.points_with_adjustments ?? row?.club_points;
+    return `${label}${date ? ` • ${date}` : ''}\nSP Δ ${fmtNum(pointsDelta, 2)} | Cum SP ${fmtNum(row?.cumulative_points, 2)}`;
   }
 
   function rPointTooltip(row: any) {
@@ -218,17 +228,31 @@
     </div>
 
     <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
-      <form method="GET" style="display:flex; gap:10px; align-items:end;">
+      <form method="GET" style="display:flex; align-items:end;">
         <label>
           <div class="muted">Season</div>
-          <select name="season" bind:value={season} style="min-width:240px;">
+          <select name="season" bind:value={season} style="min-width:240px;" on:change={submitSelect}>
             {#each data.seasons as s}
               <option value={s.id}>{s.name}</option>
             {/each}
           </select>
         </label>
-        <button class="btn" type="submit">View</button>
       </form>
+
+      {#if data.isCasualSeason}
+        <form method="GET" style="display:flex; align-items:end;">
+          <input type="hidden" name="season" value={data.seasonId} />
+          <label>
+            <div class="muted">Event</div>
+            <select name="event" bind:value={eventId} style="min-width:200px;" on:change={submitSelect}>
+              <option value="">All events</option>
+              {#each data.events ?? [] as event}
+                <option value={event.id}>{event.name}</option>
+              {/each}
+            </select>
+          </label>
+        </form>
+      {/if}
 
       {#if data.canEditDisplay}
         <button
@@ -427,35 +451,34 @@
 {#if !data.seasonId}
   <div class="card">No active season found.</div>
 {:else}
-  <div class="card" style="margin-bottom:12px;">
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
-      <div class="card" style="border-radius:14px;">
-        <div class="muted">Current Rating (R)</div>
-        <div style="font-size:2rem; font-weight:750; line-height:1.1; margin-top:4px;">
-          {fmtFixed2(data.currentRating?.rate)}
+  {#if !data.isCasualSeason}
+    <div class="card" style="margin-bottom:12px;">
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+        <div class="card" style="border-radius:14px;">
+          <div class="muted">Current Rating (R)</div>
+          <div style="font-size:2rem; font-weight:750; line-height:1.1; margin-top:4px;">
+            {fmtFixed2(data.currentRating?.rate)}
+          </div>
         </div>
-      </div>
-      <div class="card" style="border-radius:14px;">
-        <div class="muted">R Rank</div>
-        <div style="font-size:2rem; font-weight:800; line-height:1.1; margin-top:4px;">
-          {#if data.currentRatingRank == null}
-            -
-          {:else}
-            #{data.currentRatingRank}
+        <div class="card" style="border-radius:14px;">
+          <div class="muted">R Rank</div>
+          <div style="font-size:2rem; font-weight:800; line-height:1.1; margin-top:4px;">
+            {#if data.currentRatingRank == null}
+              -
+            {:else}
+              #{data.currentRatingRank}
+            {/if}
+          </div>
+          {#if data.currentRatingRankTotal}
+            <div class="muted" style="margin-top:2px;">of {data.currentRatingRankTotal}</div>
           {/if}
         </div>
-        {#if data.currentRatingRankTotal}
-          <div class="muted" style="margin-top:2px;">of {data.currentRatingRankTotal}</div>
-        {/if}
+      </div>
+      <div class="muted" style="margin-top:8px;">
+        Lifetime games: {data.currentRating?.games_played ?? 0}
       </div>
     </div>
-    <div class="muted" style="margin-top:8px;">
-      Lifetime games: {data.currentRating?.games_played ?? 0}
-      {#if data.isCasualSeason}
-        · Casual results are excluded
-      {/if}
-    </div>
-  </div>
+  {/if}
 
   <div class="grid2" style="margin-bottom:12px;">
     <div class="card">
@@ -465,7 +488,9 @@
         <div class="card" style="border-radius:14px;">
           <div class="muted">Rank</div>
           {#if data.seasonEligibleRank == null}
-            <div class="muted" style="margin-top:6px;">(need more games)</div>
+            <div class="muted" style="margin-top:6px;">
+              {data.isCasualSeason ? '(no games)' : '(need more games)'}
+            </div>
           {:else}
             <div style="font-size:1.3rem; font-weight:700;">{data.seasonEligibleRank}</div>
           {/if}
@@ -755,7 +780,6 @@
               <th style="width:80px;">Seat</th>
               <th style="width:100px;">Place</th>
               <th style="width:120px;">SP Δ</th>
-              <th style="width:120px;">ΔR</th>
             </tr>
           </thead>
           <tbody>
@@ -766,11 +790,10 @@
                 <td>{r.seat}</td>
                 <td>{r.placement}</td>
                 <td>{fmtNum(r.club_points, 2)}</td>
-                <td>{r.rating_delta == null ? '—' : fmtNum(r.rating_delta, 2)}</td>
               </tr>
             {/each}
             {#if data.matchHistory.length === 0}
-              <tr><td colspan="6" class="muted">No matches recorded.</td></tr>
+              <tr><td colspan="5" class="muted">No matches recorded.</td></tr>
             {/if}
           </tbody>
         </table>

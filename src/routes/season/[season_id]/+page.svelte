@@ -9,7 +9,13 @@
 
   let sortKey: SortKey = 'rank';
   let sortDir: SortDir = 'asc';
-  let standingsView: StandingsView = 'eligible';
+  let standingsView: StandingsView = data.isCasual ? 'all' : 'eligible';
+  let standingsSeasonId = data.season.id;
+
+  $: if (data.season.id !== standingsSeasonId) {
+    standingsSeasonId = data.season.id;
+    standingsView = data.isCasual ? 'all' : 'eligible';
+  }
 
   const defaultDirByKey: Record<SortKey, SortDir> = {
     rank: 'asc',
@@ -52,7 +58,8 @@
   }
 
   function playerHref(playerId: string) {
-    return `/player/${playerId}?season=${data.season.id}`;
+    const eventQuery = data.isCasual && data.eventId ? `&event=${encodeURIComponent(data.eventId)}` : '';
+    return `/player/${playerId}?season=${data.season.id}${eventQuery}`;
   }
 
   function eligibleGames(row: any) {
@@ -83,9 +90,14 @@
   })();
 
   function displayRank(row: any): number | null {
+    if (data.isCasual) return numOrNull(row?.rank);
     const playerId = String(row?.player_id ?? '').trim();
     if (!playerId) return null;
     return eligibleRankByPlayerId.get(playerId) ?? null;
+  }
+
+  function submitEventFilter(event: Event) {
+    (event.currentTarget as HTMLSelectElement).form?.requestSubmit();
   }
 
   $: sortedStandings = [...(data.standings ?? [])].sort((a, b) => {
@@ -108,7 +120,7 @@
   });
 
   $: eligibleStandings = sortedStandings.filter((row) => eligibleGames(row));
-  $: visibleStandings = standingsView === 'eligible' ? eligibleStandings : sortedStandings;
+  $: visibleStandings = data.isCasual || standingsView === 'all' ? sortedStandings : eligibleStandings;
 </script>
 
 <style>
@@ -149,6 +161,26 @@
     background: var(--pill-bg);
     border-color: var(--pill-border);
     font-weight: 650;
+  }
+  .season-mode-toggle {
+    display: inline-flex;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid var(--pill-border);
+    border-radius: 999px;
+    background: var(--pill-bg);
+  }
+  .season-mode-link {
+    padding: 6px 11px;
+    border-radius: 999px;
+    color: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .season-mode-link.is-active {
+    background: var(--card-bg);
+    font-weight: 650;
+    box-shadow: 0 0 0 1px var(--card-border);
   }
   .standings-notes-mobile {
     display: none;
@@ -253,7 +285,41 @@
       <div style="font-size:1.1rem; font-weight:650;">{data.season.name}</div>
       <div class="muted">{data.isCasual ? 'No time limit' : `${data.season.start_date} → ${data.season.end_date}`}</div>
     </div>
-    <div class="muted">{data.season.is_active ? 'Active season' : ''}</div>
+    <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap; justify-content:flex-end;">
+      {#if data.competitiveSeason && data.casualSeason}
+        <nav class="season-mode-toggle" aria-label="Scoreboard mode">
+          <a
+            class="season-mode-link"
+            class:is-active={data.season.id === data.competitiveSeason.id}
+            href={`/season/${data.competitiveSeason.id}`}
+          >
+            Competition
+          </a>
+          <a
+            class="season-mode-link"
+            class:is-active={data.season.id === data.casualSeason.id}
+            href={`/season/${data.casualSeason.id}`}
+          >
+            Casual
+          </a>
+        </nav>
+      {/if}
+      {#if data.isCasual}
+        <form method="GET">
+          <label>
+            <div class="muted">Event</div>
+            <select name="event" value={data.eventId ?? ''} on:change={submitEventFilter}>
+              <option value="">All events</option>
+              {#each data.events as event}
+                <option value={event.id}>{event.name}</option>
+              {/each}
+            </select>
+          </label>
+        </form>
+      {:else if data.season.is_active}
+        <div class="muted">Active season</div>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -262,47 +328,53 @@
     <div style="font-size:1.05rem; font-weight:650;">Standings</div>
     <div class="muted standings-notes-desktop">
       {#if data.isCasual}
-        Ranked by Season Points (SP) across all Casual games, after adjustments. Casual games do not change Season Rating (SR) or lifetime Rating (R).
+        Ranked by Season Points (SP) {data.eventId ? 'within the selected event' : 'across all Casual games'}, after applicable adjustments. Casual games do not change Season Rating (SR) or lifetime Rating (R).
       {:else if data.isRatingSeason}
         Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) does not reset.
       {:else}
         Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) starts in the next season.
       {/if}
     </div>
-    <div class="muted standings-notes-desktop">A total of 5 or more games is required to be eligible for ranks in that season.</div>
+    {#if !data.isCasual}
+      <div class="muted standings-notes-desktop">A total of 5 or more games is required to be eligible for ranks in that season.</div>
+    {/if}
     <details class="standings-notes-mobile">
       <summary>Notes</summary>
       <div class="muted">
         {#if data.isCasual}
-          Ranked by Season Points (SP) across all Casual games, after adjustments. Casual games do not change Season Rating (SR) or lifetime Rating (R).
+          Ranked by Season Points (SP) {data.eventId ? 'within the selected event' : 'across all Casual games'}, after applicable adjustments. Casual games do not change Season Rating (SR) or lifetime Rating (R).
         {:else if data.isRatingSeason}
           Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) does not reset.
         {:else}
           Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) starts in the next season.
         {/if}
       </div>
-      <div class="muted" style="margin-top:4px;">A total of 5 or more games is required to be eligible for ranks in that season.</div>
+      {#if !data.isCasual}
+        <div class="muted" style="margin-top:4px;">A total of 5 or more games is required to be eligible for ranks in that season.</div>
+      {/if}
     </details>
-    <div class="standings-view-toggle" role="tablist" aria-label="Standings list filter">
-      <button
-        type="button"
-        role="tab"
-        aria-selected={standingsView === 'eligible'}
-        class="standings-view-btn {standingsView === 'eligible' ? 'is-active' : ''}"
-        on:click={() => (standingsView = 'eligible')}
-      >
-        Eligible ({eligibleStandings.length})
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={standingsView === 'all'}
-        class="standings-view-btn {standingsView === 'all' ? 'is-active' : ''}"
-        on:click={() => (standingsView = 'all')}
-      >
-        All players ({sortedStandings.length})
-      </button>
-    </div>
+    {#if !data.isCasual}
+      <div class="standings-view-toggle" role="tablist" aria-label="Standings list filter">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={standingsView === 'eligible'}
+          class="standings-view-btn {standingsView === 'eligible' ? 'is-active' : ''}"
+          on:click={() => (standingsView = 'eligible')}
+        >
+          Eligible ({eligibleStandings.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={standingsView === 'all'}
+          class="standings-view-btn {standingsView === 'all' ? 'is-active' : ''}"
+          on:click={() => (standingsView = 'all')}
+        >
+          All players ({sortedStandings.length})
+        </button>
+      </div>
+    {/if}
   </div>
 
   <div style="margin-top:12px; overflow:auto;">
@@ -395,9 +467,11 @@
         {#if visibleStandings.length === 0}
           <tr>
             <td colspan={data.isCasual ? 6 : 7} class="muted">
-              {standingsView === 'eligible'
+              {!data.isCasual && standingsView === 'eligible'
                 ? 'No players with 5+ games yet.'
-                : 'No finalized matches yet.'}
+                : data.eventId
+                  ? 'No finalized matches in this event yet.'
+                  : 'No finalized matches yet.'}
             </td>
           </tr>
         {/if}

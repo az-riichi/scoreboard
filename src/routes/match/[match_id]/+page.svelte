@@ -26,6 +26,14 @@
     const place = displayPlaceBySeat.get(r.seat);
     if (place != null) displayPlaceByPlayer.set(r.player_id, place);
   }
+
+  function playerHref(playerId: string) {
+    const eventQuery =
+      data.isCasual && data.match.casual_event_id
+        ? `&event=${encodeURIComponent(data.match.casual_event_id)}`
+        : '';
+    return `/player/${playerId}?season=${data.match.season_id}${eventQuery}`;
+  }
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -33,6 +41,9 @@
     <div>
       <div style="font-size:1.1rem; font-weight:650;">Match {data.match.table_label ?? data.match.id.slice(0,8)}</div>
       <div class="muted">{data.season?.name ?? 'Unknown season'}{data.isCasual ? ' · Casual' : ''}</div>
+      {#if data.isCasual}
+        <div class="muted">Event: {data.casualEvent?.name ?? 'Uncategorized'}</div>
+      {/if}
       <div class="muted">{fmtDateTime(data.match.played_at)}</div>
       <div class="muted">Tbl: {data.match.table_mode ?? '—'} | Game: {data.match.game_number ?? '—'} | Ex: {data.match.extra_sticks ?? 0}</div>
       <div style="font-size:0.8rem; color:#888;">UUID: <code>{data.match.id}</code></div>
@@ -40,7 +51,13 @@
         <div class="muted">Note: {data.match.notes}</div>
       {/if}
     </div>
-    <a class="btn" href={`/season/${data.match.season_id}`} style="text-decoration:none;">Back to season</a>
+    <a
+      class="btn"
+      href={`/season/${data.match.season_id}${data.match.casual_event_id ? `?event=${data.match.casual_event_id}` : ''}`}
+      style="text-decoration:none;"
+    >
+      Back to season
+    </a>
   </div>
 </div>
 
@@ -61,10 +78,10 @@
         </thead>
         <tbody>
           {#each results as r}
-            <tr use:clickableRow={`/player/${r.player_id}?season=${data.match.season_id}`}>
+          <tr use:clickableRow={playerHref(r.player_id)}>
               <td>{r.seat}</td>
               <td>
-                <a href={`/player/${r.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">
+              <a href={playerHref(r.player_id)} style="text-decoration:none;">
                   {r.player_name_primary}
                   {#if r.player_name_secondary}
                     <span class="muted" style="margin-left:6px;">({r.player_name_secondary})</span>
@@ -103,9 +120,9 @@
           </thead>
           <tbody>
             {#each data.ratingDeltas as row}
-              <tr use:clickableRow={`/player/${row.player_id}?season=${data.match.season_id}`}>
+              <tr use:clickableRow={playerHref(row.player_id)}>
                 <td>
-                  <a href={`/player/${row.player_id}?season=${data.match.season_id}`} style="text-decoration:none;">
+                  <a href={playerHref(row.player_id)} style="text-decoration:none;">
                     {row.player_name_primary}
                     {#if row.player_name_secondary}
                       <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>

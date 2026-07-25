@@ -7,6 +7,7 @@ import {
   parseArizonaLocalDatetimeToUtcIso,
   toArizonaDatetimeLocalValue
 } from '$lib/arizona-time';
+import { resolveCasualEvent } from '$lib/server/casual-events';
 
 const CHOMBO_PREFIX = 'CHOMBO';
 const RESTRICTION_PAGE_SIZE = 500;
@@ -49,7 +50,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const matchRes = await locals.supabase
     .from('matches')
-    .select('id, season_id, ruleset_id, played_at, table_label, notes, status, game_number, table_mode, extra_sticks')
+    .select('id, season_id, ruleset_id, played_at, table_label, notes, status, game_number, table_mode, extra_sticks, casual_event_id')
     .eq('id', match_id)
     .maybeSingle();
 
@@ -65,7 +66,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const penaltyReasonPrefix = `${CHOMBO_PREFIX}:${match_id}:%`;
   const matchDay = toArizonaDatetimeLocalValue(matchRes.data.played_at).slice(0, 10);
-  const [playersRes, resultsRes, rulesetRes, lifetimeRatingsRes, penaltiesRes, restrictionsRes] = await Promise.all([
+  const [playersRes, resultsRes, rulesetRes, lifetimeRatingsRes, eventsRes, penaltiesRes, restrictionsRes] = await Promise.all([
     locals.supabase
       .from('players')
       .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, is_active')
@@ -83,10 +84,12 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       .from('v_current_ratings')
       .select('player_id, rate, games_played')
       .eq('is_lifetime', true),
+    locals.supabase.from('casual_events').select('id, name').order('name', { ascending: true }),
     locals.supabase
       .from('adjustments')
       .select('id, player_id, points, reason, created_at')
       .eq('season_id', matchRes.data.season_id)
+      .eq('match_id', match_id)
       .like('reason', penaltyReasonPrefix)
       .order('created_at', { ascending: false }),
     loadEffectiveRestrictions(locals, matchDay)
@@ -172,6 +175,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     results: resultsRes.error ? [] : (resultsRes.data ?? []),
     ruleset: rulesetRes.error ? null : rulesetRes.data,
     lifetimeRatings,
+    casualEvents: eventsRes.error ? [] : (eventsRes.data ?? []),
     penalties
   };
 };
@@ -307,13 +311,50 @@ export const actions: Actions = {
     throw redirect(303, '/admin/matches');
   },
 
+  saveCasualEvent: async ({ request, locals, params }) => {
+    await requireAdmin(locals);
+    const match_id = params.match_id;
+
+    const matchRes = await locals.supabase
+      .from('matches')
+      .select('season_id')
+      .eq('id', match_id)
+      .maybeSingle();
+    if (matchRes.error || !matchRes.data) return fail(404, { message: 'Match not found.' });
+
+    const seasonRes = await locals.supabase
+      .from('seasons')
+      .select('is_casual')
+      .eq('id', matchRes.data.season_id)
+      .maybeSingle();
+    if (seasonRes.error || !seasonRes.data?.is_casual) {
+      return fail(400, { message: 'Events can only be assigned to Casual matches.' });
+    }
+
+    const form = await request.formData();
+    const eventResolution = await resolveCasualEvent(
+      locals,
+      form.get('casual_event_id'),
+      form.get('new_casual_event_name')
+    );
+    if (!eventResolution.ok) return fail(400, { message: eventResolution.message });
+
+    const updateRes = await locals.supabase.rpc('set_casual_match_event', {
+      p_match_id: match_id,
+      p_casual_event_id: eventResolution.eventId
+    });
+    if (updateRes.error) return fail(400, { message: updateRes.error.message });
+
+    return { message: 'Casual event updated.' };
+  },
+
   saveMatchMeta: async ({ request, locals, params }) => {
     await requireAdmin(locals);
     const match_id = params.match_id;
 
     const currentMatchRes = await locals.supabase
       .from('matches')
-      .select('id, season_id, status, played_at, game_number, table_mode')
+      .select('id, season_id, status, played_at, game_number, table_mode, casual_event_id')
       .eq('id', match_id)
       .maybeSingle();
     if (currentMatchRes.error || !currentMatchRes.data) return fail(404, { message: 'Match not found.' });
@@ -326,6 +367,14 @@ export const actions: Actions = {
     const table_mode_raw = getStr(f, 'table_mode').toUpperCase();
     const ex_raw = getStr(f, 'extra_sticks');
     const notes = getStr(f, 'notes');
+    const seasonRes = await locals.supabase
+      .from('seasons')
+      .select('is_casual')
+      .eq('id', currentMatchRes.data.season_id)
+      .maybeSingle();
+    if (seasonRes.error || !seasonRes.data) return fail(400, { message: 'Season not found.' });
+
+    let casual_event_id: string | null = null;
 
     if (!played_at_input) return fail(400, { message: 'Played at is required.' });
     const played_at = parseArizonaLocalDatetimeToUtcIso(played_at_input);
@@ -372,6 +421,16 @@ export const actions: Actions = {
       return fail(400, { message: 'Ex must be an integer >= 0.' });
     }
 
+    if (seasonRes.data.is_casual) {
+      const eventResolution = await resolveCasualEvent(
+        locals,
+        f.get('casual_event_id'),
+        f.get('new_casual_event_name')
+      );
+      if (!eventResolution.ok) return fail(400, { message: eventResolution.message });
+      casual_event_id = eventResolution.eventId;
+    }
+
     const { error } = await locals.supabase
       .from('matches')
       .update({
@@ -380,7 +439,8 @@ export const actions: Actions = {
         game_number,
         table_mode,
         extra_sticks,
-        notes: notes || null
+        notes: notes || null,
+        casual_event_id
       })
       .eq('id', match_id);
 
@@ -456,6 +516,7 @@ export const actions: Actions = {
 
     const insertRes = await locals.supabase.from('adjustments').insert({
       season_id: matchRes.data.season_id,
+      match_id,
       player_id,
       points,
       reason,
@@ -486,6 +547,7 @@ export const actions: Actions = {
       .delete()
       .eq('id', adjustment_id)
       .eq('season_id', matchRes.data.season_id)
+      .eq('match_id', match_id)
       .like('reason', reasonLike);
 
     if (delRes.error) return fail(400, { message: delRes.error.message });

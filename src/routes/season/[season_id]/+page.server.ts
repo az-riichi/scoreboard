@@ -3,30 +3,50 @@ import type { PageServerLoad } from './$types';
 import { composeSeasonNameParts } from '$lib/player-name';
 import { getRatingStartDate } from '$lib/server/public-cache';
 
-export const load: PageServerLoad = async ({ locals, params }) => {
+export const load: PageServerLoad = async ({ locals, params, url }) => {
   const season_id = params.season_id;
+  const requestedEventId = String(url.searchParams.get('event') ?? '').trim();
 
-  const [seasonRes, ratingStartDate, standingsRes, matchesRes] = await Promise.all([
+  const [seasonRes, ratingStartDate, eventsRes, toggleSeasonsRes] = await Promise.all([
     locals.supabase
       .from('seasons')
       .select('id, name, start_date, end_date, is_active, is_casual')
       .eq('id', season_id)
       .maybeSingle(),
     getRatingStartDate(locals.supabase),
-    locals.supabase.from('v_season_standings').select('*').eq('season_id', season_id).order('rank', { ascending: true }),
+    locals.supabase.from('casual_events').select('id, name').order('name', { ascending: true }),
     locals.supabase
-      .from('matches')
-      .select('id, played_at, table_label')
-      .eq('season_id', season_id)
-      .eq('status', 'final')
-      .order('played_at', { ascending: false })
-      .limit(10)
+      .from('seasons')
+      .select('id, name, is_active, is_casual')
+      .order('is_casual', { ascending: true })
   ]);
 
   if (seasonRes.error || !seasonRes.data) throw kitError(404, 'Season not found');
 
   const isCasual = seasonRes.data.is_casual === true;
   const isRatingSeason = !isCasual && String(seasonRes.data.start_date ?? '').trim() >= ratingStartDate;
+  const events = isCasual && !eventsRes.error ? (eventsRes.data ?? []) : [];
+  const eventId =
+    isCasual && requestedEventId && events.some((event) => event.id === requestedEventId)
+      ? requestedEventId
+      : null;
+
+  let standingsQuery = locals.supabase
+    .from(eventId ? 'v_casual_event_standings' : 'v_season_standings')
+    .select('*')
+    .eq('season_id', season_id);
+  if (eventId) standingsQuery = standingsQuery.eq('casual_event_id', eventId);
+  standingsQuery = standingsQuery.order('rank', { ascending: true });
+
+  let matchesQuery = locals.supabase
+    .from('matches')
+    .select('id, played_at, table_label, casual_event_id')
+    .eq('season_id', season_id)
+    .eq('status', 'final');
+  if (eventId) matchesQuery = matchesQuery.eq('casual_event_id', eventId);
+  matchesQuery = matchesQuery.order('played_at', { ascending: false }).limit(10);
+
+  const [standingsRes, matchesRes] = await Promise.all([standingsQuery, matchesQuery]);
 
   const standings = standingsRes.error ? [] : (standingsRes.data ?? []);
   const playerIds = Array.from(
@@ -195,10 +215,19 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     };
   });
 
+  const toggleSeasons = toggleSeasonsRes.error ? [] : (toggleSeasonsRes.data ?? []);
+  const competitiveSeason =
+    toggleSeasons.find((season) => season.is_active === true && season.is_casual !== true) ?? null;
+  const casualSeason = toggleSeasons.find((season) => season.is_casual === true) ?? null;
+
   return {
     season: seasonRes.data,
     isCasual,
     isRatingSeason,
+    events,
+    eventId,
+    competitiveSeason,
+    casualSeason,
     standings: standingsWithNames,
     recentMatches
   };

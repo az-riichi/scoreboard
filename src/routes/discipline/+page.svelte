@@ -349,10 +349,9 @@
   <section class="card" aria-labelledby="discipline-history-title">
     <div class="section-heading">
       <div>
-        <div id="discipline-history-title" class="section-title">Private action history</div>
+        <div id="discipline-history-title" class="section-title">Action history</div>
         <div class="muted">This history is visible only to you and authorized club officials.</div>
       </div>
-      <span class="private-label">Private</span>
     </div>
 
     <div class="history-wrap">
