@@ -3791,3 +3791,36 @@ $$;
 
 revoke all on function public.get_effective_player_restrictions(date, uuid[]) from public, anon, authenticated;
 grant execute on function public.get_effective_player_restrictions(date, uuid[]) to authenticated;
+
+-- Final privilege cleanup: internal SECURITY DEFINER helpers must not be RPCs.
+revoke execute on function public.assert_player_competitive_eligible(uuid, uuid)
+from public, anon, authenticated;
+
+revoke execute on function public.guard_match_discipline()
+from public, anon, authenticated;
+
+revoke execute on function public.guard_match_result_discipline()
+from public, anon, authenticated;
+
+revoke execute on function public.handle_new_user()
+from public, anon, authenticated;
+
+revoke execute on function public.update_my_player_profile(
+  text,
+  text,
+  text,
+  boolean,
+  boolean,
+  boolean,
+  text,
+  text
+) from public, anon;
+
+drop function if exists public.update_my_player_display(
+  text,
+  text,
+  text,
+  boolean,
+  boolean,
+  boolean
+);
