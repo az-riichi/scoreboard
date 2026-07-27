@@ -16,6 +16,10 @@
   export let data: any;
   export let form: any;
 
+  let selectedUserId = String(form?.target_user_id ?? '');
+  $: profiles = (data.profiles ?? []) as Profile[];
+  $: profile = profiles.find((candidate) => candidate.id === selectedUserId) ?? null;
+
   const permissionGroups = Array.from(
     new Set(ADMIN_PERMISSION_DEFINITIONS.map((permission) => permission.group))
   ).map((group) => ({
@@ -107,7 +111,20 @@
 {/if}
 
 <div class="account-list">
-  {#each data.profiles as profile (profile.id)}
+  <div class="card account-selector">
+    <label for="permission-user">User</label>
+    <select id="permission-user" bind:value={selectedUserId}>
+      <option value="">Select a user…</option>
+      {#each profiles as candidate (candidate.id)}
+        <option value={candidate.id}>
+          {candidate.email ?? 'No email address'} — {roleLabel(candidate)}{isSelf(candidate) ? ' (you)' : ''}
+        </option>
+      {/each}
+    </select>
+    <div class="muted">The selected user’s permissions load immediately.</div>
+  </div>
+
+  {#if profile}
     <form class="card account-card" method="POST" action="?/setAccess">
       <input type="hidden" name="target_user_id" value={profile.id} />
 
@@ -178,10 +195,10 @@
         </div>
       {/if}
     </form>
-  {/each}
-
-  {#if data.profiles.length === 0}
+  {:else if profiles.length === 0}
     <div class="card muted">No accounts were found.</div>
+  {:else}
+    <div class="card muted">Select a user to view and manage their administrative access.</div>
   {/if}
 </div>
 
@@ -214,6 +231,15 @@
   .account-list {
     display: grid;
     gap: 12px;
+  }
+
+  .account-selector {
+    display: grid;
+    gap: 7px;
+  }
+
+  .account-selector label {
+    font-weight: 700;
   }
 
   .account-card {

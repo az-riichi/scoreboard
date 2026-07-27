@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enhance } from '$app/forms';
   import { clickableRow } from '$lib/clickable-row';
   import { hasAdminPermission } from '$lib/permissions';
 
@@ -6,7 +7,7 @@
   export let form: any;
 
   let players: any[] = [];
-  let activeEditId: string | null = null;
+  let activeEditId: string | null = form?.edit_id ?? data.editId ?? null;
   let canAddPlayers = false;
   let canEditPlayers = false;
   let canRemovePlayers = false;
@@ -16,7 +17,6 @@
   let rosterColumnCount = 6;
 
   $: players = data.players ?? [];
-  $: activeEditId = form?.edit_id ?? data.editId ?? null;
   $: canAddPlayers = hasAdminPermission(data.adminAccess, 'add_players');
   $: canEditPlayers = hasAdminPermission(data.adminAccess, 'edit_players');
   $: canRemovePlayers = hasAdminPermission(data.adminAccess, 'remove_players');
@@ -52,7 +52,7 @@
 {#if canAddPlayers}
   <div class="card" style="margin-bottom:12px;">
     <h3 style="margin:0 0 10px;">Create player</h3>
-    <form method="POST" action="?/create" style="display:flex; gap:10px; flex-wrap:nowrap; align-items:end; overflow-x:auto; padding-bottom:2px;">
+    <form method="POST" action="?/create" use:enhance style="display:flex; gap:10px; flex-wrap:nowrap; align-items:end; overflow-x:auto; padding-bottom:2px;">
       <label style="width:200px; flex:0 1 auto;">
         <div class="muted">Nickname</div>
         <input name="display_name" bind:value={display_name} placeholder="Optional" />
@@ -108,13 +108,13 @@
         </tr>
       </thead>
       <tbody>
-        {#each players as p}
+        {#each players as p (p.id)}
           {#if activeEditId === p.id && canOpenEditor}
             <tr>
               <td colspan={rosterColumnCount}>
                 {#if canEditPlayers}
                   <h4 style="margin:2px 0 10px;">Player details</h4>
-                  <form method="POST" action="?/update" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; padding-bottom:2px;">
+                  <form method="POST" action="?/update" use:enhance style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; padding-bottom:2px;">
                     <input type="hidden" name="player_id" value={p.id} />
 
                     <label style="width:200px; flex:0 1 auto;">
@@ -155,7 +155,7 @@
                 {#if canManagePlayerAccounts}
                   <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--table-border);">
                     <h4 style="margin:0 0 10px;">Player account</h4>
-                  <form method="POST" action="?/setClaim" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+                  <form method="POST" action="?/setClaim" use:enhance style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
                     <input type="hidden" name="player_id" value={p.id} />
 
                     <label style="min-width:320px; flex:1 1 360px;">
@@ -177,13 +177,13 @@
 
                 <div style="display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:10px; padding-top:10px; border-top:1px solid var(--table-border);">
                   {#if canRemovePlayers}
-                    <form method="POST" action="?/setActive">
+                    <form method="POST" action="?/setActive" use:enhance>
                       <input type="hidden" name="player_id" value={p.id} />
                       <input type="hidden" name="is_active" value={p.is_active ? 'false' : 'true'} />
                       <button class="btn" type="submit">{p.is_active ? 'Deactivate' : 'Reactivate'}</button>
                     </form>
                   {/if}
-                  <a class="btn" href="/admin/players" style="text-decoration:none;">Close</a>
+                  <button class="btn" type="button" on:click={() => (activeEditId = null)}>Close</button>
                 </div>
               </td>
             </tr>
@@ -220,12 +220,12 @@
                 <td>
                   <div style="display:flex; gap:8px; align-items:center; justify-content:flex-end;">
                     {#if canOpenEditor}
-                      <a class="btn" href={`/admin/players?edit=${p.id}`} style="text-decoration:none">
+                      <button class="btn" type="button" on:click={() => (activeEditId = p.id)}>
                         {canEditPlayers && canManagePlayerAccounts ? 'Manage' : canEditPlayers ? 'Edit' : 'Account'}
-                      </a>
+                      </button>
                     {/if}
                     {#if canRemovePlayers}
-                      <form method="POST" action="?/setActive">
+                      <form method="POST" action="?/setActive" use:enhance>
                         <input type="hidden" name="player_id" value={p.id} />
                         <input type="hidden" name="is_active" value={p.is_active ? 'false' : 'true'} />
                         <button class="btn" type="submit">{p.is_active ? 'Deactivate' : 'Reactivate'}</button>
