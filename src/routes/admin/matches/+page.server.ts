@@ -1,6 +1,10 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { requireAdmin } from '$lib/server/admin';
+import {
+  requireAdminPermission,
+  requireAnyAdminPermission
+} from '$lib/server/admin';
+import { hasAnyAdminPermission } from '$lib/permissions';
 import {
   parseArizonaDayBoundsFromDatetimeLocal,
   parseArizonaLocalDatetimeToUtcIso
@@ -8,7 +12,28 @@ import {
 import { resolveCasualEvent } from '$lib/server/casual-events';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  await requireAdmin(locals);
+  const adminAccess = await requireAnyAdminPermission(locals, [
+    'add_matches',
+    'remove_matches',
+    'manage_match_penalties',
+    'recompute_ratings'
+  ]);
+  if (
+    !hasAnyAdminPermission(adminAccess, [
+      'add_matches',
+      'remove_matches',
+      'manage_match_penalties'
+    ])
+  ) {
+    return {
+      seasons: [],
+      rulesets: [],
+      casualEvents: [],
+      activeSeason: null,
+      defaultRules: null,
+      recentMatches: []
+    };
+  }
 
   const [seasonsRes, rulesRes, eventsRes, recentRes] = await Promise.all([
     locals.supabase
@@ -60,26 +85,28 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
   recomputeLifetimeR: async ({ locals }) => {
-    await requireAdmin(locals);
-    const recomputeRes = await locals.supabase.rpc('recompute_all_ratings');
+    await requireAdminPermission(locals, 'recompute_ratings');
+    const recomputeRes = await locals.supabase.rpc('recompute_all_ratings_authorized');
     if (recomputeRes.error) return fail(400, { message: recomputeRes.error.message });
     return { message: 'Season and lifetime ratings recomputed.' };
   },
 
   delete: async ({ request, locals }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'remove_matches');
     const f = await request.formData();
     const match_id = String(f.get('match_id') ?? '').trim();
     if (!match_id) return fail(400, { message: 'Missing match id.' });
 
-    const deleteRes = await locals.supabase.rpc('delete_match_and_recompute', { p_match_id: match_id });
+    const deleteRes = await locals.supabase.rpc('delete_match_and_recompute_authorized', {
+      p_match_id: match_id
+    });
     if (deleteRes.error) return fail(400, { message: deleteRes.error.message });
 
     return { message: 'Game deleted.' };
   },
 
   create: async ({ request, locals }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'add_matches');
     const f = await request.formData();
     const season_id = String(f.get('season_id') ?? '').trim();
     const ruleset_id = String(f.get('ruleset_id') ?? '').trim();

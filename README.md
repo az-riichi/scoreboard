@@ -22,6 +22,7 @@ Admin (login required):
 - Finalize match (computes placement + club_points, updates ratings for regular seasons, and makes it public)
 - Import season matches from Excel on `/admin/seasons`
 - Issue, review, and revoke private strikes, suspensions, and bans on `/admin/discipline`
+- Grant granular admin permissions on `/admin/permissions`
 
 Linked players (login required):
 
@@ -75,13 +76,25 @@ For an existing project, apply each not-yet-deployed file in `supabase/migration
 
 When changing the database, update both the consolidated schema and an ordered migration for existing deployments. Before applying database changes, take a backup and test the migration against a non-production project. The application expects the schema and all applicable migrations from this repository to be deployed together.
 
-## Promote an admin
+## Bootstrap the owner
 
-After signing up once, set your auth user's profile row:
+After signing up once, explicitly make the trusted account the owner:
 
 ```sql
-update public.profiles set is_admin=true where id = '<auth-user-uuid>';
+update public.profiles
+set admin_role = 'owner',
+    admin_permissions = '{}',
+    is_admin = true
+where id = '<auth-user-uuid>';
 ```
+
+The owner has every admin permission and is the only account that can grant or
+revoke super-admin status. Super admins have every ordinary permission. Other
+admins receive only the permissions selected on `/admin/permissions`.
+
+Upgrade migrations automatically convert every legacy `is_admin = true`
+account to a super admin, but deliberately do not choose an owner. Bootstrap a
+known owner with the SQL above after applying the permission migration.
 
 ## Notes
 

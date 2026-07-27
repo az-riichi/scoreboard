@@ -3,7 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { summarizeDiscipline, type DisciplineActionType } from '$lib/discipline';
 import { fmtDateTimeArizona } from '$lib/arizona-time';
 import { composeSeasonNameParts } from '$lib/player-name';
-import { requireAdmin } from '$lib/server/admin';
+import { requireAdminPermission } from '$lib/server/admin';
 import { loadDisciplineLinkedMatches, loadPlayerDisciplineActions } from '$lib/server/discipline';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,7 +32,7 @@ function matchLabel(match: Record<string, unknown>) {
 }
 
 export const load: PageServerLoad = async ({ locals, url, setHeaders }) => {
-  await requireAdmin(locals);
+  await requireAdminPermission(locals, 'manage_discipline');
   setHeaders({ 'cache-control': 'private, no-store' });
 
   const playersRes = await locals.supabase
@@ -117,7 +117,7 @@ export const load: PageServerLoad = async ({ locals, url, setHeaders }) => {
 
 export const actions: Actions = {
   issue: async ({ request, locals }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'manage_discipline');
     const form = await request.formData();
     const playerId = asUuid(form.get('player_id'));
     const actionTypeText = asText(form.get('action_type')).toLowerCase();
@@ -143,7 +143,7 @@ export const actions: Actions = {
       return fail(400, { ok: false, message: 'Choose a valid match.', player_id: playerId });
     }
 
-    const issueRes = await locals.supabase.rpc('issue_discipline_action', {
+    const issueRes = await locals.supabase.rpc('issue_discipline_action_authorized', {
       p_player_id: playerId,
       p_action_type: actionTypeText,
       p_reason: reason,
@@ -162,7 +162,7 @@ export const actions: Actions = {
   },
 
   revoke: async ({ request, locals }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'manage_discipline');
     const form = await request.formData();
     const playerId = asUuid(form.get('player_id'));
     const actionId = asUuid(form.get('action_id'));
@@ -182,7 +182,7 @@ export const actions: Actions = {
       });
     }
 
-    const revokeRes = await locals.supabase.rpc('revoke_discipline_action', {
+    const revokeRes = await locals.supabase.rpc('revoke_discipline_action_authorized', {
       p_action_id: actionId,
       p_reason: reason
     });

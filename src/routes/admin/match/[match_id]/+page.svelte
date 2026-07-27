@@ -2,6 +2,7 @@
   import { fmtNum } from '$lib/ui';
   import { fmtDateTimeArizona as fmtDateTime, toArizonaDatetimeLocalValue } from '$lib/arizona-time';
   import { ratingGamesAdjustment as gamesAdjustment } from '$lib/rating';
+  import { hasAdminPermission } from '$lib/permissions';
   export let data: any;
   export let form: any;
 
@@ -9,6 +10,10 @@
 
   const match = data.match;
   const season = data.season;
+  const access = data.adminAccess;
+  const canAddMatches = hasAdminPermission(access, 'add_matches');
+  const canRemoveMatches = hasAdminPermission(access, 'remove_matches');
+  const canManagePenalties = hasAdminPermission(access, 'manage_match_penalties');
   const isCasual = season?.is_casual === true;
   const bySeat: Record<Seat, any> = { E: null, S: null, W: null, N: null };
   for (const r of data.results ?? []) {
@@ -366,20 +371,22 @@
       {#if isFinal}
         <a class="btn" href={`/match/${match.id}`} style="text-decoration:none;">Public view</a>
       {/if}
-      <form method="POST" action="?/deleteGame" on:submit={() => closeConfirm()}>
-        <div class="confirm-anchor">
-          <button class="btn" type="button" on:click={() => toggleConfirm('delete')}>Delete game</button>
-          {#if confirmAction === 'delete'}
-            <div class="confirm-popover" role="dialog" aria-label="Confirm delete game">
-              <div class="confirm-popover-text">Delete this game? This cannot be undone.</div>
-              <div class="confirm-popover-actions">
-                <button class="btn" type="button" on:click={closeConfirm}>Cancel</button>
-                <button class="btn" type="submit">Delete</button>
+      {#if canRemoveMatches}
+        <form method="POST" action="?/deleteGame" on:submit={() => closeConfirm()}>
+          <div class="confirm-anchor">
+            <button class="btn" type="button" on:click={() => toggleConfirm('delete')}>Delete game</button>
+            {#if confirmAction === 'delete'}
+              <div class="confirm-popover" role="dialog" aria-label="Confirm delete game">
+                <div class="confirm-popover-text">Delete this game? This cannot be undone.</div>
+                <div class="confirm-popover-actions">
+                  <button class="btn" type="button" on:click={closeConfirm}>Cancel</button>
+                  <button class="btn" type="submit">Delete</button>
+                </div>
               </div>
-            </div>
-          {/if}
-        </div>
-      </form>
+            {/if}
+          </div>
+        </form>
+      {/if}
     </div>
   </div>
 </div>
@@ -396,8 +403,9 @@
   </div>
 {/if}
 
-<div class="card" style="margin-bottom:12px;">
-  <div style="font-size:1.05rem; font-weight:650;">Match metadata</div>
+{#if canAddMatches}
+  <div class="card" style="margin-bottom:12px;">
+    <div style="font-size:1.05rem; font-weight:650;">Match metadata</div>
   <div class="muted">Game # / table label are auto-generated. Times are Arizona (MST).</div>
 
   <form method="POST" action="?/saveMatchMeta" style="display:grid; gap:10px; margin-top:12px;">
@@ -504,72 +512,80 @@
       <span class="muted">Categorization can be updated without changing scores or ratings.</span>
     </form>
   {/if}
-</div>
+  </div>
+{/if}
 
 <div class="grid2">
   <div class="card">
-    <div style="font-size:1.05rem; font-weight:650;">Results entry (raw points)</div>
-    {#if !isCasual}
+    <div style="font-size:1.05rem; font-weight:650;">
+      {canAddMatches ? 'Results entry (raw points)' : 'Match results'}
+    </div>
+    {#if canAddMatches && !isCasual}
       <div class="muted" style="margin-top:4px;">Suspended and banned players are unavailable for competitive matches.</div>
     {/if}
 
-    <form method="POST" action="?/saveResults" style="display:grid; gap:10px; margin-top:12px;" on:submit={closeConfirm}>
-      {#each entries as row, i (row.seat)}
-        <div class="card" style="border-radius:14px;">
-          <div class="muted" style="margin-bottom:6px;">Seat {row.seat}</div>
-          <div class="result-entry-row">
-            <select
-              class="player-picker-select"
-              name={`p_${row.seat}`}
-              bind:value={entries[i].player_id}
-              required
-              disabled={isFinal}
-              aria-label={`Player for seat ${row.seat}`}
-            >
-              <option value="" disabled>Select player</option>
-              {#each playerOptions as p}
-                <option value={p.id} disabled={p.isIneligible}>{p.optionLabel}</option>
-              {/each}
-            </select>
-            <input
-              name={`raw_${row.seat}`}
-              type="number"
-              step="100"
-              required
-              bind:value={entries[i].raw_points}
-              style="width:130px; justify-self:start;"
-            />
+    {#if canAddMatches}
+      <form method="POST" action="?/saveResults" style="display:grid; gap:10px; margin-top:12px;" on:submit={closeConfirm}>
+        {#each entries as row, i (row.seat)}
+          <div class="card" style="border-radius:14px;">
+            <div class="muted" style="margin-bottom:6px;">Seat {row.seat}</div>
+            <div class="result-entry-row">
+              <select
+                class="player-picker-select"
+                name={`p_${row.seat}`}
+                bind:value={entries[i].player_id}
+                required
+                disabled={isFinal}
+                aria-label={`Player for seat ${row.seat}`}
+              >
+                <option value="" disabled>Select player</option>
+                {#each playerOptions as p}
+                  <option value={p.id} disabled={p.isIneligible}>{p.optionLabel}</option>
+                {/each}
+              </select>
+              <input
+                name={`raw_${row.seat}`}
+                type="number"
+                step="100"
+                required
+                bind:value={entries[i].raw_points}
+                disabled={isFinal}
+                style="width:130px; justify-self:start;"
+              />
+            </div>
           </div>
-        </div>
-      {/each}
-      {#if !isFinal}
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn primary" type="submit" on:click={closeConfirm}>Save results</button>
-          <div class="confirm-anchor">
-            <button class="btn" type="button" on:click={() => toggleConfirm('finalize')}>Finalize match</button>
-            {#if confirmAction === 'finalize'}
-              <div class="confirm-popover align-left" role="dialog" aria-label="Confirm finalize match">
-                <div class="confirm-popover-text">Finalize this match and publish results?</div>
-                <div class="confirm-popover-actions">
-                  <button class="btn" type="button" on:click={closeConfirm}>Cancel</button>
-                  <button
-                    class="btn"
-                    type="submit"
-                    formmethod="POST"
-                    formaction="?/finalize"
-                    disabled={!totalCheckOk || !hasFourDistinctPlayers}
-                  >
-                    Finalize
-                  </button>
+        {/each}
+        {#if !isFinal}
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn primary" type="submit" on:click={closeConfirm}>Save results</button>
+            <div class="confirm-anchor">
+              <button class="btn" type="button" on:click={() => toggleConfirm('finalize')}>Finalize match</button>
+              {#if confirmAction === 'finalize'}
+                <div class="confirm-popover align-left" role="dialog" aria-label="Confirm finalize match">
+                  <div class="confirm-popover-text">Finalize this match and publish results?</div>
+                  <div class="confirm-popover-actions">
+                    <button class="btn" type="button" on:click={closeConfirm}>Cancel</button>
+                    <button
+                      class="btn"
+                      type="submit"
+                      formmethod="POST"
+                      formaction="?/finalize"
+                      disabled={!totalCheckOk || !hasFourDistinctPlayers}
+                    >
+                      Finalize
+                    </button>
+                  </div>
                 </div>
-              </div>
-            {/if}
+              {/if}
+            </div>
           </div>
-        </div>
-      {:else}
-        <div class="muted">This match is finalized & published, and cannot be edited.</div>
-      {/if}
-    </form>
+        {:else}
+          <div class="muted">This match is finalized & published, and cannot be edited.</div>
+        {/if}
+      </form>
+    {:else}
+      <div class="muted" style="margin-top:4px;">You have read-only access to these results.</div>
+    {/if}
 
     <div style="margin-top:14px;">
       <div style="font-size:1.02rem; font-weight:650;">Expected outcomes</div>
@@ -653,8 +669,9 @@
         {/if}
       </div>
 
-      <details class="card" style="border-radius:14px;">
-        <summary style="cursor:pointer; font-weight:650;">Penalties / Chombo ({data.penalties.length})</summary>
+      {#if canManagePenalties}
+        <details class="card" style="border-radius:14px;">
+          <summary style="cursor:pointer; font-weight:650;">Penalties / Chombo ({data.penalties.length})</summary>
         <div class="muted" style="margin-top:8px;">
           Penalties adjust Season Points (SP) only. They do not change Rating (R)
         </div>
@@ -721,7 +738,8 @@
             </tbody>
           </table>
         </div>
-      </details>
+        </details>
+      {/if}
     </div>
   </div>
 </div>

@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { requireAdmin } from '$lib/server/admin';
+import { requireAdminPermission, requireAnyAdminPermission } from '$lib/server/admin';
+import { hasAdminPermission, PLAYER_PERMISSIONS } from '$lib/permissions';
 import { composeSeasonNameParts } from '$lib/player-name';
 
 function asText(value: unknown) {
@@ -19,27 +20,45 @@ function asUuid(value: unknown) {
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-  await requireAdmin(locals);
+  const adminAccess = await requireAnyAdminPermission(locals, PLAYER_PERMISSIONS);
+  const canManagePlayerAccounts = hasAdminPermission(adminAccess, 'manage_player_accounts');
+  const canOpenEditor =
+    hasAdminPermission(adminAccess, 'edit_players') || canManagePlayerAccounts;
 
-  const [playersRes, profilesRes, linksRes] = await Promise.all([
-    locals.supabase
-      .from('players')
-      .select(
-        'id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, is_active, created_at'
-      )
-      .order('created_at', { ascending: false }),
-    locals.supabase.from('profiles').select('id, email, is_admin, created_at').order('created_at', { ascending: false }),
-    locals.supabase.from('player_accounts').select('auth_user_id, player_id, created_at')
+  const playersPromise = locals.supabase
+    .from('players')
+    .select(
+      'id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, is_active, created_at'
+    )
+    .order('created_at', { ascending: false });
+  const accountDataPromise = canManagePlayerAccounts
+    ? Promise.all([
+        locals.supabase
+          .from('profiles')
+          .select('id, email, admin_role, created_at')
+          .order('created_at', { ascending: false }),
+        locals.supabase.from('player_accounts').select('auth_user_id, player_id, created_at')
+      ])
+    : Promise.resolve(null);
+
+  const [playersRes, accountData] = await Promise.all([
+    playersPromise,
+    accountDataPromise
   ]);
+  const profilesRes = accountData?.[0] ?? null;
+  const linksRes = accountData?.[1] ?? null;
 
   const profiles =
-    profilesRes.error
+    !profilesRes || profilesRes.error
       ? []
       : (profilesRes.data ?? [])
           .map((p) => ({
             id: p.id,
             email: asText((p as { email?: unknown }).email) || null,
-            is_admin: !!p.is_admin,
+            is_admin:
+              p.admin_role === 'admin' ||
+              p.admin_role === 'super_admin' ||
+              p.admin_role === 'owner',
             created_at: p.created_at
           }))
           .sort((a, b) => {
@@ -52,7 +71,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const profileById = new Map(profiles.map((p) => [p.id, p] as const));
   const linkByPlayerId = new Map(
-    (linksRes.error ? [] : (linksRes.data ?? [])).map((row) => [String(row.player_id), String(row.auth_user_id)] as const)
+    (!linksRes || linksRes.error ? [] : (linksRes.data ?? [])).map((row) => [
+      String(row.player_id),
+      String(row.auth_user_id)
+    ] as const)
   );
 
   const players =
@@ -79,7 +101,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
           });
 
   const editIdRaw = asText(url.searchParams.get('edit'));
-  const editId = editIdRaw && players.some((p) => p.id === editIdRaw) ? editIdRaw : null;
+  const editId =
+    canOpenEditor && editIdRaw && players.some((p) => p.id === editIdRaw)
+      ? editIdRaw
+      : null;
 
   return {
     players,
@@ -90,7 +115,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
   create: async ({ request, locals }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'add_players');
     const f = await request.formData();
     const display_name = asText(f.get('display_name')) || null;
     const real_first_name = asText(f.get('real_first_name')) || null;
@@ -130,7 +155,7 @@ export const actions: Actions = {
   },
 
   update: async ({ request, locals }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'edit_players');
     const f = await request.formData();
 
     const player_id = asText(f.get('player_id'));
@@ -141,7 +166,6 @@ export const actions: Actions = {
     const show_display_name = asBool(f.get('show_display_name'));
     const show_real_first_name = asBool(f.get('show_real_first_name'));
     const show_real_last_name = asBool(f.get('show_real_last_name'));
-    const is_active = asBool(f.get('is_active'));
 
     if (!player_id) return fail(400, { ok: false, message: 'Missing player id.' });
 
@@ -173,8 +197,7 @@ export const actions: Actions = {
         real_last_name,
         show_display_name,
         show_real_first_name,
-        show_real_last_name,
-        is_active
+        show_real_last_name
       })
       .eq('id', player_id);
 
@@ -183,8 +206,35 @@ export const actions: Actions = {
     return { ok: true, message: 'Player updated.', edit_id: player_id };
   },
 
+  setActive: async ({ request, locals }) => {
+    await requireAdminPermission(locals, 'remove_players');
+    const f = await request.formData();
+
+    const player_id = asUuid(f.get('player_id'));
+    const isActiveRaw = asText(f.get('is_active'));
+
+    if (!player_id) return fail(400, { ok: false, message: 'Invalid player id.' });
+    if (isActiveRaw !== 'true' && isActiveRaw !== 'false') {
+      return fail(400, { ok: false, message: 'Invalid active status.' });
+    }
+
+    const is_active = isActiveRaw === 'true';
+    const activeRes = await locals.supabase.rpc('set_player_active', {
+      p_player_id: player_id,
+      p_is_active: is_active
+    });
+    if (activeRes.error) {
+      return fail(400, { ok: false, message: activeRes.error.message });
+    }
+
+    return {
+      ok: true,
+      message: is_active ? 'Player reactivated.' : 'Player deactivated.'
+    };
+  },
+
   setClaim: async ({ request, locals }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'manage_player_accounts');
     const f = await request.formData();
 
     const player_id = asUuid(f.get('player_id'));
@@ -196,7 +246,7 @@ export const actions: Actions = {
       return fail(400, { ok: false, message: 'Invalid account id.', edit_id: player_id });
     }
 
-    const linkRes = await locals.supabase.rpc('set_player_account_link', {
+    const linkRes = await locals.supabase.rpc('set_player_account_link_authorized', {
       p_player_id: player_id,
       p_auth_user_id: auth_user_id
     });

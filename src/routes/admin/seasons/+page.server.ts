@@ -1,6 +1,10 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { requireAdmin } from '$lib/server/admin';
+import {
+  requireAdminPermission,
+  requireAnyAdminPermission
+} from '$lib/server/admin';
+import { hasAdminPermission } from '$lib/permissions';
 import { composePlayerDisplayName } from '$lib/player-name';
 import { toArizonaDatetimeLocalValue } from '$lib/arizona-time';
 
@@ -151,7 +155,7 @@ function importKey(row: Pick<ParsedImportRow, 'dateIso' | 'gameNumber' | 'tableM
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-  await requireAdmin(locals);
+  await requireAnyAdminPermission(locals, ['manage_seasons', 'import_matches']);
 
   const [seasonsRes, rulesRes] = await Promise.all([
     locals.supabase
@@ -183,7 +187,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
   create: async ({ request, locals }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'manage_seasons');
     const f = await request.formData();
     const name = String(f.get('name') ?? '').trim();
     const start_date = String(f.get('start_date') ?? '').trim();
@@ -195,7 +199,7 @@ export const actions: Actions = {
       return fail(400, { message: 'Season dates must be valid and the start cannot be after the end.' });
     }
 
-    const { error } = await locals.supabase.rpc('create_season', {
+    const { error } = await locals.supabase.rpc('create_season_authorized', {
       p_name: name,
       p_start_date: start_date,
       p_end_date: end_date,
@@ -207,7 +211,7 @@ export const actions: Actions = {
   },
 
   importExcel: async ({ request, locals }) => {
-    await requireAdmin(locals);
+    const adminAccess = await requireAdminPermission(locals, 'import_matches');
     const f = await request.formData();
 
     const season_id = asText(f.get('season_id'));
@@ -479,6 +483,15 @@ export const actions: Actions = {
 
     const createdPlayerIdByName = new Map<string, string>();
     if (pendingNewPlayers.size > 0) {
+      if (!hasAdminPermission(adminAccess, 'add_players')) {
+        return fail(403, {
+          message:
+            `This import contains ${pendingNewPlayers.size} unknown player${
+              pendingNewPlayers.size === 1 ? '' : 's'
+            }. Add those players first or ask for the Add players permission.`
+        });
+      }
+
       const createRes = await locals.supabase
         .from('players')
         .insert(
@@ -532,6 +545,7 @@ export const actions: Actions = {
           played_at: row.playedAt,
           table_label: tableLabel,
           include_in_lifetime_rating: !isCasual,
+          created_via_import: true,
           created_by: locals.userId
         })
         .select('id')
@@ -552,19 +566,19 @@ export const actions: Actions = {
         }))
       );
       if (resultsInsert.error) {
-        const cleanupRes = await locals.supabase.rpc('delete_match_and_recompute', { p_match_id: match_id });
+        const cleanupRes = await locals.supabase.rpc('discard_imported_match', { p_match_id: match_id });
         const cleanupMessage = cleanupRes.error ? ` Cleanup also failed: ${cleanupRes.error.message}` : '';
         return fail(400, {
           message: `Import failed at row ${row.rowNumber} after ${imported} imported: ${resultsInsert.error.message}.${cleanupMessage}`
         });
       }
 
-      const finalizeRes = await locals.supabase.rpc('finalize_match', {
+      const finalizeRes = await locals.supabase.rpc('finalize_imported_match', {
         p_match_id: match_id,
         p_update_lifetime: !isCasual
       });
       if (finalizeRes.error) {
-        const cleanupRes = await locals.supabase.rpc('delete_match_and_recompute', { p_match_id: match_id });
+        const cleanupRes = await locals.supabase.rpc('discard_imported_match', { p_match_id: match_id });
         const cleanupMessage = cleanupRes.error ? ` Cleanup also failed: ${cleanupRes.error.message}` : '';
         return fail(400, {
           message: `Import failed at row ${row.rowNumber} after ${imported} imported: ${finalizeRes.error.message}.${cleanupMessage}`

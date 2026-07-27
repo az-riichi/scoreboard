@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { hasAdminPermission } from '$lib/permissions';
+
   export let data: any;
   export let form: any;
 
@@ -8,6 +10,10 @@
   let is_active = false;
   let importSeasonId = data.activeSeason ?? '';
   let importRulesetId = data.defaultRules ?? '';
+  $: access = data.adminAccess;
+  $: canManageSeasons = hasAdminPermission(access, 'manage_seasons');
+  $: canImportMatches = hasAdminPermission(access, 'import_matches');
+  $: canAddPlayers = hasAdminPermission(access, 'add_players');
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -26,70 +32,78 @@
   </div>
 {/if}
 
-<div class="card" style="margin-bottom:12px;">
-  <h3 style="margin:0 0 10px;">Create regular season</h3>
-  <div class="muted" style="margin-bottom:10px;">Casual is a permanent, date-free category and is created automatically.</div>
-  <form method="POST" action="?/create" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
-    <label style="min-width:240px;">
-      <div class="muted">Name</div>
-      <input name="name" bind:value={name} placeholder="Spring 2026" required />
-    </label>
-    <label>
-      <div class="muted">Start</div>
-      <input name="start_date" bind:value={start_date} type="date" required />
-    </label>
-    <label>
-      <div class="muted">End</div>
-      <input name="end_date" bind:value={end_date} type="date" required />
-    </label>
-    <label style="display:flex; gap:8px; align-items:center; padding: 8px 0;">
-      <input name="is_active" type="checkbox" bind:checked={is_active} />
-      <span class="muted">Set active</span>
-    </label>
-    <button class="btn primary" type="submit" style="margin-left: auto">Create</button>
-  </form>
-</div>
-
-<div class="card" style="margin-bottom:12px;">
-  <h3 style="margin:0 0 10px;">Import season matches (Excel)</h3>
-  <div class="muted" style="margin-bottom:10px;">
-    Header must include: Date, Game, Tbl, E/S/W/N Player, E/S/W/N Pts, Ex
+{#if canManageSeasons}
+  <div class="card" style="margin-bottom:12px;">
+    <h3 style="margin:0 0 10px;">Create regular season</h3>
+    <div class="muted" style="margin-bottom:10px;">Casual is a permanent, date-free category and is created automatically.</div>
+    <form method="POST" action="?/create" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+      <label style="min-width:240px;">
+        <div class="muted">Name</div>
+        <input name="name" bind:value={name} placeholder="Spring 2026" required />
+      </label>
+      <label>
+        <div class="muted">Start</div>
+        <input name="start_date" bind:value={start_date} type="date" required />
+      </label>
+      <label>
+        <div class="muted">End</div>
+        <input name="end_date" bind:value={end_date} type="date" required />
+      </label>
+      <label style="display:flex; gap:8px; align-items:center; padding: 8px 0;">
+        <input name="is_active" type="checkbox" bind:checked={is_active} />
+        <span class="muted">Set active</span>
+      </label>
+      <button class="btn primary" type="submit" style="margin-left: auto">Create</button>
+    </form>
   </div>
-  <div class="muted" style="margin-bottom:10px;">
-    Unknown player first names are auto-created as new players
+{/if}
+
+{#if canImportMatches}
+  <div class="card" style="margin-bottom:12px;">
+    <h3 style="margin:0 0 10px;">Import season matches (Excel)</h3>
+    <div class="muted" style="margin-bottom:10px;">
+      Header must include: Date, Game, Tbl, E/S/W/N Player, E/S/W/N Pts, Ex
+    </div>
+    <div class="muted" style="margin-bottom:10px;">
+      {#if canAddPlayers}
+        Unknown player first names are auto-created as new players
+      {:else}
+        Every player must already exist; auto-creating unknown players requires Add players
+      {/if}
+    </div>
+
+    <form method="POST" action="?/importExcel" enctype="multipart/form-data" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+      <label style="min-width:240px;">
+        <div class="muted">Season</div>
+        <select name="season_id" bind:value={importSeasonId} required style="min-width:240px;">
+          {#each data.seasons as s}
+            <option value={s.id}>{s.name}{s.is_casual ? ' (no time limit)' : ''}{s.is_active ? ' (active)' : ''}</option>
+          {/each}
+        </select>
+      </label>
+
+      <label style="min-width:240px;">
+        <div class="muted">Ruleset</div>
+        <select name="ruleset_id" bind:value={importRulesetId} required style="min-width:240px;">
+          {#each data.rulesets as r}
+            <option value={r.id}>{r.name}</option>
+          {/each}
+        </select>
+      </label>
+
+      <label style="min-width:280px;">
+        <div class="muted">Excel file</div>
+        <input name="file" type="file" accept=".xlsx,.xls,.xlsm" required />
+      </label>
+
+      <button class="btn primary" type="submit" style="margin-left: auto">Import</button>
+    </form>
+
+    {#if data.rulesets.length === 0}
+      <div class="muted" style="margin-top:10px;">No rulesets found. Create one in SQL before importing.</div>
+    {/if}
   </div>
-
-  <form method="POST" action="?/importExcel" enctype="multipart/form-data" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
-    <label style="min-width:240px;">
-      <div class="muted">Season</div>
-      <select name="season_id" bind:value={importSeasonId} required style="min-width:240px;">
-        {#each data.seasons as s}
-          <option value={s.id}>{s.name}{s.is_casual ? ' (no time limit)' : ''}{s.is_active ? ' (active)' : ''}</option>
-        {/each}
-      </select>
-    </label>
-
-    <label style="min-width:240px;">
-      <div class="muted">Ruleset</div>
-      <select name="ruleset_id" bind:value={importRulesetId} required style="min-width:240px;">
-        {#each data.rulesets as r}
-          <option value={r.id}>{r.name}</option>
-        {/each}
-      </select>
-    </label>
-
-    <label style="min-width:280px;">
-      <div class="muted">Excel file</div>
-      <input name="file" type="file" accept=".xlsx,.xls,.xlsm" required />
-    </label>
-
-    <button class="btn primary" type="submit" style="margin-left: auto">Import</button>
-  </form>
-
-  {#if data.rulesets.length === 0}
-    <div class="muted" style="margin-top:10px;">No rulesets found. Create one in SQL before importing.</div>
-  {/if}
-</div>
+{/if}
 
 <div class="card">
   <h3 style="margin:0 0 10px;">Existing</h3>

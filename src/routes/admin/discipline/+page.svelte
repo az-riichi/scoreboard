@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fmtDateArizona, fmtDateTimeArizona } from '$lib/arizona-time';
   import { isDisciplineActionEffective } from '$lib/discipline';
+  import { hasAnyAdminPermission } from '$lib/permissions';
 
   export let data: any;
   export let form: any;
@@ -17,6 +18,11 @@
   $: summary = data.summary ?? null;
   $: actions = data.actions ?? [];
   $: currentAction = summary?.currentAction ?? null;
+  $: canOpenAdminMatches = hasAnyAdminPermission(data.adminAccess, [
+    'add_matches',
+    'remove_matches',
+    'manage_match_penalties'
+  ]);
 
   const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -463,7 +469,12 @@
                 <div>{action.reason || 'No reason recorded'}</div>
                 {#if action.match_id}
                   <div class="muted" style="margin-top:4px;">
-                    Match: <a href={`/admin/match/${action.match_id}`}>{action.match_label ?? action.match_id.slice(0, 8)}</a>
+                    Match:
+                    {#if canOpenAdminMatches}
+                      <a href={`/admin/match/${action.match_id}`}>{action.match_label ?? action.match_id.slice(0, 8)}</a>
+                    {:else}
+                      {action.match_label ?? action.match_id.slice(0, 8)}
+                    {/if}
                   </div>
                 {/if}
               </td>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
   import { fmtDateTimeArizona as fmtDateTime, nowArizonaDatetimeLocalValue } from '$lib/arizona-time';
+  import { hasAdminPermission } from '$lib/permissions';
   export let data: any;
   export let form: any;
 
@@ -15,6 +16,12 @@
 
   $: selectedSeason = data.seasons.find((season: any) => season.id === season_id) ?? null;
   $: isCasual = selectedSeason?.is_casual === true;
+  $: access = data.adminAccess;
+  $: canAddMatches = hasAdminPermission(access, 'add_matches');
+  $: canRemoveMatches = hasAdminPermission(access, 'remove_matches');
+  $: canManagePenalties = hasAdminPermission(access, 'manage_match_penalties');
+  $: canRecomputeRatings = hasAdminPermission(access, 'recompute_ratings');
+  $: canOpenMatches = canAddMatches || canRemoveMatches || canManagePenalties;
 </script>
 
 <div class="card" style="margin-bottom:12px;">
@@ -24,9 +31,11 @@
       <div class="muted">Enter and review match results</div>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <form method="POST" action="?/recomputeLifetimeR" on:submit={(e) => { if (!confirm('Recompute all season and lifetime ratings?')) e.preventDefault(); }}>
-        <button class="btn" type="submit">Recompute ratings</button>
-      </form>
+      {#if canRecomputeRatings}
+        <form method="POST" action="?/recomputeLifetimeR" on:submit={(e) => { if (!confirm('Recompute all season and lifetime ratings?')) e.preventDefault(); }}>
+          <button class="btn" type="submit">Recompute ratings</button>
+        </form>
+      {/if}
       <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
     </div>
   </div>
@@ -38,8 +47,9 @@
   </div>
 {/if}
 
-<div class="card" style="margin-bottom:12px;">
-  <h3 style="margin:0 0 10px;">Create match</h3>
+{#if canAddMatches}
+  <div class="card" style="margin-bottom:12px;">
+    <h3 style="margin:0 0 10px;">Create match</h3>
   <div class="muted" style="margin-bottom:10px;">Game # and table label are auto-generated</div>
   <form method="POST" action="?/create" style="display:grid; gap:10px;">
     <div style="display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
@@ -123,12 +133,14 @@
   {#if data.rulesets.length === 0}
     <div class="muted" style="margin-top:10px;">No rulesets found. Run the schema seed or create one in SQL.</div>
   {/if}
-</div>
+  </div>
+{/if}
 
-<div class="card">
-  <h3 style="margin:0 0 10px;">Recent matches</h3>
-  <div style="overflow:auto;">
-    <table>
+{#if canOpenMatches}
+  <div class="card">
+    <h3 style="margin:0 0 10px;">Recent matches</h3>
+    <div style="overflow:auto;">
+      <table>
       <thead>
         <tr>
           <th>Date</th>
@@ -155,15 +167,18 @@
                 {#if m.status === 'final'}
                   <a class="btn" href={`/match/${m.id}`} style="text-decoration:none;">Public</a>
                 {/if}
-                <form method="POST" action="?/delete" style="margin:0;" on:submit={(e) => { if (!confirm('Delete this game? This cannot be undone.')) e.preventDefault(); }}>
-                  <input type="hidden" name="match_id" value={m.id} />
-                  <button class="btn" type="submit">Delete</button>
-                </form>
+                {#if canRemoveMatches}
+                  <form method="POST" action="?/delete" style="margin:0;" on:submit={(e) => { if (!confirm('Delete this game? This cannot be undone.')) e.preventDefault(); }}>
+                    <input type="hidden" name="match_id" value={m.id} />
+                    <button class="btn" type="submit">Delete</button>
+                  </form>
+                {/if}
               </div>
             </td>
           </tr>
         {/each}
       </tbody>
-    </table>
+      </table>
+    </div>
   </div>
-</div>
+{/if}

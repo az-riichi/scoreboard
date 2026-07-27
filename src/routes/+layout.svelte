@@ -73,6 +73,7 @@
       if (parts[1] === 'matches') return `Admin Matches | ${SITE_NAME}`;
       if (parts[1] === 'seasons') return `Admin Seasons | ${SITE_NAME}`;
       if (parts[1] === 'discipline') return `Admin Discipline | ${SITE_NAME}`;
+      if (parts[1] === 'permissions') return `Admin Permissions | ${SITE_NAME}`;
       if (parts[1] === 'match') {
         const match = asRecord(pageRecord?.match);
         const label = getFieldText(match, 'table_label');

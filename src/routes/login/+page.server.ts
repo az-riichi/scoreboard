@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { createAdminAccess } from '$lib/permissions';
 import { sanitizeLocalRedirect } from '$lib/server/safe-redirect';
 
 function asText(value: unknown) {
@@ -9,8 +10,16 @@ function asText(value: unknown) {
 async function getSignedInRedirect(locals: App.Locals, userId: string | null | undefined) {
   if (!userId) return '/';
 
-  const profileRes = await locals.supabase.from('profiles').select('is_admin').eq('id', userId).maybeSingle();
-  return profileRes.data?.is_admin ? '/admin' : '/';
+  const profileRes = await locals.supabase
+    .from('profiles')
+    .select('admin_role, admin_permissions')
+    .eq('id', userId)
+    .maybeSingle();
+  const access = createAdminAccess(
+    profileRes.data?.admin_role,
+    profileRes.data?.admin_permissions
+  );
+  return access.isAdmin ? '/admin' : '/';
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {

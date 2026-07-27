@@ -1,6 +1,10 @@
 import { error as kitError, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { requireAdmin } from '$lib/server/admin';
+import {
+  requireAdminPermission,
+  requireAnyAdminPermission
+} from '$lib/server/admin';
+import { hasAdminPermission } from '$lib/permissions';
 import { composeSeasonNameParts } from '$lib/player-name';
 import {
   parseArizonaDayBoundsFromDatetimeLocal,
@@ -10,42 +14,26 @@ import {
 import { resolveCasualEvent } from '$lib/server/casual-events';
 
 const CHOMBO_PREFIX = 'CHOMBO';
-const RESTRICTION_PAGE_SIZE = 500;
 
-async function loadEffectiveRestrictions(locals: App.Locals, matchDay: string) {
-  const restrictions: Array<{
-    id: string;
-    player_id: string;
-    action_type: 'suspension' | 'ban';
-    expires_on: string | null;
-  }> = [];
-
-  let offset = 0;
-  for (;;) {
-    const response = await locals.supabase
-      .from('discipline_actions')
-      .select('id, player_id, action_type, expires_on', { count: 'exact' })
-      .in('action_type', ['suspension', 'ban'])
-      .is('revoked_at', null)
-      .lte('effective_on', matchDay)
-      .or(`expires_on.is.null,expires_on.gte.${matchDay}`)
-      .order('id', { ascending: true })
-      .range(offset, offset + RESTRICTION_PAGE_SIZE - 1);
-
-    if (response.error) return { data: [], error: response.error };
-
-    const page = (response.data ?? []) as typeof restrictions;
-    restrictions.push(...page);
-    offset += page.length;
-    if (page.length === 0 || (response.count != null && offset >= response.count)) break;
-    if (response.count == null && page.length < RESTRICTION_PAGE_SIZE) break;
-  }
-
-  return { data: restrictions, error: null };
+async function loadEffectiveRestrictions(
+  locals: App.Locals,
+  matchDay: string,
+  playerIds: string[] | null = null
+) {
+  return locals.supabase.rpc('get_effective_player_restrictions', {
+    p_on_date: matchDay,
+    p_player_ids: playerIds
+  });
 }
 
 export const load: PageServerLoad = async ({ locals, params }) => {
-  await requireAdmin(locals);
+  const adminAccess = await requireAnyAdminPermission(locals, [
+    'add_matches',
+    'remove_matches',
+    'manage_match_penalties'
+  ]);
+  const canAddMatches = hasAdminPermission(adminAccess, 'add_matches');
+  const canManagePenalties = hasAdminPermission(adminAccess, 'manage_match_penalties');
   const match_id = params.match_id;
 
   const matchRes = await locals.supabase
@@ -85,14 +73,18 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       .select('player_id, rate, games_played')
       .eq('is_lifetime', true),
     locals.supabase.from('casual_events').select('id, name').order('name', { ascending: true }),
-    locals.supabase
-      .from('adjustments')
-      .select('id, player_id, points, reason, created_at')
-      .eq('season_id', matchRes.data.season_id)
-      .eq('match_id', match_id)
-      .like('reason', penaltyReasonPrefix)
-      .order('created_at', { ascending: false }),
-    loadEffectiveRestrictions(locals, matchDay)
+    canManagePenalties
+      ? locals.supabase
+          .from('adjustments')
+          .select('id, player_id, points, reason, created_at')
+          .eq('season_id', matchRes.data.season_id)
+          .eq('match_id', match_id)
+          .like('reason', penaltyReasonPrefix)
+          .order('created_at', { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    canAddMatches
+      ? loadEffectiveRestrictions(locals, matchDay)
+      : Promise.resolve({ data: [], error: null })
   ]);
 
   if (restrictionsRes.error) {
@@ -244,15 +236,11 @@ async function validateDraftResults(
 
   if (!seasonRes.data.is_casual) {
     const matchDay = toArizonaDatetimeLocalValue(matchRes.data.played_at).slice(0, 10);
-    const restrictionRes = await locals.supabase
-      .from('discipline_actions')
-      .select('player_id, action_type, expires_on')
-      .in('player_id', rows.map((row) => row.player_id))
-      .in('action_type', ['suspension', 'ban'])
-      .is('revoked_at', null)
-      .lte('effective_on', matchDay)
-      .or(`expires_on.is.null,expires_on.gte.${matchDay}`)
-      .limit(1);
+    const restrictionRes = await loadEffectiveRestrictions(
+      locals,
+      matchDay,
+      rows.map((row) => row.player_id)
+    );
 
     if (restrictionRes.error) {
       return { ok: false as const, status: 500, message: 'Could not verify player eligibility.' };
@@ -302,17 +290,19 @@ async function validateDraftResults(
 }
 export const actions: Actions = {
   deleteGame: async ({ locals, params }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'remove_matches');
     const match_id = params.match_id;
 
-    const deleteRes = await locals.supabase.rpc('delete_match_and_recompute', { p_match_id: match_id });
+    const deleteRes = await locals.supabase.rpc('delete_match_and_recompute_authorized', {
+      p_match_id: match_id
+    });
     if (deleteRes.error) return fail(400, { message: deleteRes.error.message });
 
     throw redirect(303, '/admin/matches');
   },
 
   saveCasualEvent: async ({ request, locals, params }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'add_matches');
     const match_id = params.match_id;
 
     const matchRes = await locals.supabase
@@ -339,7 +329,7 @@ export const actions: Actions = {
     );
     if (!eventResolution.ok) return fail(400, { message: eventResolution.message });
 
-    const updateRes = await locals.supabase.rpc('set_casual_match_event', {
+    const updateRes = await locals.supabase.rpc('set_casual_match_event_authorized', {
       p_match_id: match_id,
       p_casual_event_id: eventResolution.eventId
     });
@@ -349,7 +339,7 @@ export const actions: Actions = {
   },
 
   saveMatchMeta: async ({ request, locals, params }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'add_matches');
     const match_id = params.match_id;
 
     const currentMatchRes = await locals.supabase
@@ -449,7 +439,7 @@ export const actions: Actions = {
   },
 
   saveResults: async ({ request, locals, params }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'add_matches');
     const match_id = params.match_id;
 
     const f = await request.formData();
@@ -465,7 +455,7 @@ export const actions: Actions = {
   },
 
   addPenalty: async ({ request, locals, params }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'manage_match_penalties');
     const match_id = params.match_id;
     const f = await request.formData();
 
@@ -528,7 +518,7 @@ export const actions: Actions = {
   },
 
   removePenalty: async ({ request, locals, params }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'manage_match_penalties');
     const match_id = params.match_id;
     const f = await request.formData();
     const adjustment_id = getStr(f, 'adjustment_id');
@@ -555,7 +545,7 @@ export const actions: Actions = {
   },
 
   finalize: async ({ request, locals, params }) => {
-    await requireAdmin(locals);
+    await requireAdminPermission(locals, 'add_matches');
     const match_id = params.match_id;
 
     const form = await request.formData();
@@ -574,7 +564,7 @@ export const actions: Actions = {
       .maybeSingle();
     if (seasonRes.error || !seasonRes.data) return fail(400, { message: 'Season not found.' });
 
-    const { error } = await locals.supabase.rpc('finalize_match', {
+    const { error } = await locals.supabase.rpc('finalize_match_authorized', {
       p_match_id: match_id,
       p_update_lifetime: !seasonRes.data.is_casual
     });

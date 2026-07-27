@@ -1,14 +1,29 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
+  import { hasAdminPermission } from '$lib/permissions';
 
   export let data: any;
   export let form: any;
 
   let players: any[] = [];
   let activeEditId: string | null = null;
+  let canAddPlayers = false;
+  let canEditPlayers = false;
+  let canRemovePlayers = false;
+  let canManagePlayerAccounts = false;
+  let canOpenEditor = false;
+  let showActions = false;
+  let rosterColumnCount = 6;
 
   $: players = data.players ?? [];
   $: activeEditId = form?.edit_id ?? data.editId ?? null;
+  $: canAddPlayers = hasAdminPermission(data.adminAccess, 'add_players');
+  $: canEditPlayers = hasAdminPermission(data.adminAccess, 'edit_players');
+  $: canRemovePlayers = hasAdminPermission(data.adminAccess, 'remove_players');
+  $: canManagePlayerAccounts = hasAdminPermission(data.adminAccess, 'manage_player_accounts');
+  $: canOpenEditor = canEditPlayers || canManagePlayerAccounts;
+  $: showActions = canOpenEditor || canRemovePlayers;
+  $: rosterColumnCount = 6 + (canManagePlayerAccounts ? 1 : 0) + (showActions ? 1 : 0);
 
   let display_name = '';
   let real_first_name = '';
@@ -22,7 +37,7 @@
   <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
     <div>
       <div style="font-size:1.1rem; font-weight:650;">Players</div>
-      <div class="muted">Register new players and assign player accounts</div>
+      <div class="muted">View and manage the player roster</div>
     </div>
     <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
   </div>
@@ -34,41 +49,43 @@
   </div>
 {/if}
 
-<div class="card" style="margin-bottom:12px;">
-  <h3 style="margin:0 0 10px;">Create player</h3>
-  <form method="POST" action="?/create" style="display:flex; gap:10px; flex-wrap:nowrap; align-items:end; overflow-x:auto; padding-bottom:2px;">
-    <label style="width:200px; flex:0 1 auto;">
-      <div class="muted">Nickname</div>
-      <input name="display_name" bind:value={display_name} placeholder="Optional" />
-    </label>
-    <label style="width:200px; flex:0 1 auto;">
-      <div class="muted">First name</div>
-      <input name="real_first_name" bind:value={real_first_name} placeholder="Optional" />
-    </label>
-    <label style="width:200px; flex:0 1 auto;">
-      <div class="muted">Last name</div>
-      <input name="real_last_name" bind:value={real_last_name} placeholder="Optional" />
-    </label>
-    <label style="width:200px; flex:0 0 auto;">
-      <div class="muted">Name display</div>
-      <div style="display:flex; gap:12px; flex-wrap:nowrap; align-items:center; min-height:40px;">
-        <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
-          <input name="show_display_name" type="checkbox" bind:checked={show_display_name} />
-          <span class="muted">Nick</span>
-        </label>
-        <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
-          <input name="show_real_first_name" type="checkbox" bind:checked={show_real_first_name} />
-          <span class="muted">First</span>
-        </label>
-        <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
-          <input name="show_real_last_name" type="checkbox" bind:checked={show_real_last_name} />
-          <span class="muted">Last</span>
-        </label>
-      </div>
-    </label>
-    <button class="btn primary" type="submit" style="flex:0 0 auto; white-space:nowrap; margin-left: auto">Create</button>
-  </form>
-</div>
+{#if canAddPlayers}
+  <div class="card" style="margin-bottom:12px;">
+    <h3 style="margin:0 0 10px;">Create player</h3>
+    <form method="POST" action="?/create" style="display:flex; gap:10px; flex-wrap:nowrap; align-items:end; overflow-x:auto; padding-bottom:2px;">
+      <label style="width:200px; flex:0 1 auto;">
+        <div class="muted">Nickname</div>
+        <input name="display_name" bind:value={display_name} placeholder="Optional" />
+      </label>
+      <label style="width:200px; flex:0 1 auto;">
+        <div class="muted">First name</div>
+        <input name="real_first_name" bind:value={real_first_name} placeholder="Optional" />
+      </label>
+      <label style="width:200px; flex:0 1 auto;">
+        <div class="muted">Last name</div>
+        <input name="real_last_name" bind:value={real_last_name} placeholder="Optional" />
+      </label>
+      <label style="width:200px; flex:0 0 auto;">
+        <div class="muted">Name display</div>
+        <div style="display:flex; gap:12px; flex-wrap:nowrap; align-items:center; min-height:40px;">
+          <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
+            <input name="show_display_name" type="checkbox" bind:checked={show_display_name} />
+            <span class="muted">Nick</span>
+          </label>
+          <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
+            <input name="show_real_first_name" type="checkbox" bind:checked={show_real_first_name} />
+            <span class="muted">First</span>
+          </label>
+          <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
+            <input name="show_real_last_name" type="checkbox" bind:checked={show_real_last_name} />
+            <span class="muted">Last</span>
+          </label>
+        </div>
+      </label>
+      <button class="btn primary" type="submit" style="flex:0 0 auto; white-space:nowrap; margin-left: auto">Create</button>
+    </form>
+  </div>
+{/if}
 
 <div class="card">
   <h3 style="margin:0 0 10px;">Roster</h3>
@@ -81,62 +98,63 @@
           <th>First</th>
           <th>Last</th>
           <th>Visible</th>
-          <th style="min-width:240px;">Claimed Account</th>
+          {#if canManagePlayerAccounts}
+            <th style="min-width:240px;">Claimed Account</th>
+          {/if}
           <th style="width:120px;">Active</th>
-          <th style="width:120px;"></th>
+          {#if showActions}
+            <th style="min-width:120px;">Actions</th>
+          {/if}
         </tr>
       </thead>
       <tbody>
-        {#each data.players as p}
-          {#if activeEditId === p.id}
+        {#each players as p}
+          {#if activeEditId === p.id && canOpenEditor}
             <tr>
-              <td colspan="8">
-                <form method="POST" action="?/update" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:2px; padding-bottom:2px;">
-                  <input type="hidden" name="player_id" value={p.id} />
+              <td colspan={rosterColumnCount}>
+                {#if canEditPlayers}
+                  <h4 style="margin:2px 0 10px;">Player details</h4>
+                  <form method="POST" action="?/update" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; padding-bottom:2px;">
+                    <input type="hidden" name="player_id" value={p.id} />
 
-                  <label style="width:200px; flex:0 1 auto;">
-                    <div class="muted">Nickname</div>
-                    <input name="display_name" value={p.display_name ?? ''} placeholder="Optional" />
-                  </label>
-                  <label style="width:200px; flex:0 1 auto;">
-                    <div class="muted">First name</div>
-                    <input name="real_first_name" value={p.real_first_name ?? ''} placeholder="Optional" />
-                  </label>
-                  <label style="width:200px; flex:0 1 auto;">
-                    <div class="muted">Last name</div>
-                    <input name="real_last_name" value={p.real_last_name ?? ''} placeholder="Optional" />
-                  </label>
+                    <label style="width:200px; flex:0 1 auto;">
+                      <div class="muted">Nickname</div>
+                      <input name="display_name" value={p.display_name ?? ''} placeholder="Optional" />
+                    </label>
+                    <label style="width:200px; flex:0 1 auto;">
+                      <div class="muted">First name</div>
+                      <input name="real_first_name" value={p.real_first_name ?? ''} placeholder="Optional" />
+                    </label>
+                    <label style="width:200px; flex:0 1 auto;">
+                      <div class="muted">Last name</div>
+                      <input name="real_last_name" value={p.real_last_name ?? ''} placeholder="Optional" />
+                    </label>
 
-                  <label style="width:200px; flex:0 0 auto;">
-                    <div class="muted">Name display</div>
-                    <div style="display:flex; gap:12px; flex-wrap:nowrap; align-items:center; min-height:40px;">
-                      <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
-                        <input name="show_display_name" type="checkbox" checked={p.show_display_name} />
-                        <span class="muted">Nick</span>
-                      </label>
-                      <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
-                        <input name="show_real_first_name" type="checkbox" checked={p.show_real_first_name} />
-                        <span class="muted">First</span>
-                      </label>
-                      <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
-                        <input name="show_real_last_name" type="checkbox" checked={p.show_real_last_name} />
-                        <span class="muted">Last</span>
-                      </label>
-                    </div>
-                  </label>
+                    <label style="width:200px; flex:0 0 auto;">
+                      <div class="muted">Name display</div>
+                      <div style="display:flex; gap:12px; flex-wrap:nowrap; align-items:center; min-height:40px;">
+                        <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
+                          <input name="show_display_name" type="checkbox" checked={p.show_display_name} />
+                          <span class="muted">Nick</span>
+                        </label>
+                        <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
+                          <input name="show_real_first_name" type="checkbox" checked={p.show_real_first_name} />
+                          <span class="muted">First</span>
+                        </label>
+                        <label style="display:flex; gap:8px; align-items:center; padding:8px 0;">
+                          <input name="show_real_last_name" type="checkbox" checked={p.show_real_last_name} />
+                          <span class="muted">Last</span>
+                        </label>
+                      </div>
+                    </label>
 
-                  <label style="display:flex; gap:8px; align-items:center; padding:8px 0; flex:0 0 auto;">
-                    <input name="is_active" type="checkbox" checked={p.is_active} />
-                    <span class="muted">Active</span>
-                  </label>
+                    <button class="btn primary" type="submit" style="white-space:nowrap; margin-left:auto;">Save details</button>
+                  </form>
+                {/if}
 
-                  <div style="display:flex; gap:8px; align-items:center; justify-content:flex-end; flex:1 0 100%;">
-                    <a class="btn" href="/admin/players" style="text-decoration:none;">Cancel</a>
-                    <button class="btn primary" type="submit" style="white-space:nowrap;">Save</button>
-                  </div>
-                </form>
-
-                <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--table-border);">
+                {#if canManagePlayerAccounts}
+                  <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--table-border);">
+                    <h4 style="margin:0 0 10px;">Player account</h4>
                   <form method="POST" action="?/setClaim" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
                     <input type="hidden" name="player_id" value={p.id} />
 
@@ -154,6 +172,18 @@
 
                     <button class="btn" type="submit" style="white-space:nowrap;">Link account</button>
                   </form>
+                  </div>
+                {/if}
+
+                <div style="display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:10px; padding-top:10px; border-top:1px solid var(--table-border);">
+                  {#if canRemovePlayers}
+                    <form method="POST" action="?/setActive">
+                      <input type="hidden" name="player_id" value={p.id} />
+                      <input type="hidden" name="is_active" value={p.is_active ? 'false' : 'true'} />
+                      <button class="btn" type="submit">{p.is_active ? 'Deactivate' : 'Reactivate'}</button>
+                    </form>
+                  {/if}
+                  <a class="btn" href="/admin/players" style="text-decoration:none;">Close</a>
                 </div>
               </td>
             </tr>
@@ -171,27 +201,44 @@
               <td>{p.real_first_name ?? ''}</td>
               <td>{p.real_last_name ?? ''}</td>
               <td>{p.show_display_name ? 'display' : ''}{p.show_real_first_name ? (p.show_display_name ? ' + first' : 'first') : ''}{p.show_real_last_name ? ' + last' : ''}</td>
-              <td>
-                {#if p.linked_auth_user_id}
-                  <div>
-                    {p.linked_profile_email ?? '(no email)'} - {p.linked_auth_user_id.slice(0, 8)}
-                    {#if p.linked_profile_is_admin}
-                      <span class="muted"> [admin]</span>
+              {#if canManagePlayerAccounts}
+                <td>
+                  {#if p.linked_auth_user_id}
+                    <div>
+                      {p.linked_profile_email ?? '(no email)'} - {p.linked_auth_user_id.slice(0, 8)}
+                      {#if p.linked_profile_is_admin}
+                        <span class="muted"> [admin]</span>
+                      {/if}
+                    </div>
+                  {:else}
+                    <span class="muted">Unclaimed</span>
+                  {/if}
+                </td>
+              {/if}
+              <td>{p.is_active ? 'Yes' : 'No'}</td>
+              {#if showActions}
+                <td>
+                  <div style="display:flex; gap:8px; align-items:center; justify-content:flex-end;">
+                    {#if canOpenEditor}
+                      <a class="btn" href={`/admin/players?edit=${p.id}`} style="text-decoration:none">
+                        {canEditPlayers && canManagePlayerAccounts ? 'Manage' : canEditPlayers ? 'Edit' : 'Account'}
+                      </a>
+                    {/if}
+                    {#if canRemovePlayers}
+                      <form method="POST" action="?/setActive">
+                        <input type="hidden" name="player_id" value={p.id} />
+                        <input type="hidden" name="is_active" value={p.is_active ? 'false' : 'true'} />
+                        <button class="btn" type="submit">{p.is_active ? 'Deactivate' : 'Reactivate'}</button>
+                      </form>
                     {/if}
                   </div>
-                {:else}
-                  <span class="muted">Unclaimed</span>
-                {/if}
-              </td>
-              <td>{p.is_active ? 'Yes' : 'No'}</td>
-              <td style="align-items: end">
-                <a class="btn" href={`/admin/players?edit=${p.id}`} style="text-decoration:none">Edit</a>
-              </td>
+                </td>
+              {/if}
             </tr>
           {/if}
         {/each}
-        {#if data.players.length === 0}
-          <tr><td colspan="8" class="muted">No players yet.</td></tr>
+        {#if players.length === 0}
+          <tr><td colspan={rosterColumnCount} class="muted">No players yet.</td></tr>
         {/if}
       </tbody>
     </table>

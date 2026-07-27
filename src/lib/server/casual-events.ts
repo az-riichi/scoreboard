@@ -24,7 +24,9 @@ export async function resolveCasualEvent(
     if (!name) return { ok: false, message: 'Enter a name for the new event.' };
     if (name.length > 100) return { ok: false, message: 'Event names can be at most 100 characters.' };
 
-    const createRes = await locals.supabase.rpc('get_or_create_casual_event', { p_name: name });
+    const createRes = await locals.supabase.rpc('get_or_create_casual_event_authorized', {
+      p_name: name
+    });
     const eventId = String(createRes.data ?? '').trim();
     if (createRes.error || !eventId) {
       return { ok: false, message: createRes.error?.message ?? 'Could not create the event.' };

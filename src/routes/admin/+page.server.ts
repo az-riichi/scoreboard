@@ -1,8 +1,11 @@
 import type { PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/admin';
+import { hasAdminPermission } from '$lib/permissions';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  await requireAdmin(locals);
+  const adminAccess = await requireAdmin(locals);
+
+  if (!hasAdminPermission(adminAccess, 'add_matches')) return { drafts: [] };
 
   const draftsRes = await locals.supabase
     .from('matches')
@@ -10,6 +13,5 @@ export const load: PageServerLoad = async ({ locals }) => {
     .eq('status', 'draft')
     .order('played_at', { ascending: false })
     .limit(20);
-
   return { drafts: draftsRes.error ? [] : (draftsRes.data ?? []) };
 };
