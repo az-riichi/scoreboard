@@ -10,8 +10,9 @@
 -- - Public read for non-admin data; admin-only writes (RLS)
 --
 -- Notes:
--- - Analytics views use SECURITY INVOKER (Postgres 15+). v_public_players is
---   an owner-executed view that exposes only an explicit redacted projection.
+-- - Public analytics are derived in the browser from raw finalized records.
+--   v_public_players is an owner-executed privacy projection that exposes only
+--   explicitly redacted fields.
 
 -- 0) Extensions
 create extension if not exists pgcrypto;
@@ -511,6 +512,102 @@ create index adjustments_player_id_idx on public.adjustments (player_id);
 create index adjustments_match_id_idx
 on public.adjustments (match_id)
 where match_id is not null;
+
+-- Cheap public snapshot invalidation. Readers may inspect this singleton, but
+-- only the trigger functions below can advance it.
+create table public.public_data_revision (
+  scope text primary key,
+  revision bigint not null default 1,
+  changed_at timestamptz not null default now(),
+  constraint public_data_revision_scope_check
+    check (scope = 'scoreboard'),
+  constraint public_data_revision_revision_check
+    check (revision >= 1)
+);
+
+insert into public.public_data_revision (scope, revision)
+values ('scoreboard', 1);
+
+create or replace function public.bump_public_data_revision()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.public_data_revision
+  set revision = revision + 1,
+      changed_at = statement_timestamp()
+  where scope = 'scoreboard';
+
+  if not found then
+    raise exception 'public data revision singleton is missing';
+  end if;
+
+  return null;
+end;
+$$;
+
+create or replace function public.bump_public_data_revision_for_final_match()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_affects_public_data boolean := false;
+begin
+  if tg_op = 'DELETE' then
+    v_affects_public_data := old.status = 'final';
+  elsif tg_op = 'UPDATE' then
+    v_affects_public_data := old.status = 'final' or new.status = 'final';
+  elsif tg_op = 'INSERT' then
+    v_affects_public_data := new.status = 'final';
+  end if;
+
+  if v_affects_public_data then
+    update public.public_data_revision
+    set revision = revision + 1,
+        changed_at = statement_timestamp()
+    where scope = 'scoreboard';
+
+    if not found then
+      raise exception 'public data revision singleton is missing';
+    end if;
+  end if;
+
+  return null;
+end;
+$$;
+
+revoke all on function public.bump_public_data_revision() from public, anon, authenticated;
+revoke all on function public.bump_public_data_revision_for_final_match() from public, anon, authenticated;
+
+create trigger seasons_bump_public_data_revision
+after insert or update or delete on public.seasons
+for each statement execute function public.bump_public_data_revision();
+
+create trigger casual_events_bump_public_data_revision
+after insert or update or delete on public.casual_events
+for each statement execute function public.bump_public_data_revision();
+
+create trigger players_bump_public_data_revision
+after insert or update or delete on public.players
+for each statement execute function public.bump_public_data_revision();
+
+create trigger rulesets_bump_public_data_revision
+after insert or update or delete on public.rulesets
+for each statement execute function public.bump_public_data_revision();
+
+create trigger adjustments_bump_public_data_revision
+after insert or update or delete on public.adjustments
+for each statement execute function public.bump_public_data_revision();
+
+-- Final result rows are immutable. Draft result edits become public through
+-- the match status transition, so the match trigger is the single invalidator.
+create trigger matches_bump_public_data_revision
+after insert or update or delete on public.matches
+for each row execute function public.bump_public_data_revision_for_final_match();
 
 -- Private, auditable discipline ledger. Revocations retain the original row;
 -- automatic rows point to the strike/suspension that triggered escalation.
@@ -2008,6 +2105,7 @@ alter table public.rulesets enable row level security;
 alter table public.matches enable row level security;
 alter table public.match_results enable row level security;
 alter table public.adjustments enable row level security;
+alter table public.public_data_revision enable row level security;
 alter table public.discipline_actions enable row level security;
 alter table public.rating_state enable row level security;
 alter table public.rating_events enable row level security;
@@ -2233,6 +2331,12 @@ for select
 to anon, authenticated
 using (true);
 
+create policy public_data_revision_public_read
+on public.public_data_revision
+for select
+to anon, authenticated
+using (scope = 'scoreboard');
+
 create policy rating_state_public_read
 on public.rating_state
 for select
@@ -2370,6 +2474,8 @@ revoke select on public.players from public, anon;
 grant select on public.players to authenticated;
 grant select on public.v_public_players to anon, authenticated;
 grant select on public.matches, public.match_results, public.adjustments to anon, authenticated;
+revoke all on public.public_data_revision from public, anon, authenticated;
+grant select on public.public_data_revision to anon, authenticated;
 grant select on public.rating_state, public.rating_events to anon, authenticated;
 
 grant insert, update, delete on public.seasons, public.casual_events, public.players, public.rulesets to authenticated;
@@ -2384,410 +2490,7 @@ grant select on public.discipline_actions to authenticated;
 revoke insert, delete on public.profiles from authenticated;
 grant select, update on public.profiles to authenticated;
 
--- 7) SECURITY INVOKER views (public analytics)
-
-create or replace view public.v_final_results
-with (security_invoker = true)
-as
-select
-  m.id as match_id,
-  m.season_id,
-  m.ruleset_id,
-  m.game_number,
-  m.table_mode,
-  m.extra_sticks,
-  m.played_at,
-  m.table_label,
-  r.seat,
-  r.player_id,
-  p.public_name as display_name,
-  r.raw_points,
-  r.club_points,
-  r.placement,
-  r.tobi,
-  m.casual_event_id,
-  ce.name as casual_event_name
-from public.matches m
-join public.match_results r on r.match_id = m.id
-join public.v_public_players p on p.id = r.player_id
-left join public.casual_events ce on ce.id = m.casual_event_id
-where m.status = 'final';
-
--- Standings (season cumulative + rank; includes adjustments)
-create or replace view public.v_season_standings
-with (security_invoker = true)
-as
-with base as (
-  select
-    season_id,
-    player_id,
-    display_name,
-    count(*) as games_played,
-    sum(club_points) as total_points,
-    avg(placement::numeric) as avg_placement,
-    avg(club_points) as avg_points,
-    sum((placement = 1)::int) as firsts,
-    sum((placement = 2)::int) as seconds,
-    sum((placement = 3)::int) as thirds,
-    sum((placement = 4)::int) as fourths,
-    sum((placement <= 2)::int)::numeric / greatest(count(*)::numeric, 1) as top2_rate,
-    sum((placement = 4)::int)::numeric / greatest(count(*)::numeric, 1) as fourth_rate,
-    sum((tobi)::int)::numeric / greatest(count(*)::numeric, 1) as tobi_rate
-  from public.v_final_results
-  group by season_id, player_id, display_name
-),
-adj as (
-  select a.season_id, a.player_id, sum(a.points) as adj_points
-  from public.adjustments a
-  left join public.matches m
-    on m.id = a.match_id
-   and m.season_id = a.season_id
-  where a.match_id is null
-     or m.status = 'final'
-  group by a.season_id, a.player_id
-)
-select
-  b.*,
-  coalesce(a.adj_points, 0) as adjustment_points,
-  (b.total_points + coalesce(a.adj_points, 0)) as total_points_with_adjustments,
-  dense_rank() over (partition by b.season_id order by (b.total_points + coalesce(a.adj_points, 0)) desc) as rank
-from base b
-left join adj a
-  on a.season_id = b.season_id and a.player_id = b.player_id;
-
--- Player stats per season (includes requested fields + extras)
-create or replace view public.v_season_player_stats
-with (security_invoker = true)
-as
-with g as (
-  select
-    season_id,
-    player_id,
-    display_name,
-    match_id,
-    played_at,
-    placement,
-    club_points
-  from public.v_final_results
-),
-agg as (
-  select
-    season_id,
-    player_id,
-    display_name,
-    count(*) as games_played,
-    sum(club_points) as total_points,
-    avg(placement::numeric) as avg_placement,
-    avg(club_points) as avg_points,
-    sum((placement = 1)::int) as firsts,
-    sum((placement = 2)::int) as seconds,
-    sum((placement = 3)::int) as thirds,
-    sum((placement = 4)::int) as fourths,
-    sum((placement <= 2)::int)::numeric / greatest(count(*)::numeric, 1) as top2_rate,
-    sum((placement = 1)::int)::numeric / greatest(count(*)::numeric, 1) as first_rate,
-    sum((placement = 4)::int)::numeric / greatest(count(*)::numeric, 1) as fourth_rate,
-    stddev_pop(club_points) as stdev_points,
-    percentile_cont(0.5) within group (order by club_points) as median_points,
-    max(club_points) as best_points,
-    min(club_points) as worst_points,
-    max(played_at) as last_played_at
-  from g
-  group by season_id, player_id, display_name
-),
-best as (
-  select distinct on (season_id, player_id)
-    season_id, player_id, match_id as best_match_id, played_at as best_played_at
-  from g
-  order by season_id, player_id, club_points desc, played_at desc, match_id desc
-),
-worst as (
-  select distinct on (season_id, player_id)
-    season_id, player_id, match_id as worst_match_id, played_at as worst_played_at
-  from g
-  order by season_id, player_id, club_points asc, played_at desc, match_id desc
-)
-select
-  a.*,
-  b.best_match_id, b.best_played_at,
-  w.worst_match_id, w.worst_played_at
-from agg a
-left join best b on b.season_id = a.season_id and b.player_id = a.player_id
-left join worst w on w.season_id = a.season_id and w.player_id = a.player_id;
-
-create or replace view public.v_player_match_history
-with (security_invoker = true)
-as
-select
-  season_id,
-  player_id,
-  display_name,
-  played_at,
-  match_id,
-  seat,
-  raw_points,
-  club_points,
-  placement,
-  tobi,
-  casual_event_id,
-  casual_event_name
-from public.v_final_results;
-
-create or replace view public.v_player_point_history
-with (security_invoker = true)
-as
-select
-  season_id,
-  player_id,
-  display_name,
-  played_at,
-  match_id,
-  club_points,
-  sum(club_points) over (
-    partition by season_id, player_id
-    order by played_at asc, match_id asc
-    rows between unbounded preceding and current row
-  ) as cumulative_points
-from public.v_final_results;
-
-create or replace view public.v_player_placement_history
-with (security_invoker = true)
-as
-select
-  season_id,
-  player_id,
-  display_name,
-  played_at,
-  match_id,
-  placement,
-  casual_event_id,
-  casual_event_name
-from public.v_final_results;
-
-create or replace view public.v_casual_event_standings
-with (security_invoker = true)
-as
-with base as (
-  select
-    season_id,
-    casual_event_id,
-    casual_event_name,
-    player_id,
-    display_name,
-    count(*) as games_played,
-    sum(club_points) as total_points,
-    avg(placement::numeric) as avg_placement,
-    avg(club_points) as avg_points,
-    sum((placement = 1)::int) as firsts,
-    sum((placement = 2)::int) as seconds,
-    sum((placement = 3)::int) as thirds,
-    sum((placement = 4)::int) as fourths,
-    sum((placement <= 2)::int)::numeric / greatest(count(*)::numeric, 1) as top2_rate,
-    sum((placement = 4)::int)::numeric / greatest(count(*)::numeric, 1) as fourth_rate,
-    sum((tobi)::int)::numeric / greatest(count(*)::numeric, 1) as tobi_rate
-  from public.v_final_results
-  where casual_event_id is not null
-  group by season_id, casual_event_id, casual_event_name, player_id, display_name
-),
-adj as (
-  select
-    a.season_id,
-    m.casual_event_id,
-    a.player_id,
-    sum(a.points) as adj_points
-  from public.adjustments a
-  join public.matches m
-    on m.id = a.match_id
-   and m.season_id = a.season_id
-  where m.status = 'final'
-    and m.casual_event_id is not null
-  group by a.season_id, m.casual_event_id, a.player_id
-)
-select
-  b.*,
-  coalesce(a.adj_points, 0) as adjustment_points,
-  (b.total_points + coalesce(a.adj_points, 0)) as total_points_with_adjustments,
-  dense_rank() over (
-    partition by b.season_id, b.casual_event_id
-    order by (b.total_points + coalesce(a.adj_points, 0)) desc
-  ) as rank
-from base b
-left join adj a
-  on a.season_id = b.season_id
- and a.casual_event_id = b.casual_event_id
- and a.player_id = b.player_id;
-
-create or replace view public.v_casual_event_player_stats
-with (security_invoker = true)
-as
-with g as (
-  select
-    season_id,
-    casual_event_id,
-    casual_event_name,
-    player_id,
-    display_name,
-    match_id,
-    played_at,
-    placement,
-    club_points
-  from public.v_final_results
-  where casual_event_id is not null
-),
-agg as (
-  select
-    season_id,
-    casual_event_id,
-    casual_event_name,
-    player_id,
-    display_name,
-    count(*) as games_played,
-    sum(club_points) as total_points,
-    avg(placement::numeric) as avg_placement,
-    avg(club_points) as avg_points,
-    sum((placement = 1)::int) as firsts,
-    sum((placement = 2)::int) as seconds,
-    sum((placement = 3)::int) as thirds,
-    sum((placement = 4)::int) as fourths,
-    sum((placement <= 2)::int)::numeric / greatest(count(*)::numeric, 1) as top2_rate,
-    sum((placement = 1)::int)::numeric / greatest(count(*)::numeric, 1) as first_rate,
-    sum((placement = 4)::int)::numeric / greatest(count(*)::numeric, 1) as fourth_rate,
-    stddev_pop(club_points) as stdev_points,
-    percentile_cont(0.5) within group (order by club_points) as median_points,
-    max(club_points) as best_points,
-    min(club_points) as worst_points,
-    max(played_at) as last_played_at
-  from g
-  group by season_id, casual_event_id, casual_event_name, player_id, display_name
-),
-best as (
-  select distinct on (season_id, casual_event_id, player_id)
-    season_id,
-    casual_event_id,
-    player_id,
-    match_id as best_match_id,
-    played_at as best_played_at
-  from g
-  order by season_id, casual_event_id, player_id, club_points desc, played_at desc, match_id desc
-),
-worst as (
-  select distinct on (season_id, casual_event_id, player_id)
-    season_id,
-    casual_event_id,
-    player_id,
-    match_id as worst_match_id,
-    played_at as worst_played_at
-  from g
-  order by season_id, casual_event_id, player_id, club_points asc, played_at desc, match_id desc
-)
-select
-  a.*,
-  b.best_match_id,
-  b.best_played_at,
-  w.worst_match_id,
-  w.worst_played_at
-from agg a
-left join best b
-  on b.season_id = a.season_id
- and b.casual_event_id = a.casual_event_id
- and b.player_id = a.player_id
-left join worst w
-  on w.season_id = a.season_id
- and w.casual_event_id = a.casual_event_id
- and w.player_id = a.player_id;
-
-create or replace view public.v_casual_event_player_point_history
-with (security_invoker = true)
-as
-with per_match as (
-  select
-    fr.season_id,
-    fr.casual_event_id,
-    fr.casual_event_name,
-    fr.player_id,
-    fr.display_name,
-    fr.played_at,
-    fr.match_id,
-    fr.club_points,
-    coalesce(a.adjustment_points, 0::numeric) as adjustment_points
-  from public.v_final_results fr
-  left join (
-    select
-      match_id,
-      player_id,
-      sum(points) as adjustment_points
-    from public.adjustments
-    where match_id is not null
-    group by match_id, player_id
-  ) a
-    on a.match_id = fr.match_id
-   and a.player_id = fr.player_id
-  where fr.casual_event_id is not null
-)
-select
-  season_id,
-  casual_event_id,
-  casual_event_name,
-  player_id,
-  display_name,
-  played_at,
-  match_id,
-  club_points,
-  adjustment_points,
-  (club_points + adjustment_points) as points_with_adjustments,
-  sum(club_points + adjustment_points) over (
-    partition by season_id, casual_event_id, player_id
-    order by played_at asc, match_id asc
-    rows between unbounded preceding and current row
-  ) as cumulative_points
-from per_match;
-
--- Current ratings (season + lifetime)
-create or replace view public.v_current_ratings
-with (security_invoker = true)
-as
-select
-  rs.is_lifetime,
-  rs.season_id,
-  rs.player_id,
-  p.public_name as display_name,
-  rs.rate,
-  rs.games_played,
-  rs.updated_at
-from public.rating_state rs
-join public.v_public_players p on p.id = rs.player_id;
-
--- Rating history (season + lifetime)
-create or replace view public.v_rating_history
-with (security_invoker = true)
-as
-select
-  re.is_lifetime,
-  re.season_id,
-  re.player_id,
-  p.public_name as display_name,
-  m.played_at,
-  re.match_id,
-  re.placement,
-  re.old_rate,
-  re.delta,
-  re.new_rate,
-  re.games_played_before
-from public.rating_events re
-join public.matches m on m.id = re.match_id
-join public.v_public_players p on p.id = re.player_id
-where m.status = 'final';
-
-grant select on public.v_final_results to anon, authenticated;
-grant select on public.v_season_standings to anon, authenticated;
-grant select on public.v_season_player_stats to anon, authenticated;
-grant select on public.v_player_match_history to anon, authenticated;
-grant select on public.v_player_point_history to anon, authenticated;
-grant select on public.v_player_placement_history to anon, authenticated;
-grant select on public.v_casual_event_standings to anon, authenticated;
-grant select on public.v_casual_event_player_stats to anon, authenticated;
-grant select on public.v_casual_event_player_point_history to anon, authenticated;
-grant select on public.v_current_ratings to anon, authenticated;
-grant select on public.v_rating_history to anon, authenticated;
+-- Public analytics are derived from the versioned raw snapshot in the browser.
 
 -- 8) Seed one default ruleset (optional)
 insert into public.rulesets (
@@ -3281,6 +2984,7 @@ alter table public.rulesets enable row level security;
 alter table public.matches enable row level security;
 alter table public.match_results enable row level security;
 alter table public.adjustments enable row level security;
+alter table public.public_data_revision enable row level security;
 alter table public.discipline_actions enable row level security;
 alter table public.rating_state enable row level security;
 alter table public.rating_events enable row level security;

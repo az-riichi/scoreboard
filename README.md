@@ -76,6 +76,15 @@ For an existing project, apply each not-yet-deployed file in `supabase/migration
 
 When changing the database, update both the consolidated schema and an ordered migration for existing deployments. Before applying database changes, take a backup and test the migration against a non-production project. The application expects the schema and all applicable migrations from this repository to be deployed together.
 
+For the public-cache upgrade, use this rolling order on an existing live
+deployment so neither application version loses its data source:
+
+1. Apply `20260727_add_public_data_revision.sql`.
+2. Deploy the updated application.
+3. Apply `20260727_remove_public_analytics_views.sql`.
+
+Fresh installations should use the consolidated schema as usual.
+
 ## Bootstrap the owner
 
 After signing up once, explicitly make the trusted account the owner:
@@ -98,15 +107,40 @@ known owner with the SQL above after applying the permission migration.
 
 ## Notes
 
-- Public pages query read-only views:
-  - v_season_standings, v_season_player_stats, v_player_match_history,
-    v_player_point_history, v_rating_history, v_current_ratings, v_final_results,
-    v_casual_event_standings, v_casual_event_player_stats,
-    v_casual_event_player_point_history, and the redacted v_public_players projection
+- Public pages conditionally synchronize one normalized, redacted snapshot and
+  persist it in IndexedDB. Standings, match summaries, player statistics,
+  histories, placements, SP, and display ratings are calculated in the browser.
+- Each document load makes one cheap revision check. If the revision is
+  unchanged, `/api/public-data` returns `304` with no dataset body and the
+  IndexedDB snapshot is reused. A changed revision downloads and atomically
+  replaces the snapshot once; child routes reuse the in-memory copy.
+- `v_public_players` remains database-side as the privacy boundary for public
+  names and profiles. The public snapshot never contains account links,
+  unredacted player names, permissions, or discipline records.
 - Admin pages write through restricted tables and transaction-safe RPCs for finalizing/deleting matches,
   rebuilding ratings, activating seasons, and linking player accounts.
 - `Casual` is a singleton, date-unbounded season managed by the database. It cannot be active and its matches
   are excluded from both season (`SR`) and lifetime (`R`) rating state/history.
+
+Database constraints, RLS, discipline eligibility, point-total validation,
+atomic finalization/deletion, and serialized rating writes intentionally remain
+authoritative on the server. The browser independently derives the public
+read model from raw finalized records; it is never trusted to authorize or
+commit competition results.
+
+### Public data cache lifecycle
+
+`public.public_data_revision` contains one `scoreboard` record. Narrow database
+triggers advance it when public source data changes. Draft result entry does
+not advance the revision; the final match status transition is its publication
+boundary.
+
+The browser stores the revision and snapshot in the
+`azrm-scoreboard-public` IndexedDB database. Web Locks avoid duplicate refreshes
+from tabs starting together, and `BroadcastChannel` invalidates stale in-memory
+copies in other tabs. When the network is unavailable, the last complete local
+snapshot remains usable. A failed or internally inconsistent refresh never
+replaces it.
 
 ## Excel import format
 
@@ -143,4 +177,4 @@ Player naming model:
 - More than two non-revoked suspensions automatically issues a permanent ban.
 - Admins represent the president and designated officials. They can also issue any action directly or revoke any action with an audit reason.
 - Suspended and banned players cannot be saved or finalized in competitive match results. Casual matches remain permitted.
-- Discipline records are never exposed through public player, match, or standings views.
+- Discipline records are never exposed through the public scoreboard snapshot.

@@ -69,7 +69,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       .eq('id', matchRes.data.ruleset_id)
       .maybeSingle(),
     locals.supabase
-      .from('v_current_ratings')
+      .from('rating_state')
       .select('player_id, rate, games_played')
       .eq('is_lifetime', true),
     locals.supabase.from('casual_events').select('id, name').order('name', { ascending: true }),

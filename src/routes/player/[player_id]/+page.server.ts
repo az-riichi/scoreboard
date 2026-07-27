@@ -1,15 +1,12 @@
-import { error as kitError, fail } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { composeSeasonNameParts } from '$lib/player-name';
 import {
   PLAYER_PROFILE_MEDIA_URL_MAX_CHARS,
   PLAYER_PROFILE_MESSAGE_MAX_CHARS,
   classifyPlayerProfileMedia,
   normalizePlayerProfileMediaUrlInput,
-  normalizePlayerProfileMessageInput,
-  renderPlayerProfileMarkdown
+  normalizePlayerProfileMessageInput
 } from '$lib/player-profile-content';
-import { getActiveSeasonId, getLifetimeRatingSnapshot, getRatingStartDate } from '$lib/server/public-cache';
 
 function asText(value: unknown) {
   return String(value ?? '').trim();
@@ -19,326 +16,38 @@ function asBool(value: unknown) {
   return String(value ?? '') === 'on';
 }
 
-export const load: PageServerLoad = async ({ locals, params, url }) => {
-  const player_id = params.player_id;
-  const seasonParam = url.searchParams.get('season');
-  const requestedEventId = asText(url.searchParams.get('event'));
-  const [playerRes, ownRes, ownerPlayerRes, seasonsRes, eventsRes, ratingStartDate, activeSeasonId] = await Promise.all([
-    locals.supabase
-      .from('v_public_players')
-      .select(
-        'id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, profile_message_md, profile_media_url, is_active'
-      )
-      .eq('id', player_id)
-      .maybeSingle(),
-    locals.userId
-      ? locals.supabase
-          .from('player_accounts')
-          .select('auth_user_id')
-          .eq('auth_user_id', locals.userId)
-          .eq('player_id', player_id)
-          .maybeSingle()
-      : Promise.resolve(null),
-    locals.userId
-      ? locals.supabase
-          .from('players')
-          .select('id, display_name, real_first_name, real_last_name')
-          .eq('id', player_id)
-          .maybeSingle()
-      : Promise.resolve(null),
-    locals.supabase
-      .from('seasons')
-      .select('id, name, start_date, is_casual')
-      .order('is_casual', { ascending: false })
-      .order('start_date', { ascending: false, nullsFirst: false }),
-    locals.supabase.from('casual_events').select('id, name').order('name', { ascending: true }),
-    getRatingStartDate(locals.supabase),
-    seasonParam ? Promise.resolve(null) : getActiveSeasonId(locals.supabase)
-  ]);
+// Public profile data comes from the browser's redacted snapshot. This loader
+// only resolves private editable name values for the signed-in owner.
+export const load: PageServerLoad = async ({ locals, params }) => {
+  if (!locals.userId) return { canEditDisplay: false, editablePlayer: null };
 
-  if (playerRes.error || !playerRes.data) throw kitError(404, 'Player not found');
-
-  const canEditDisplay = !!(
-    ownRes &&
-    !ownRes.error &&
-    ownRes.data &&
-    ownerPlayerRes &&
-    !ownerPlayerRes.error &&
-    ownerPlayerRes.data
-  );
-
-  const nameParts = composeSeasonNameParts(playerRes.data);
-  const player = {
-    ...playerRes.data,
-    display_name: canEditDisplay ? ownerPlayerRes.data!.display_name : playerRes.data.display_name,
-    real_first_name: canEditDisplay ? ownerPlayerRes.data!.real_first_name : playerRes.data.real_first_name,
-    real_last_name: canEditDisplay ? ownerPlayerRes.data!.real_last_name : playerRes.data.real_last_name,
-    player_name_primary: nameParts.primary,
-    player_name_secondary: nameParts.secondary
-  };
-  const profileMessageHtml = renderPlayerProfileMarkdown(playerRes.data.profile_message_md);
-  const profileMedia = profileMessageHtml ? classifyPlayerProfileMedia(playerRes.data.profile_media_url) : null;
-
-  const seasonId = seasonParam || activeSeasonId || null;
-  const selectedSeason = (seasonsRes.data ?? []).find((s) => s.id === seasonId) ?? null;
-  const isCasualSeason = selectedSeason?.is_casual === true;
-  const events = isCasualSeason && !eventsRes.error ? (eventsRes.data ?? []) : [];
-  const eventId =
-    isCasualSeason && requestedEventId && events.some((event) => event.id === requestedEventId)
-      ? requestedEventId
-      : null;
-  const isRatingSeason = selectedSeason
-    ? !isCasualSeason && String(selectedSeason.start_date ?? '').trim() >= ratingStartDate
-    : false;
-
-  const lifetimeRatings = await getLifetimeRatingSnapshot(locals.supabase, ratingStartDate);
-
-  let currentRating = { rate: 1500, games_played: 0, updated_at: null as string | null };
-  const myRate = lifetimeRatings.latestRateByPlayer.get(player_id);
-  if (Number.isFinite(myRate)) currentRating.rate = Number(myRate);
-  currentRating.games_played = lifetimeRatings.gamesByPlayer.get(player_id) ?? 0;
-  currentRating.updated_at = lifetimeRatings.updatedAtByPlayer.get(player_id) ?? null;
-
-  const currentRatingRank = lifetimeRatings.rankByPlayer.get(player_id) ?? null;
-  const currentRatingRankTotal = lifetimeRatings.totalPlayers;
-
-  let stats = null;
-  let standingsRow = null;
-  let seasonEligibleRank: number | null = null;
-  let matchHistory: any[] = [];
-  let pointHistory: any[] = [];
-  let placementHistory: any[] = [];
-  let ratingHistory: any[] = [];
-  let bestRawMatch: any = null;
-  let worstRawMatch: any = null;
-
-  if (seasonId) {
-    const statsView = eventId ? 'v_casual_event_player_stats' : 'v_season_player_stats';
-    const standingsView = eventId ? 'v_casual_event_standings' : 'v_season_standings';
-    const pointHistoryView = eventId
-      ? 'v_casual_event_player_point_history'
-      : 'v_player_point_history';
-
-    let statsQuery = locals.supabase
-      .from(statsView)
-      .select('*')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id);
-    let standingsQuery = locals.supabase
-      .from(standingsView)
-      .select('*')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id);
-    let seasonStandingsQuery = locals.supabase
-      .from(standingsView)
-      .select('player_id, rank, games_played')
-      .eq('season_id', seasonId);
-    let matchHistoryQuery = locals.supabase
-      .from('v_player_match_history')
-      .select('*')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id);
-    let pointHistoryQuery = locals.supabase
-      .from(pointHistoryView)
-      .select('*')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id);
-    let placementQuery = locals.supabase
-      .from('v_player_placement_history')
-      .select('*')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id);
-    let bestRawQuery = locals.supabase
-      .from('v_player_match_history')
-      .select('match_id, played_at, raw_points')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id);
-    let worstRawQuery = locals.supabase
-      .from('v_player_match_history')
-      .select('match_id, played_at, raw_points')
-      .eq('season_id', seasonId)
-      .eq('player_id', player_id);
-
-    if (eventId) {
-      statsQuery = statsQuery.eq('casual_event_id', eventId);
-      standingsQuery = standingsQuery.eq('casual_event_id', eventId);
-      seasonStandingsQuery = seasonStandingsQuery.eq('casual_event_id', eventId);
-      matchHistoryQuery = matchHistoryQuery.eq('casual_event_id', eventId);
-      pointHistoryQuery = pointHistoryQuery.eq('casual_event_id', eventId);
-      placementQuery = placementQuery.eq('casual_event_id', eventId);
-      bestRawQuery = bestRawQuery.eq('casual_event_id', eventId);
-      worstRawQuery = worstRawQuery.eq('casual_event_id', eventId);
-    }
-
-    const [statsRes, standingsRes, seasonStandingsRes, mhRes, phRes, placementRes, bestRawRes, worstRawRes] =
-      await Promise.all([
-        statsQuery.maybeSingle(),
-        standingsQuery.maybeSingle(),
-        seasonStandingsQuery.order('rank', { ascending: true }).order('player_id', { ascending: true }),
-        matchHistoryQuery.order('played_at', { ascending: false }).limit(100),
-        pointHistoryQuery.order('played_at', { ascending: false }).limit(200),
-        placementQuery
-          .order('played_at', { ascending: false })
-          .order('match_id', { ascending: false })
-          .limit(200),
-        bestRawQuery
-          .order('raw_points', { ascending: false })
-          .order('played_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        worstRawQuery
-          .order('raw_points', { ascending: true })
-          .order('played_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      ]);
-
-    stats = statsRes.error ? null : statsRes.data;
-    standingsRow = standingsRes.error ? null : standingsRes.data;
-    if (isCasualSeason) {
-      const casualRank = Number(standingsRow?.rank);
-      seasonEligibleRank = Number.isFinite(casualRank) ? casualRank : null;
-    } else if (!seasonStandingsRes.error) {
-      const denseRankRemap = new Map<number, number>();
-      let nextEligibleRank = 1;
-      for (const row of seasonStandingsRes.data ?? []) {
-        const rowPlayerId = String(row?.player_id ?? '').trim();
-        const rowRank = Number(row?.rank);
-        const gamesPlayed = Number(row?.games_played);
-        if (!rowPlayerId || !Number.isFinite(rowRank) || !Number.isFinite(gamesPlayed) || gamesPlayed <= 4) {
-          continue;
-        }
-        if (!denseRankRemap.has(rowRank)) {
-          denseRankRemap.set(rowRank, nextEligibleRank);
-          nextEligibleRank += 1;
-        }
-        if (rowPlayerId === player_id) {
-          seasonEligibleRank = denseRankRemap.get(rowRank) ?? null;
-          break;
-        }
-      }
-    }
-
-    matchHistory = mhRes.error ? [] : (mhRes.data ?? []);
-    pointHistory = phRes.error ? [] : [...(phRes.data ?? [])].reverse();
-    placementHistory = placementRes.error ? [] : [...(placementRes.data ?? [])].reverse();
-
-    const seasonMatchIdsForRating = Array.from(
-      new Set(
-        [...pointHistory, ...placementHistory, ...matchHistory]
-          .map((row) => String(row?.match_id ?? '').trim())
-          .filter((id) => id.length > 0)
-      )
-    );
-    if (!isCasualSeason && isRatingSeason && seasonMatchIdsForRating.length > 0) {
-      const rhRes = await locals.supabase
-        .from('v_rating_history')
-        .select('*')
-        .eq('is_lifetime', true)
-        .eq('player_id', player_id)
-        .in('match_id', seasonMatchIdsForRating)
-        .order('played_at', { ascending: true });
-      ratingHistory = rhRes.error ? [] : (rhRes.data ?? []);
-    } else {
-      ratingHistory = [];
-    }
-
-    bestRawMatch = bestRawRes.error ? null : bestRawRes.data;
-    worstRawMatch = worstRawRes.error ? null : worstRawRes.data;
-
-    const recentMatchIds = Array.from(
-      new Set(
-        matchHistory
-          .map((m) => String(m?.match_id ?? '').trim())
-          .filter((id) => id.length > 0)
-      )
-    );
-
-    const historyMatchIds = Array.from(
-      new Set(
-        [...pointHistory, ...placementHistory, ...ratingHistory]
-          .map((m) => String(m?.match_id ?? '').trim())
-          .filter((id) => id.length > 0)
-      )
-    );
-    const labelMatchIds = Array.from(new Set([...recentMatchIds, ...historyMatchIds]));
-
-    const matchLabelById = new Map<string, string>();
-    if (labelMatchIds.length > 0) {
-      const labelsRes = await locals.supabase
-        .from('matches')
-        .select('id, table_label, table_mode, game_number')
-        .in('id', labelMatchIds);
-      if (!labelsRes.error) {
-        for (const m of labelsRes.data ?? []) {
-          const fallbackTable = m.table_mode && m.game_number ? `${m.table_mode}-${m.game_number}` : null;
-          const label = String(m.table_label ?? fallbackTable ?? m.id).trim();
-          if (m.id) matchLabelById.set(m.id, label);
-        }
-      }
-    }
-
-    matchHistory = matchHistory.map((m) => {
-      const match_id = String(m?.match_id ?? '');
-      return {
-        ...m,
-        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8)
-      };
-    });
-
-    pointHistory = pointHistory.map((row) => {
-      const match_id = String(row?.match_id ?? '');
-      return {
-        ...row,
-        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8)
-      };
-    });
-
-    placementHistory = placementHistory.map((row) => {
-      const match_id = String(row?.match_id ?? '');
-      return {
-        ...row,
-        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8)
-      };
-    });
-
-    ratingHistory = ratingHistory.map((row) => {
-      const match_id = String(row?.match_id ?? '');
-      return {
-        ...row,
-        match_label: matchLabelById.get(match_id) ?? match_id.slice(0, 8)
-      };
-    });
+  const ownership = await locals.supabase
+    .from('player_accounts')
+    .select('player_id')
+    .eq('auth_user_id', locals.userId)
+    .eq('player_id', params.player_id)
+    .maybeSingle();
+  if (ownership.error || !ownership.data) {
+    return { canEditDisplay: false, editablePlayer: null };
   }
 
+  const player = await locals.supabase
+    .from('players')
+    .select('id, display_name, real_first_name, real_last_name')
+    .eq('id', params.player_id)
+    .maybeSingle();
+
   return {
-    player,
-    profileMessageHtml,
-    profileMedia,
-    canEditDisplay,
-    seasons: seasonsRes.error ? [] : (seasonsRes.data ?? []),
-    seasonId,
-    isCasualSeason,
-    events,
-    eventId,
-    currentRating,
-    currentRatingRank,
-    currentRatingRankTotal,
-    stats,
-    standingsRow,
-    seasonEligibleRank,
-    matchHistory,
-    pointHistory,
-    placementHistory,
-    ratingHistory,
-    bestRawMatch,
-    worstRawMatch
+    canEditDisplay: !player.error && !!player.data,
+    editablePlayer: player.error ? null : player.data
   };
 };
 
 export const actions: Actions = {
   updateDisplay: async ({ request, locals, params }) => {
-    if (!locals.userId || !locals.user) return fail(401, { ok: false, message: 'Sign in to update player settings.' });
+    if (!locals.userId || !locals.user) {
+      return fail(401, { ok: false, message: 'Sign in to update player settings.' });
+    }
 
     const ownershipRes = await locals.supabase
       .from('player_accounts')
@@ -350,15 +59,15 @@ export const actions: Actions = {
       return fail(403, { ok: false, message: 'You can only update your own linked player profile.' });
     }
 
-    const f = await request.formData();
-    const display_name = asText(f.get('display_name')) || null;
-    const real_first_name = asText(f.get('real_first_name')) || null;
-    const real_last_name = asText(f.get('real_last_name')) || null;
-    const show_display_name = asBool(f.get('show_display_name'));
-    const show_real_first_name = asBool(f.get('show_real_first_name'));
-    const show_real_last_name = asBool(f.get('show_real_last_name'));
-    const profile_message_md = normalizePlayerProfileMessageInput(f.get('profile_message_md'));
-    const raw_profile_media_url = String(f.get('profile_media_url') ?? '').trim();
+    const form = await request.formData();
+    const display_name = asText(form.get('display_name')) || null;
+    const real_first_name = asText(form.get('real_first_name')) || null;
+    const real_last_name = asText(form.get('real_last_name')) || null;
+    const show_display_name = asBool(form.get('show_display_name'));
+    const show_real_first_name = asBool(form.get('show_real_first_name'));
+    const show_real_last_name = asBool(form.get('show_real_last_name'));
+    const profile_message_md = normalizePlayerProfileMessageInput(form.get('profile_message_md'));
+    const raw_profile_media_url = String(form.get('profile_media_url') ?? '').trim();
 
     if (profile_message_md && profile_message_md.length > PLAYER_PROFILE_MESSAGE_MAX_CHARS) {
       return fail(400, {
@@ -415,7 +124,6 @@ export const actions: Actions = {
     });
 
     if (updateRes.error) return fail(400, { ok: false, message: updateRes.error.message });
-
     if (!updateRes.data || String(updateRes.data) !== params.player_id) {
       return fail(403, { ok: false, message: 'You can only update your own linked player profile.' });
     }

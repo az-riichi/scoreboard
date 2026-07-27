@@ -4,28 +4,35 @@
   export let data: any;
 
   const seatOrder: Record<string, number> = { E: 1, S: 2, W: 3, N: 4 };
-  const results = [...data.results].sort((a, b) => (seatOrder[a.seat] ?? 99) - (seatOrder[b.seat] ?? 99));
+  $: results = [...data.results].sort(
+    (a, b) => (seatOrder[a.seat] ?? 99) - (seatOrder[b.seat] ?? 99)
+  );
 
-  const displayPlaceBySeat = new Map<string, number>();
-  const orderedByRaw = [...data.results].sort((a, b) => {
-    if (a.raw_points !== b.raw_points) return b.raw_points - a.raw_points;
-    return (seatOrder[a.seat] ?? 99) - (seatOrder[b.seat] ?? 99);
-  });
-  let idx = 0;
-  while (idx < orderedByRaw.length) {
-    const place = idx + 1;
-    const raw = orderedByRaw[idx].raw_points;
-    let j = idx + 1;
-    while (j < orderedByRaw.length && orderedByRaw[j].raw_points === raw) j += 1;
-    for (let k = idx; k < j; k += 1) displayPlaceBySeat.set(orderedByRaw[k].seat, place);
-    idx = j;
-  }
+  $: displayPlaceBySeat = (() => {
+    const places = new Map<string, number>();
+    const orderedByRaw = [...data.results].sort((a, b) => {
+      if (a.raw_points !== b.raw_points) return b.raw_points - a.raw_points;
+      return (seatOrder[a.seat] ?? 99) - (seatOrder[b.seat] ?? 99);
+    });
+    let idx = 0;
+    while (idx < orderedByRaw.length) {
+      const place = idx + 1;
+      const raw = orderedByRaw[idx].raw_points;
+      let next = idx + 1;
+      while (next < orderedByRaw.length && orderedByRaw[next].raw_points === raw) next += 1;
+      for (let rowIndex = idx; rowIndex < next; rowIndex += 1) {
+        places.set(orderedByRaw[rowIndex].seat, place);
+      }
+      idx = next;
+    }
+    return places;
+  })();
 
-  const displayPlaceByPlayer = new Map<string, number>();
-  for (const r of data.results) {
-    const place = displayPlaceBySeat.get(r.seat);
-    if (place != null) displayPlaceByPlayer.set(r.player_id, place);
-  }
+  $: displayPlaceByPlayer = new Map<string, number>(
+    data.results
+      .map((result: any) => [result.player_id, displayPlaceBySeat.get(result.seat)] as const)
+      .filter((entry: readonly [string, number | undefined]): entry is readonly [string, number] => entry[1] != null)
+  );
 
   function playerHref(playerId: string) {
     const eventQuery =
