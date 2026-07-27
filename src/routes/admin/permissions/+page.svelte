@@ -121,7 +121,6 @@
         </option>
       {/each}
     </select>
-    <div class="muted">The selected user’s permissions load immediately.</div>
   </div>
 
   {#if profile}
