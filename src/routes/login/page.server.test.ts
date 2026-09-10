@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { actions } from './+page.server';
 
 function formRequest(fields: Record<string, string>) {
@@ -14,6 +14,14 @@ function passwordResetAction() {
 }
 
 describe('requestPasswordReset', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('sends a recovery link back to the reset-password route', async () => {
     const resetPasswordForEmail = vi.fn().mockResolvedValue({ data: {}, error: null });
     const locals = { supabase: { auth: { resetPasswordForEmail } } } as unknown as App.Locals;
@@ -69,4 +77,39 @@ describe('requestPasswordReset', () => {
       }
     });
   });
+
+  it.each(['over_email_send_rate_limit', 'over_request_rate_limit', undefined])(
+    'preserves a Supabase 429 (%s) without leaking provider details or retrying',
+    async (code) => {
+      const resetPasswordForEmail = vi.fn().mockResolvedValue({
+        data: null,
+        error: {
+          status: 429,
+          code,
+          message: 'Provider details for player@example.com'
+        }
+      });
+      const locals = { supabase: { auth: { resetPasswordForEmail } } } as unknown as App.Locals;
+
+      const result = await passwordResetAction()({
+        request: formRequest({ 'reset-email': 'player@example.com' }),
+        locals,
+        url: new URL('https://scoreboard.example/login')
+      } as never);
+
+      expect(result).toMatchObject({
+        status: 429,
+        data: {
+          ok: false,
+          message:
+            'Too many password reset requests or emails have been sent. Please wait before trying again. If this keeps happening, contact a club admin.'
+        }
+      });
+      expect(resetPasswordForEmail).toHaveBeenCalledTimes(1);
+      expect(console.warn).toHaveBeenCalledWith('Password reset request failed.', {
+        status: 429,
+        code: code ?? 'unknown'
+      });
+    }
+  );
 });

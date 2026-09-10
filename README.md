@@ -74,6 +74,30 @@ Run the same validation used by Netlify before submitting changes:
 pnpm run ci
 ```
 
+## Password reset email delivery
+
+Configure [custom SMTP in Supabase Auth](https://supabase.com/docs/guides/auth/auth-smtp)
+before using password recovery with the club's users. The built-in email service
+only sends to members of the project's Supabase organization and currently
+allows **2 emails per hour across the project**, shared by signup confirmations,
+password resets, and other Auth emails. This can explain why one address works
+while subsequent requests fail. The SMTP settings belong in Supabase, not in the
+frontend environment variables.
+
+After configuring SMTP, review **Authentication > Rate Limits** in the Supabase
+dashboard and set an email sending limit appropriate for the club and your
+provider's allowance. Custom SMTP still has rate limits. Supabase also applies
+a resend cooldown (60 seconds by default for the same user) and request limits.
+See [Auth rate limits](https://supabase.com/docs/guides/auth/rate-limits).
+
+If `POST /auth/v1/recover` returns `429`, check the corresponding Auth log or
+response error code to determine which limit was reached. An edge log containing
+only the HTTP status does not identify the specific limit. The app also logs
+`Password reset request failed.` with the provider's status and code in the
+server/Netlify function logs, without email addresses or recovery credentials.
+Wait for the applicable limit to reset before trying again; repeated clicks do
+not bypass it.
+
 ## Database schema and migrations
 
 For a new Supabase project, run `supabase/mahjong_supabase_schema.sql` in the SQL Editor. It is the consolidated baseline for fresh installs, so do not replay the historical migrations on top of it.

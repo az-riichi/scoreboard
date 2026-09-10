@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { enhance } from '$app/forms';
+  import type { SubmitFunction } from '@sveltejs/kit';
+
   export let data: any;
   export let form: any;
   let signInEmail = '';
@@ -6,6 +9,23 @@
   let signUpEmail = '';
   let signUpPassword = '';
   let resetEmail = '';
+  let isResetPending = false;
+
+  const submitPasswordReset: SubmitFunction = ({ cancel }) => {
+    if (isResetPending) {
+      cancel();
+      return;
+    }
+
+    isResetPending = true;
+    return async ({ update }) => {
+      try {
+        await update({ reset: false, invalidateAll: false });
+      } finally {
+        isResetPending = false;
+      }
+    };
+  };
 </script>
 
 <style>
@@ -30,6 +50,11 @@
 
   .auth-card .alert {
     overflow-wrap: anywhere;
+  }
+
+  .auth-card button:disabled {
+    cursor: wait;
+    opacity: 0.65;
   }
 </style>
 
@@ -92,12 +117,20 @@
 
   <h3 style="margin:0 0 10px;">Reset password</h3>
   <p class="muted" style="margin-top:0;">Enter your account email and we’ll send you a link to choose a new password.</p>
-  <form method="POST" action="?/requestPasswordReset" style="display:grid; gap:10px;">
+  <form
+    method="POST"
+    action="?/requestPasswordReset"
+    use:enhance={submitPasswordReset}
+    aria-busy={isResetPending}
+    style="display:grid; gap:10px;"
+  >
     <label>
       <div class="muted">Email</div>
-      <input name="reset-email" bind:value={resetEmail} type="email" autocomplete="email" required />
+      <input name="reset-email" bind:value={resetEmail} type="email" autocomplete="email" readonly={isResetPending} required />
     </label>
 
-    <button class="btn" type="submit">Send reset link</button>
+    <button class="btn" type="submit" disabled={isResetPending}>
+      {isResetPending ? 'Sending...' : 'Send reset link'}
+    </button>
   </form>
 </div>

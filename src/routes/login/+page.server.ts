@@ -69,6 +69,21 @@ export const actions: Actions = {
     const redirectTo = new URL('/reset-password', url.origin).toString();
     const { error } = await locals.supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) {
+      // Keep the provider's diagnostic code in server logs without logging the
+      // email address, raw provider message, or any recovery credentials.
+      console.warn('Password reset request failed.', {
+        status: error.status ?? null,
+        code: error.code ?? 'unknown'
+      });
+
+      if (error.status === 429) {
+        return fail(429, {
+          ok: false,
+          message:
+            'Too many password reset requests or emails have been sent. Please wait before trying again. If this keeps happening, contact a club admin.'
+        });
+      }
+
       return fail(400, {
         ok: false,
         message: 'Could not send a reset email. Please wait a moment and try again.'
