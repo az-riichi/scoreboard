@@ -3,6 +3,7 @@
   import { fmtDateTimeArizona as fmtDateTime, toArizonaDatetimeLocalValue } from '$lib/arizona-time';
   import { ratingGamesAdjustment as gamesAdjustment } from '$lib/rating';
   import { hasAdminPermission } from '$lib/permissions';
+  import SearchableSelect from '$lib/SearchableSelect.svelte';
   export let data: any;
   export let form: any;
 
@@ -76,6 +77,11 @@
       isIneligible: p?.is_competitive_ineligible === true
     });
   }
+  const searchablePlayerOptions = playerOptions.map((player) => ({
+    id: player.id,
+    label: player.optionLabel,
+    disabled: player.isIneligible
+  }));
 
   const penaltyPlayers = (() => {
     const seen = new Set<string>();
@@ -100,11 +106,16 @@
   let entries = seats.map((seat) => ({
     seat,
     player_id: bySeat[seat]?.player_id ?? '',
-    raw_points: asNum(bySeat[seat]?.raw_points, 25000)
+    raw_points: bySeat[seat]?.raw_points ?? ''
   }));
   function asNum(v: unknown, fallback = 0) {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
+  }
+
+  function hasRawPointValue(value: unknown) {
+    const text = String(value ?? '').trim();
+    return /^-?\d+$/.test(text) && Number.isSafeInteger(Number(text));
   }
 
   function playerNameParts(player_id: string) {
@@ -173,18 +184,21 @@
   $: enteredRows = entries.map((row) => ({
     seat: row.seat,
     player_id: row.player_id,
-    raw_points: asNum(row.raw_points, 0)
+    raw_points: asNum(row.raw_points, 0),
+    has_raw_points: hasRawPointValue(row.raw_points)
   }));
 
+  $: allRawPointsEntered = enteredRows.every((row) => row.has_raw_points);
   $: rawTotal = enteredRows.reduce((sum, row) => sum + row.raw_points, 0);
   $: startPoints = asNum(data.ruleset?.start_points, 25000);
   $: targetTotalWithNoLeak = startPoints * 4;
   $: extraPointsValue = asNum(extra_sticks, asNum(match.extra_sticks, 0));
   $: totalWithExtra = rawTotal + extraPointsValue;
   $: totalDiff = targetTotalWithNoLeak - totalWithExtra;
-  $: totalCheckOk = totalDiff === 0;
+  $: totalCheckOk = allRawPointsEntered && totalDiff === 0;
 
   $: placementBySeat = (() => {
+    if (!allRawPointsEntered) return {};
     const ordered = [...enteredRows].sort((a, b) => {
       if (a.raw_points !== b.raw_points) return b.raw_points - a.raw_points;
       return seatOrder[a.seat] - seatOrder[b.seat];
@@ -197,6 +211,7 @@
   })();
 
   $: displayPlacementBySeat = (() => {
+    if (!allRawPointsEntered) return {};
     const ordered = [...enteredRows].sort((a, b) => {
       if (a.raw_points !== b.raw_points) return b.raw_points - a.raw_points;
       return seatOrder[a.seat] - seatOrder[b.seat];
@@ -216,6 +231,7 @@
   })();
 
   $: splitUmaBySeat = (() => {
+    if (!allRawPointsEntered) return {};
     const ordered = [...enteredRows].sort((a, b) => {
       if (a.raw_points !== b.raw_points) return b.raw_points - a.raw_points;
       return seatOrder[a.seat] - seatOrder[b.seat];
@@ -290,21 +306,6 @@
     gap: 10px;
     align-items: center;
     width: 100%;
-  }
-
-  .player-picker-select {
-    width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-  }
-
-  .player-picker-select:focus {
-    border-color: var(--btn-primary-bg);
-    outline: none;
-  }
-
-  .player-picker-select option:disabled {
-    color: var(--muted);
   }
 
   .confirm-anchor {
@@ -530,19 +531,16 @@
           <div class="card" style="border-radius:14px;">
             <div class="muted" style="margin-bottom:6px;">Seat {row.seat}</div>
             <div class="result-entry-row">
-              <select
-                class="player-picker-select"
+              <SearchableSelect
                 name={`p_${row.seat}`}
+                inputId={`player-${row.seat}`}
+                options={searchablePlayerOptions}
                 bind:value={entries[i].player_id}
+                placeholder="Search for a player"
                 required
                 disabled={isFinal}
-                aria-label={`Player for seat ${row.seat}`}
-              >
-                <option value="" disabled>Select player</option>
-                {#each playerOptions as p}
-                  <option value={p.id} disabled={p.isIneligible}>{p.optionLabel}</option>
-                {/each}
-              </select>
+                ariaLabel={`Player for seat ${row.seat}`}
+              />
               <input
                 name={`raw_${row.seat}`}
                 type="number"
@@ -615,7 +613,7 @@
                     <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
                   {/if}
                 </td>
-                <td>{row.raw_points}</td>
+                <td>{row.has_raw_points ? row.raw_points : '—'}</td>
                 <td>{row.display_placement ?? '—'}</td>
                 <td>{row.expected_club == null ? '—' : fmtNum(row.expected_club, 2)}</td>
                 {#if !isCasual}
@@ -650,7 +648,9 @@
         style={`border-radius:14px; border-color:${totalCheckOk ? 'var(--alert-success-border)' : 'var(--alert-warning-border)'}; background:${totalCheckOk ? 'var(--alert-success-bg)' : 'var(--alert-warning-bg)'}; color:${totalCheckOk ? 'var(--alert-success-text)' : 'var(--alert-warning-text)'};`}
       >
         <div style="font-weight:650; margin-bottom:4px;">
-          {#if totalCheckOk}
+          {#if !allRawPointsEntered}
+            Point total check: enter all scores
+          {:else if totalCheckOk}
             Point total check: OK
           {:else}
             Point total check: mismatch
@@ -662,7 +662,7 @@
         <div class="muted" style="color:inherit;">
           Raw total + extra points = {rawTotal} + {extraPointsValue} = {totalWithExtra}
         </div>
-        {#if !totalCheckOk}
+        {#if allRawPointsEntered && !totalCheckOk}
           <div style="margin-top:4px; font-weight:600;">
             Difference: {totalDiff > 0 ? '+' : ''}{totalDiff}
           </div>

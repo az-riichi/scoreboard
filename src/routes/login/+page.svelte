@@ -5,6 +5,7 @@
   let signInPassword = '';
   let signUpEmail = '';
   let signUpPassword = '';
+  let resetEmail = '';
 </script>
 
 <style>
@@ -36,8 +37,20 @@
   <h2 style="margin:0 0 10px;">Sign in</h2>
   <p class="muted" style="margin-top:0;">Linked players can review their private discipline status. Admins can manage club records and results.</p>
 
+  {#if data?.notice}
+    <div class="card alert alert-success" role="status">
+      {data.notice}
+    </div>
+  {/if}
+
   {#if form?.message}
-    <div class="card alert alert-warning">
+    <div
+      class="card alert"
+      class:alert-success={form.ok === true}
+      class:alert-error={form.ok === false}
+      class:alert-warning={form.ok == null}
+      role="status"
+    >
       {form.message}
     </div>
   {/if}
@@ -73,5 +86,18 @@
     </label>
 
     <button class="btn" type="submit">Sign up</button>
+  </form>
+
+  <hr style="border:none; border-top:1px solid #eee; margin: 18px 0;" />
+
+  <h3 style="margin:0 0 10px;">Reset password</h3>
+  <p class="muted" style="margin-top:0;">Enter your account email and we’ll send you a link to choose a new password.</p>
+  <form method="POST" action="?/requestPasswordReset" style="display:grid; gap:10px;">
+    <label>
+      <div class="muted">Email</div>
+      <input name="reset-email" bind:value={resetEmail} type="email" autocomplete="email" required />
+    </label>
+
+    <button class="btn" type="submit">Send reset link</button>
   </form>
 </div>

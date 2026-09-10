@@ -54,6 +54,12 @@ Linked players (login required):
 
    Netlify does not load the local `.env` file. Set both variables in the site's build environment before deploying.
 
+   Password recovery redirects users to `/reset-password`. Add the full local
+   and production versions of that URL (for example,
+   `http://localhost:5173/reset-password`) to the Supabase Auth redirect URL
+   allowlist. Because recovery uses PKCE, open the newest reset email in the
+   same browser that requested it.
+
 3. Initialize the database as described below.
 
 4. Start the development server:

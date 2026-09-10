@@ -40,6 +40,7 @@
     const section = parts[0];
 
     if (section === 'login') return `Login | ${SITE_NAME}`;
+    if (section === 'reset-password') return `Reset Password | ${SITE_NAME}`;
     if (section === 'seasons') return `Seasons | ${SITE_NAME}`;
     if (section === 'discipline') return `My Discipline | ${SITE_NAME}`;
 
