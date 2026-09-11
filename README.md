@@ -11,6 +11,7 @@ Public (no login required):
 - Timeless Casual category whose games can be grouped and filtered by event and never change season or lifetime ratings
 - Player page: season/event stats plus togglable SP/R and placement history charts (placement-only for Casual)
 - Match page: final results (E/S/W/N seats)
+- Open public pages automatically refresh when matches are published
 
 Admin (login required):
 
@@ -91,6 +92,12 @@ deployment so neither application version loses its data source:
 
 Fresh installations should use the consolidated schema as usual.
 
+For live frontend updates on an existing project, apply
+`20260729_enable_public_data_realtime.sql`. This adds the public revision marker
+to the `supabase_realtime` publication; its existing read-only public access
+policy is sufficient. The frontend also checks periodically if live events are
+unavailable.
+
 ## Bootstrap the owner
 
 After signing up once, explicitly make the trusted account the owner:
@@ -143,8 +150,13 @@ boundary.
 
 The browser stores the revision and snapshot in the
 `azrm-scoreboard-public` IndexedDB database. Web Locks avoid duplicate refreshes
-from tabs starting together, and `BroadcastChannel` invalidates stale in-memory
-copies in other tabs. When the network is unavailable, the last complete local
+from tabs starting together, and `BroadcastChannel` prompts refreshes in other
+open tabs. Supabase Realtime watches only the public revision marker;
+publishing either a competitive or Casual match refreshes the cached snapshot
+and reruns the public page loaders without reloading the document. Bursts of
+events are coalesced, and unchanged revisions do not rerender the page. Visible,
+online tabs also check every 60 seconds and catch up after reconnecting or
+returning to the tab. When the network is unavailable, the last complete local
 snapshot remains usable. A failed or internally inconsistent refresh never
 replaces it.
 

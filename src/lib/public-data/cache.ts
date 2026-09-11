@@ -30,6 +30,7 @@ let databasePromise: Promise<IDBDatabase> | null = null;
 let memorySnapshot: PublicDataSnapshot | null = null;
 let syncPromise: Promise<PublicDataSnapshot> | null = null;
 let updatesChannel: BroadcastChannel | null = null;
+const revisionListeners = new Set<(revision: string) => void>();
 
 function isSnapshot(value: unknown): value is PublicDataSnapshot {
   if (!value || typeof value !== 'object') return false;
@@ -168,8 +169,8 @@ async function saveCheckedAt(cached: CachedData, checkedAt: number): Promise<voi
 
 function announceRevision(revision: string) {
   if (!browser || typeof BroadcastChannel === 'undefined') return;
-  updatesChannel ??= new BroadcastChannel('azrm-scoreboard-public-data');
-  updatesChannel.postMessage({ revision });
+  listenForOtherTabs();
+  updatesChannel?.postMessage({ revision });
 }
 
 function listenForOtherTabs() {
@@ -177,8 +178,21 @@ function listenForOtherTabs() {
   updatesChannel = new BroadcastChannel('azrm-scoreboard-public-data');
   updatesChannel.onmessage = (event) => {
     const announced = String(event.data?.revision ?? '');
-    if (memorySnapshot && announced && announced !== String(memorySnapshot.revision.revision)) {
-      memorySnapshot = null;
+    if (!/^\d+$/.test(announced)) return;
+    // Keep the last complete snapshot available if the refresh fails or storage
+    // is unavailable. Mounted pages decide whether this revision needs loading.
+    for (const listener of revisionListeners) listener(announced);
+  };
+}
+
+export function onPublicDataRevision(listener: (revision: string) => void): () => void {
+  listenForOtherTabs();
+  revisionListeners.add(listener);
+  return () => {
+    revisionListeners.delete(listener);
+    if (revisionListeners.size === 0) {
+      updatesChannel?.close();
+      updatesChannel = null;
     }
   };
 }
@@ -191,13 +205,15 @@ async function fetchSnapshot(cached: CachedData | null): Promise<PublicDataSnaps
   const headers = new Headers({ accept: 'application/json' });
   if (revision) headers.set('if-none-match', `"scoreboard-${revision}"`);
 
+  // A notification arriving during this request must still be able to trigger
+  // a subsequent check after acquiring the cross-tab lock.
+  const checkedAt = Date.now();
   const response = await fetch(endpoint, {
     method: 'GET',
     headers,
     cache: 'no-store',
     credentials: 'same-origin'
   });
-  const checkedAt = Date.now();
 
   if (response.status === 304) {
     if (!cached) return fetchSnapshot(null);
@@ -224,8 +240,11 @@ async function fetchSnapshot(cached: CachedData | null): Promise<PublicDataSnaps
 
 async function synchronize(startedAt: number): Promise<PublicDataSnapshot> {
   const stored = await readCachedData();
+  const currentStored = stored && (
+    !memorySnapshot || BigInt(stored.meta.revision) >= BigInt(memorySnapshot.revision.revision)
+  ) ? stored : null;
   const cached =
-    stored ??
+    currentStored ??
     (memorySnapshot
       ? {
           meta: {
@@ -261,14 +280,9 @@ export async function getPublicSnapshot(options: { check?: boolean } = {}): Prom
   listenForOtherTabs();
 
   const shouldCheck = options.check !== false;
-  if (!shouldCheck) {
-    if (memorySnapshot) return memorySnapshot;
-    const cached = await readCachedData();
-    if (cached) {
-      memorySnapshot = cached.snapshot;
-      return cached.snapshot;
-    }
-  }
+  if (!shouldCheck && memorySnapshot) return memorySnapshot;
+  // Even cache-only route loads must check the persisted snapshot once on a
+  // new document. Subsequent loads reuse memory; live updates explicitly sync.
 
   if (!syncPromise) {
     const startedAt = Date.now();

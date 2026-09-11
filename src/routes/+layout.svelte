@@ -2,6 +2,8 @@
   import { navigating, page } from '$app/stores';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
+  import { invalidate } from '$app/navigation';
+  import { startPublicDataUpdates } from '$lib/public-data/live';
 
   export let data: import('./$types').LayoutData;
 
@@ -17,6 +19,11 @@
   let mobileNavDetails: HTMLDetailsElement | null = null;
   const SITE_NAME = 'AZRM Scoreboard';
   let pageTitle = SITE_NAME;
+
+  onMount(() => startPublicDataUpdates(
+    () => data.publicDataRevision,
+    () => invalidate('app:public-data')
+  ));
 
   function asRecord(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== 'object') return null;
