@@ -1,6 +1,6 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
-  import { fmtDateTime, fmtNum, fmtPct } from '$lib/ui';
+  import { fmtDateTime, fmtNum, fmtPct, fmtFixed } from '$lib/ui';
   import { PLAYER_PROFILE_MEDIA_URL_MAX_CHARS, PLAYER_PROFILE_MESSAGE_MAX_CHARS } from '$lib/player-profile-content';
   import { placementChartY } from '$lib/placement-chart';
   export let data: any;
@@ -33,7 +33,6 @@
   type HistoryRange = '10' | '20' | '50' | 'all';
   type HistoryView = 'score' | 'placement';
   type ChartPoint = { row: any; x: number; y: number };
-  type GameTick = { key: string; ts: number; label: string; idx: number };
 
   const historyRangeOptions: { key: HistoryRange; label: string }[] = [
     { key: '10', label: 'Last 10' },
@@ -47,12 +46,6 @@
   const chartWidth = 1280;
   const chartHeight = 500;
   const plot = { left: 64, right: 64, top: 18, bottom: 92 };
-
-  function fmtFixed2(x: number | null | undefined) {
-    const n = Number(x);
-    if (!Number.isFinite(n)) return '0.00';
-    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
 
   function historySlice(rows: any[], range: HistoryRange) {
     if (range === 'all') return rows;
@@ -68,8 +61,12 @@
 
   function seriesRange(values: number[], fallback: [number, number]): [number, number] {
     if (values.length === 0) return fallback;
-    let min = Math.min(...values);
-    let max = Math.max(...values);
+    let min = values[0];
+    let max = values[0];
+    for (const value of values) {
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
     if (min === max) {
       const bump = Math.max(Math.abs(min) * 0.05, 1);
       min -= bump;
@@ -106,9 +103,9 @@
   }
 
   $: showPlacementHistory = data.isCasualSeason || historyView === 'placement';
-  $: spRows = historySlice(data.pointHistory ?? [], historyRange);
-  $: rRows = historySlice(data.ratingHistory ?? [], historyRange);
-  $: placementRows = historySlice(data.placementHistory ?? [], historyRange);
+  $: spRows = showPlacementHistory ? [] : historySlice(data.pointHistory ?? [], historyRange);
+  $: rRows = showPlacementHistory ? [] : historySlice(data.ratingHistory ?? [], historyRange);
+  $: placementRows = showPlacementHistory ? historySlice(data.placementHistory ?? [], historyRange) : [];
   $: plotWidth = chartWidth - plot.left - plot.right;
   $: plotHeight = chartHeight - plot.top - plot.bottom;
   $: spRange = seriesRange(
@@ -457,7 +454,7 @@
         <div class="card" style="border-radius:14px;">
           <div class="muted">Current Rating (R)</div>
           <div style="font-size:2rem; font-weight:750; line-height:1.1; margin-top:4px;">
-            {fmtFixed2(data.currentRating?.rate)}
+            {fmtFixed(data.currentRating?.rate)}
           </div>
         </div>
         <div class="card" style="border-radius:14px;">
@@ -506,7 +503,7 @@
       </div>
 
       <div style="margin-top:12px;">
-        <div class="muted">Avg placement: {fmtFixed2(data.stats?.avg_placement)}</div>
+        <div class="muted">Avg placement: {fmtFixed(data.stats?.avg_placement)}</div>
         <div class="muted">Avg SP: {fmtNum(data.stats?.avg_points, 2)}</div>
         <div class="muted">Top2% (rentai): {fmtPct(data.stats?.top2_rate)}</div>
         <div class="muted">#1/#2/#3/#4: {data.stats?.firsts ?? 0}/{data.stats?.seconds ?? 0}/{data.stats?.thirds ?? 0}/{data.stats?.fourths ?? 0}</div>

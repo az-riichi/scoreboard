@@ -39,8 +39,12 @@ export type PublicDataModel = {
   eventsById: ReadonlyMap<string, PublicCasualEvent>;
   playersById: ReadonlyMap<string, RedactedPublicPlayer>;
   matchesById: ReadonlyMap<string, PublicFinalMatch>;
+  matchesBySeasonId: ReadonlyMap<string, PublicFinalMatch[]>;
   results: DerivedFinalResult[];
   resultsByMatchId: ReadonlyMap<string, DerivedFinalResult[]>;
+  resultsBySeasonId: ReadonlyMap<string, DerivedFinalResult[]>;
+  resultsByPlayerId: ReadonlyMap<string, DerivedFinalResult[]>;
+  adjustmentsByMatchId: ReadonlyMap<string | null, PublicAdjustment[]>;
   lifetimeRatings: LifetimeRatings;
 };
 
@@ -56,6 +60,21 @@ export type PlayerPageOptions = {
 };
 
 const modelCache = new WeakMap<PublicDataSnapshot, PublicDataModel>();
+const standingsCache = new WeakMap<
+  PublicDataModel,
+  Map<string, Map<string | null, StandingsRow[]>>
+>();
+
+function groupBy<T, K>(rows: readonly T[], keyFor: (row: T) => K): Map<K, T[]> {
+  const groups = new Map<K, T[]>();
+  for (const row of rows) {
+    const key = keyFor(row);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+  return groups;
+}
 
 function asNumber(value: unknown): number {
   const number = Number(value);
@@ -254,24 +273,13 @@ function calculateLifetimeRatings(
   });
 
   const stateByPlayerId = new Map(state.map((row) => [row.player_id, row]));
-  const historyByMatchId = new Map<string, RatingHistoryRow[]>();
-  const historyByPlayerId = new Map<string, RatingHistoryRow[]>();
-  for (const row of history) {
-    const matchRows = historyByMatchId.get(row.match_id) ?? [];
-    matchRows.push(row);
-    historyByMatchId.set(row.match_id, matchRows);
-
-    const playerRows = historyByPlayerId.get(row.player_id) ?? [];
-    playerRows.push(row);
-    historyByPlayerId.set(row.player_id, playerRows);
-  }
 
   return {
     history,
     state,
     stateByPlayerId,
-    historyByMatchId,
-    historyByPlayerId
+    historyByMatchId: groupBy(history, (row) => row.match_id),
+    historyByPlayerId: groupBy(history, (row) => row.player_id)
   };
 }
 
@@ -323,8 +331,12 @@ function buildModel(snapshot: PublicDataSnapshot): PublicDataModel {
     eventsById,
     playersById,
     matchesById,
+    matchesBySeasonId: groupBy(matches, (match) => match.season_id),
     results,
     resultsByMatchId,
+    resultsBySeasonId: groupBy(results, (result) => result.season_id),
+    resultsByPlayerId: groupBy(results, (result) => result.player_id),
+    adjustmentsByMatchId: groupBy(snapshot.adjustments, (adjustment) => adjustment.match_id),
     lifetimeRatings
   };
 }
@@ -362,8 +374,18 @@ function resultsForScope(
   model: PublicDataModel,
   seasonId: string,
   eventId: string | null
+): readonly DerivedFinalResult[] {
+  const rows = model.resultsBySeasonId.get(seasonId) ?? [];
+  return eventId == null ? rows : rows.filter((result) => result.casual_event_id === eventId);
+}
+
+function resultsForPlayer(
+  model: PublicDataModel,
+  seasonId: string,
+  playerId: string,
+  eventId: string | null
 ): DerivedFinalResult[] {
-  return model.results.filter(
+  return (model.resultsByPlayerId.get(playerId) ?? []).filter(
     (result) =>
       result.season_id === seasonId &&
       (eventId == null || result.casual_event_id === eventId)
@@ -409,22 +431,59 @@ export function deriveStandings(
   seasonId: string,
   eventId: string | null = null
 ): StandingsRow[] {
+  // Page consumers receive their own rows; mutating them must not poison the
+  // standings reused by other player and season pages for this snapshot.
+  return standingsForScope(modelFor(source), seasonId, eventId).map((row) => ({ ...row }));
+}
+
+function standingsForScope(
+  model: PublicDataModel,
+  seasonId: string,
+  eventId: string | null
+): readonly StandingsRow[] {
+  let seasons = standingsCache.get(model);
+  if (!seasons) standingsCache.set(model, (seasons = new Map()));
+  let events = seasons.get(seasonId);
+  if (!events) seasons.set(seasonId, (events = new Map()));
+  const cached = events.get(eventId);
+  if (cached) return cached;
+
   type Aggregate = {
     player_id: string;
     display_name: string;
-    rows: DerivedFinalResult[];
+    games: number;
+    points: number;
+    placement: number;
+    firsts: number;
+    seconds: number;
+    thirds: number;
+    fourths: number;
+    tobis: number;
   };
 
-  const model = modelFor(source);
   const season = model.seasonsById.get(seasonId);
   const aggregates = new Map<string, Aggregate>();
   for (const result of resultsForScope(model, seasonId, eventId)) {
     const aggregate = aggregates.get(result.player_id) ?? {
       player_id: result.player_id,
       display_name: result.display_name,
-      rows: []
+      games: 0,
+      points: 0,
+      placement: 0,
+      firsts: 0,
+      seconds: 0,
+      thirds: 0,
+      fourths: 0,
+      tobis: 0
     };
-    aggregate.rows.push(result);
+    aggregate.games += 1;
+    aggregate.points += result.club_points;
+    aggregate.placement += result.placement;
+    aggregate.firsts += Number(result.placement === 1);
+    aggregate.seconds += Number(result.placement === 2);
+    aggregate.thirds += Number(result.placement === 3);
+    aggregate.fourths += Number(result.placement === 4);
+    aggregate.tobis += Number(result.tobi);
     aggregates.set(result.player_id, aggregate);
   }
 
@@ -432,13 +491,8 @@ export function deriveStandings(
   const event = eventId ? model.eventsById.get(eventId) : null;
   const showRating = isRatingSeason(season, model.ratingStartDate);
   const rows = Array.from(aggregates.values()).map((aggregate): StandingsRow => {
-    const games = aggregate.rows.length;
-    const totalPoints = aggregate.rows.reduce((total, row) => total + row.club_points, 0);
+    const { games, points: totalPoints, firsts, seconds, thirds, fourths } = aggregate;
     const adjustmentPoints = adjustments.get(aggregate.player_id) ?? 0;
-    const firsts = aggregate.rows.filter((row) => row.placement === 1).length;
-    const seconds = aggregate.rows.filter((row) => row.placement === 2).length;
-    const thirds = aggregate.rows.filter((row) => row.placement === 3).length;
-    const fourths = aggregate.rows.filter((row) => row.placement === 4).length;
     const rating = model.lifetimeRatings.stateByPlayerId.get(aggregate.player_id);
 
     return {
@@ -453,17 +507,15 @@ export function deriveStandings(
       display_name: aggregate.display_name,
       games_played: games,
       total_points: totalPoints,
-      avg_placement:
-        aggregate.rows.reduce((total, row) => total + row.placement, 0) / games,
+      avg_placement: aggregate.placement / games,
       avg_points: totalPoints / games,
       firsts,
       seconds,
       thirds,
       fourths,
-      top2_rate:
-        aggregate.rows.filter((row) => row.placement <= 2).length / games,
+      top2_rate: (firsts + seconds) / games,
       fourth_rate: fourths / games,
-      tobi_rate: aggregate.rows.filter((row) => row.tobi).length / games,
+      tobi_rate: aggregate.tobis / games,
       adjustment_points: adjustmentPoints,
       total_points_with_adjustments: totalPoints + adjustmentPoints,
       rank: 0,
@@ -487,6 +539,7 @@ export function deriveStandings(
     row.rank = rank;
   }
 
+  events.set(eventId, rows);
   return rows;
 }
 
@@ -516,21 +569,42 @@ export function derivePlayerStats(
   eventId: string | null = null
 ): PlayerStats | null {
   const model = modelFor(source);
-  const rows = resultsForScope(model, seasonId, eventId).filter(
-    (row) => row.player_id === playerId
+  return playerStatsForRows(
+    model,
+    seasonId,
+    playerId,
+    eventId,
+    resultsForPlayer(model, seasonId, playerId, eventId)
   );
+}
+
+function playerStatsForRows(
+  model: PublicDataModel,
+  seasonId: string,
+  playerId: string,
+  eventId: string | null,
+  rows: readonly DerivedFinalResult[]
+): PlayerStats | null {
   if (rows.length === 0) return null;
 
-  const points = rows.map((row) => row.club_points);
-  const totalPoints = points.reduce((total, value) => total + value, 0);
+  const points: number[] = [];
+  let totalPoints = 0;
+  let totalPlacement = 0;
+  const placements = [0, 0, 0, 0];
+  let best = rows[0];
+  let worst = rows[0];
+  let last = rows[0];
+  for (const row of rows) {
+    points.push(row.club_points);
+    totalPoints += row.club_points;
+    totalPlacement += row.placement;
+    placements[row.placement - 1] += 1;
+    if (comparePointExtreme(row, best, -1) < 0) best = row;
+    if (comparePointExtreme(row, worst, 1) < 0) worst = row;
+    if (compareResultsAscending(row, last) > 0) last = row;
+  }
   const averagePoints = totalPoints / rows.length;
-  const firsts = rows.filter((row) => row.placement === 1).length;
-  const seconds = rows.filter((row) => row.placement === 2).length;
-  const thirds = rows.filter((row) => row.placement === 3).length;
-  const fourths = rows.filter((row) => row.placement === 4).length;
-  const best = [...rows].sort((left, right) => comparePointExtreme(left, right, -1))[0];
-  const worst = [...rows].sort((left, right) => comparePointExtreme(left, right, 1))[0];
-  const last = [...rows].sort((left, right) => -compareResultsAscending(left, right))[0];
+  const [firsts, seconds, thirds, fourths] = placements;
   const event = eventId ? model.eventsById.get(eventId) : null;
 
   return {
@@ -545,13 +619,13 @@ export function derivePlayerStats(
     display_name: rows[0].display_name,
     games_played: rows.length,
     total_points: totalPoints,
-    avg_placement: rows.reduce((total, row) => total + row.placement, 0) / rows.length,
+    avg_placement: totalPlacement / rows.length,
     avg_points: averagePoints,
     firsts,
     seconds,
     thirds,
     fourths,
-    top2_rate: rows.filter((row) => row.placement <= 2).length / rows.length,
+    top2_rate: (firsts + seconds) / rows.length,
     first_rate: firsts / rows.length,
     fourth_rate: fourths / rows.length,
     stdev_points: Math.sqrt(
@@ -574,12 +648,8 @@ function deriveRecentMatches(
   seasonId: string,
   eventId: string | null
 ): RecentMatchSummary[] {
-  const matches = Array.from(model.matchesById.values())
-    .filter(
-      (match) =>
-        match.season_id === seasonId &&
-        (eventId == null || match.casual_event_id === eventId)
-    )
+  const matches = (model.matchesBySeasonId.get(seasonId) ?? [])
+    .filter((match) => eventId == null || match.casual_event_id === eventId)
     .sort((left, right) => -compareMatchesAscending(left, right))
     .slice(0, 10);
 
@@ -682,46 +752,35 @@ export function deriveMatchPage(
   };
 }
 
-function latestMatchRows(
-  rows: readonly DerivedFinalResult[],
-  maximum: number
-): DerivedFinalResult[] {
-  return [...rows]
-    .sort((left, right) => -compareResultsAscending(left, right))
-    .slice(0, maximum);
-}
-
-function chronologicalLatestRows(
-  rows: readonly DerivedFinalResult[],
-  maximum: number
-): DerivedFinalResult[] {
-  const chronological = [...rows].sort(compareResultsAscending);
-  return chronological.slice(-maximum);
-}
-
 function matchAdjustmentTotal(
-  adjustments: readonly PublicAdjustment[],
+  model: PublicDataModel,
   matchId: string,
   playerId: string
 ): number {
-  return adjustments
-    .filter(
-      (adjustment) =>
-        adjustment.match_id === matchId && adjustment.player_id === playerId
-    )
-    .reduce((total, adjustment) => total + asNumber(adjustment.points), 0);
+  let total = 0;
+  for (const adjustment of model.adjustmentsByMatchId.get(matchId) ?? []) {
+    if (adjustment.player_id === playerId) total += asNumber(adjustment.points);
+  }
+  return total;
 }
 
 function rawExtreme(
   rows: readonly DerivedFinalResult[],
   direction: 1 | -1
 ): RawMatchExtreme | null {
-  const row = [...rows].sort(
-    (left, right) =>
-      direction * (left.raw_points - right.raw_points) ||
-      -compareDateText(left.played_at, right.played_at) ||
-      right.match_id.localeCompare(left.match_id)
-  )[0];
+  let row: DerivedFinalResult | undefined;
+  for (const candidate of rows) {
+    if (
+      !row ||
+      (
+        direction * (candidate.raw_points - row.raw_points) ||
+        -compareDateText(candidate.played_at, row.played_at) ||
+        row.match_id.localeCompare(candidate.match_id)
+      ) < 0
+    ) {
+      row = candidate;
+    }
+  }
   return row
     ? {
         match_id: row.match_id,
@@ -804,19 +863,19 @@ export function derivePlayerPage(
   let worstRawMatch: RawMatchExtreme | null = null;
 
   if (seasonId) {
-    const scopedRows = resultsForScope(model, seasonId, eventId).filter(
-      (row) => row.player_id === playerId
-    );
-    const standings = deriveStandings(model, seasonId, eventId);
-    stats = derivePlayerStats(model, seasonId, playerId, eventId);
-    standingsRow = standings.find((row) => row.player_id === playerId) ?? null;
+    const scopedRows = resultsForPlayer(model, seasonId, playerId, eventId);
+    const chronologicalRows = [...scopedRows].sort(compareResultsAscending);
+    const standings = standingsForScope(model, seasonId, eventId);
+    stats = playerStatsForRows(model, seasonId, playerId, eventId, scopedRows);
+    const standing = standings.find((row) => row.player_id === playerId);
+    standingsRow = standing ? { ...standing } : null;
     seasonEligibleRank = eligibleSeasonRank(
       standings,
       playerId,
       isCasualSeason
     );
 
-    matchHistory = latestMatchRows(scopedRows, 100).map((row) => {
+    matchHistory = chronologicalRows.slice(-100).reverse().map((row) => {
       const match = model.matchesById.get(row.match_id)!;
       return {
         ...row,
@@ -825,11 +884,17 @@ export function derivePlayerPage(
     });
 
     let cumulativePoints = 0;
-    pointHistory = [...scopedRows].sort(compareResultsAscending).map((row) => {
+    const historyStart = Math.max(0, chronologicalRows.length - 200);
+    for (let index = 0; index < historyStart; index += 1) {
+      const row = chronologicalRows[index];
+      cumulativePoints +=
+        row.club_points + (eventId ? matchAdjustmentTotal(model, row.match_id, playerId) : 0);
+    }
+    pointHistory = chronologicalRows.slice(historyStart).map((row) => {
       const match = model.matchesById.get(row.match_id)!;
       if (eventId) {
         const adjustmentPoints = matchAdjustmentTotal(
-          model.snapshot.adjustments,
+          model,
           row.match_id,
           playerId
         );
@@ -862,9 +927,9 @@ export function derivePlayerPage(
         club_points: row.club_points,
         cumulative_points: cumulativePoints
       };
-    }).slice(-200);
+    });
 
-    placementHistory = chronologicalLatestRows(scopedRows, 200).map(
+    placementHistory = chronologicalRows.slice(historyStart).map(
       (row): PlayerPlacementHistoryRow => ({
         season_id: row.season_id,
         player_id: playerId,

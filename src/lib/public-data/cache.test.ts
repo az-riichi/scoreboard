@@ -22,6 +22,51 @@ class TestBroadcastChannel {
   }
 }
 
+function installStoredSnapshot(stored: PublicDataSnapshot) {
+  const meta = {
+    key: 'scoreboard',
+    schema_version: 1,
+    revision: stored.revision.revision,
+    snapshot_key: `1:${stored.revision.revision}`,
+    last_checked_at: 0
+  };
+  const snapshotRead = vi.fn();
+  const database = {
+    transaction: vi.fn(() => {
+      let completion: ReturnType<typeof setTimeout> | undefined;
+      const transaction = {
+        oncomplete: null as (() => void) | null,
+        objectStore: (name: string) => ({
+          get: () => {
+            if (name === 'snapshots') snapshotRead();
+            const request = {
+              result: structuredClone(name === 'snapshots' ? stored : meta),
+              onsuccess: null as (() => void) | null
+            };
+            queueMicrotask(() => request.onsuccess?.());
+            scheduleCompletion();
+            return request;
+          },
+          put: () => scheduleCompletion()
+        })
+      };
+      function scheduleCompletion() {
+        clearTimeout(completion);
+        completion = setTimeout(() => transaction.oncomplete?.(), 0);
+      }
+      return transaction;
+    })
+  };
+  vi.stubGlobal('indexedDB', {
+    open: () => {
+      const request = { result: database, onsuccess: null as (() => void) | null };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    }
+  });
+  return { snapshotRead };
+}
+
 describe('public snapshot refresh', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -61,6 +106,36 @@ describe('public snapshot refresh', () => {
     const previous = await getPublicSnapshot();
 
     expect(await getPublicSnapshot()).toBe(previous);
+  });
+
+  it('checks only persisted metadata when memory already holds the stored revision', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json(snapshot('1')))
+      .mockResolvedValueOnce(new Response(null, { status: 304 }));
+    vi.stubGlobal('fetch', fetch);
+    const { getPublicSnapshot } = await import('./cache');
+    const previous = await getPublicSnapshot();
+    const { snapshotRead } = installStoredSnapshot(snapshot('1'));
+
+    expect(await getPublicSnapshot()).toBe(previous);
+    expect(snapshotRead).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads a newer snapshot persisted by another tab before checking the server', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json(snapshot('1')))
+      .mockResolvedValueOnce(new Response(null, { status: 304 }));
+    vi.stubGlobal('fetch', fetch);
+    const { getPublicSnapshot } = await import('./cache');
+    await getPublicSnapshot();
+    const { snapshotRead } = installStoredSnapshot(snapshot('2'));
+
+    const refreshed = await getPublicSnapshot();
+    expect(refreshed.revision.revision).toBe('2');
+    expect(await getPublicSnapshot({ check: false })).toBe(refreshed);
+    expect(snapshotRead).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[1][0]).toBe('/api/public-data?revision=2');
   });
 
   it('shares an in-flight check between callers', async () => {

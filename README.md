@@ -160,6 +160,18 @@ returning to the tab. When the network is unavailable, the last complete local
 snapshot remains usable. A failed or internally inconsistent refresh never
 replaces it.
 
+The server retains one serialized public snapshot per warm process and shares
+an in-flight snapshot build between requests for the same revision. Every
+request still checks the database revision before reuse, and a newly built
+snapshot is checked again before publication. This endpoint always reads with
+anonymous access, including for signed-in visitors, so it does not need an
+account lookup and never caches account-specific results.
+
+Unchanged browser refreshes read only IndexedDB metadata and retain the existing
+snapshot object. Its scored results, season/player indexes, and standings are
+reused until the revision changes. Histories use one chronological sort per
+player page and preserve full-history totals before limiting displayed rows.
+
 ## Excel import format
 
 Use `/admin/seasons` -> `Import season matches (Excel)` and upload a workbook with this header:

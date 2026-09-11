@@ -1,6 +1,6 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
-  import { fmtDate, fmtPct, fmtNum } from '$lib/ui';
+  import { fmtDate, fmtPct, fmtNum, fmtFixed } from '$lib/ui';
   export let data: any;
 
   type SortKey = 'rank' | 'player' | 'rating' | 'sp' | 'games' | 'avg' | 'top2';
@@ -41,15 +41,6 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  function fmtFixed(x: unknown, digits: number) {
-    const n = Number(x);
-    if (!Number.isFinite(n)) return digits > 0 ? `0.${'0'.repeat(digits)}` : '0';
-    return n.toLocaleString(undefined, {
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits
-    });
-  }
-
   function cmpNullableNum(a: number | null, b: number | null, dir: SortDir) {
     if (a == null && b == null) return 0;
     if (a == null) return 1;
@@ -68,6 +59,7 @@
 
   $: eligibleRankByPlayerId = (() => {
     const map = new Map<string, number>();
+    if (data.isCasual) return map;
     const sourceRows = [...(data.standings ?? [])].sort((a, b) => {
       const rankCmp = cmpNullableNum(numOrNull(a?.rank), numOrNull(b?.rank), 'asc');
       if (rankCmp !== 0) return rankCmp;
@@ -442,26 +434,27 @@
         </tr>
       </thead>
       <tbody>
-        {#each visibleStandings as row}
+        {#each visibleStandings as row (row.player_id)}
+          {@const href = playerHref(row.player_id)}
           <tr>
             <td>
-              <a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{displayRank(row) ?? '-'}</a>
+              <a class="standings-row-link" {href} tabindex="-1">{displayRank(row) ?? '-'}</a>
             </td>
             <td class="cell-player">
-              <a class="standings-row-link" href={playerHref(row.player_id)}>
+              <a class="standings-row-link" {href}>
                 {row.player_name_primary}
                 {#if row.player_name_secondary}
                   <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
                 {/if}
               </a>
             </td>
-            <td><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtFixed(row.total_points_with_adjustments, 1)}</a></td>
+            <td><a class="standings-row-link" {href} tabindex="-1">{fmtFixed(row.total_points_with_adjustments, 1)}</a></td>
             {#if !data.isCasual}
-              <td class="col-standings-rating"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.rating == null ? '—' : fmtNum(row.rating, 0)}</a></td>
+              <td class="col-standings-rating"><a class="standings-row-link" {href} tabindex="-1">{row.rating == null ? '—' : fmtNum(row.rating, 0)}</a></td>
             {/if}
-            <td class="col-standings-games"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{row.games_played}</a></td>
-            <td class="col-standings-avg"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtFixed(row.avg_placement, 2)}</a></td>
-            <td class="col-standings-top2"><a class="standings-row-link" href={playerHref(row.player_id)} tabindex="-1">{fmtPct(row.top2_rate)}</a></td>
+            <td class="col-standings-games"><a class="standings-row-link" {href} tabindex="-1">{row.games_played}</a></td>
+            <td class="col-standings-avg"><a class="standings-row-link" {href} tabindex="-1">{fmtFixed(row.avg_placement, 2)}</a></td>
+            <td class="col-standings-top2"><a class="standings-row-link" {href} tabindex="-1">{fmtPct(row.top2_rate)}</a></td>
           </tr>
         {/each}
         {#if visibleStandings.length === 0}

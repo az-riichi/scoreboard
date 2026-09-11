@@ -1,4 +1,4 @@
-import { error as kitError, json } from '@sveltejs/kit';
+import { error as kitError } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 type ServerSupabase = App.Locals['supabase'];
@@ -11,6 +11,16 @@ type RevisionRecord = {
 const PUBLIC_DATA_SCOPE = 'scoreboard';
 const PAGE_SIZE = 1_000;
 const SNAPSHOT_SCHEMA_VERSION = 1;
+
+type SerializedSnapshot = { revision: string; body: string };
+
+// Retain at most one complete public snapshot per warm server. The hook uses
+// anonymous RLS for this endpoint, so no account-specific data is shared.
+let cachedSnapshot: SerializedSnapshot | null = null;
+let pendingSnapshot: {
+  revision: string;
+  promise: Promise<SerializedSnapshot>;
+} | null = null;
 
 function revisionEtag(revision: string) {
   return `"scoreboard-${revision}"`;
@@ -137,46 +147,77 @@ async function readRawSnapshot(supabase: ServerSupabase) {
   };
 }
 
-export const GET: RequestHandler = async ({ locals, request, url }) => {
-  const clientRevision = knownRevision(request, url);
-  let revision = await readRevision(locals.supabase);
-
-  if (clientRevision === revision.revision) {
-    return new Response(null, {
-      status: 304,
-      headers: {
-        etag: revisionEtag(revision.revision),
-        'cache-control': 'private, no-store',
-        'x-public-data-revision': revision.revision
-      }
-    });
-  }
-
+async function serializeSnapshot(
+  supabase: ServerSupabase,
+  revision: RevisionRecord
+): Promise<SerializedSnapshot> {
   // Each PostgREST read is a separate transaction. Verify the marker after the
   // parallel raw reads and retry once rather than caching a mixed snapshot.
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const raw = await readRawSnapshot(locals.supabase);
-    const confirmedRevision = await readRevision(locals.supabase);
+    const raw = await readRawSnapshot(supabase);
+    const confirmedRevision = await readRevision(supabase);
 
     if (confirmedRevision.revision === revision.revision) {
-      return json(
-        {
+      return {
+        revision: confirmedRevision.revision,
+        body: JSON.stringify({
           schema_version: SNAPSHOT_SCHEMA_VERSION,
           revision: confirmedRevision,
           ...raw
-        },
-        {
-          headers: {
-            etag: revisionEtag(confirmedRevision.revision),
-            'cache-control': 'private, no-store',
-            'x-public-data-revision': confirmedRevision.revision
-          }
-        }
-      );
+        })
+      };
     }
 
     revision = confirmedRevision;
   }
 
   throw kitError(503, 'Public data changed during refresh. Please retry.');
+}
+
+function getSerializedSnapshot(supabase: ServerSupabase, revision: RevisionRecord) {
+  if (cachedSnapshot?.revision === revision.revision) return Promise.resolve(cachedSnapshot);
+  if (pendingSnapshot?.revision === revision.revision) return pendingSnapshot.promise;
+
+  const pending = {
+    revision: revision.revision,
+    promise: serializeSnapshot(supabase, revision)
+      .then((snapshot) => {
+        // A slower, older request must not evict a newer revision.
+        if (!cachedSnapshot || BigInt(snapshot.revision) >= BigInt(cachedSnapshot.revision)) {
+          cachedSnapshot = snapshot;
+        }
+        return snapshot;
+      })
+      .finally(() => {
+        if (pendingSnapshot === pending) pendingSnapshot = null;
+      })
+  };
+  pendingSnapshot = pending;
+  return pending.promise;
+}
+
+function responseHeaders(revision: string) {
+  return {
+    etag: revisionEtag(revision),
+    'cache-control': 'private, no-store',
+    'x-public-data-revision': revision
+  };
+}
+
+export const GET: RequestHandler = async ({ locals, request, url }) => {
+  const clientRevision = knownRevision(request, url);
+  // Always check the database, including when the serialized snapshot is warm.
+  const revision = await readRevision(locals.supabase);
+
+  if (clientRevision === revision.revision) {
+    return new Response(null, { status: 304, headers: responseHeaders(revision.revision) });
+  }
+
+  const snapshot = await getSerializedSnapshot(locals.supabase, revision);
+  return new Response(snapshot.body, {
+    headers: {
+      ...responseHeaders(snapshot.revision),
+      'content-type': 'application/json'
+    }
+  });
 };

@@ -85,19 +85,18 @@ export const load: PageServerLoad = async ({ locals, url, setHeaders }) => {
   if (recentMatchesRes.error) throw kitError(500, 'Could not load matches.');
 
   const actions = actionsRes.data;
-  const matchIds = [...new Set(actions.map((action) => asUuid(action.match_id)).filter((id): id is string => !!id))];
+  const recentMatches = recentMatchesRes.data ?? [];
+  const recentMatchIds = new Set(recentMatches.map((match) => String(match.id)));
+  const matchIds = actions
+    .map((action) => asUuid(action.match_id))
+    .filter((id): id is string => !!id && !recentMatchIds.has(id));
   const linkedMatchesRes = await loadDisciplineLinkedMatches(locals.supabase, matchIds);
 
   if (linkedMatchesRes.error) throw kitError(500, 'Could not load linked matches.');
 
-  const allMatches = [...(recentMatchesRes.data ?? []), ...linkedMatchesRes.data];
+  const allMatches = [...recentMatches, ...linkedMatchesRes.data];
   const matchById = new Map(allMatches.map((match) => [String(match.id), match] as const));
-  const matches = [...new Map(
-    (recentMatchesRes.data ?? []).map((match) => [
-      String(match.id),
-      { id: String(match.id), label: matchLabel(match) }
-    ])
-  ).values()];
+  const matches = recentMatches.map((match) => ({ id: String(match.id), label: matchLabel(match) }));
 
   return {
     players,

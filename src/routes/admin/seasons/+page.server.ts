@@ -257,7 +257,7 @@ export const actions: Actions = {
     try {
       xlsx = await import('xlsx');
       const bytes = await upload.arrayBuffer();
-      const wb = xlsx.read(bytes, { type: 'array', cellDates: true });
+      const wb = xlsx.read(bytes, { type: 'array', cellDates: true, sheets: 0 });
       const firstSheetName = wb.SheetNames[0];
       if (!firstSheetName) return fail(400, { message: 'Workbook has no sheets.' });
       const sheet = wb.Sheets[firstSheetName];

@@ -23,6 +23,10 @@
   let activeIndex = -1;
   let lastSyncedValue: string | null = null;
 
+  $: searchableOptions = options.map((option) => ({
+    option,
+    searchLabel: normalize(option.label)
+  }));
   $: selectedOption = options.find((option) => option.id === value) ?? null;
   $: if (!hasFocus && value !== lastSyncedValue) {
     query = selectedOption?.label ?? '';
@@ -30,8 +34,13 @@
   }
   $: searchTerm = selectedOption?.label === query ? '' : normalize(query);
   $: filteredOptions = searchTerm
-    ? options.filter((option) => normalize(option.label).includes(searchTerm))
+    ? searchableOptions
+        .filter(({ searchLabel }) => searchLabel.includes(searchTerm))
+        .map(({ option }) => option)
     : options;
+  $: enabledIndexes = filteredOptions.flatMap((option, index) =>
+    option.disabled ? [] : [index]
+  );
   $: activeOptionId =
     activeIndex >= 0 ? `${inputId}-option-${activeIndex}` : undefined;
   $: if (inputElement) {
@@ -49,9 +58,9 @@
     const normalized = normalize(text);
     if (!normalized) return null;
     return (
-      options.find(
-        (option) => !option.disabled && normalize(option.label) === normalized
-      ) ?? null
+      searchableOptions.find(
+        ({ option, searchLabel }) => !option.disabled && searchLabel === normalized
+      )?.option ?? null
     );
   }
 
@@ -85,9 +94,6 @@
   }
 
   function moveActive(delta: 1 | -1) {
-    const enabledIndexes = filteredOptions.flatMap((option, index) =>
-      option.disabled ? [] : [index]
-    );
     if (enabledIndexes.length === 0) return;
 
     const currentPosition = enabledIndexes.indexOf(activeIndex);

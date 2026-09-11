@@ -109,6 +109,13 @@ async function readCachedData(): Promise<CachedData | null> {
       return null;
     }
 
+    // IndexedDB returns structured clones. Reuse an unchanged in-memory
+    // snapshot so periodic checks neither clone the ledger nor invalidate its
+    // memoized scoring and rating history.
+    if (memorySnapshot && String(memorySnapshot.revision.revision) === String(meta.revision)) {
+      return { meta, snapshot: memorySnapshot };
+    }
+
     const snapshot = await requestValue(
       transaction.objectStore(SNAPSHOT_STORE).get(meta.snapshot_key)
     );

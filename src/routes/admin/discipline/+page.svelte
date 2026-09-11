@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { fmtDateArizona, fmtDateTimeArizona } from '$lib/arizona-time';
-  import { isDisciplineActionEffective } from '$lib/discipline';
+  import {
+    asText, actionTypeLabel, statusLabel, statusTone, formatIssued,
+    formatDay, isEffective, expiryLabel, sourceLabel
+  } from '$lib/discipline-ui';
   import { hasAnyAdminPermission } from '$lib/permissions';
 
   export let data: any;
@@ -23,69 +25,6 @@
     'remove_matches',
     'manage_match_penalties'
   ]);
-
-  const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
-
-  function asText(value: unknown) {
-    return String(value ?? '').trim();
-  }
-
-  function actionTypeLabel(value: unknown) {
-    const type = asText(typeof value === 'object' && value ? (value as any).action_type : value).toLowerCase();
-    if (type === 'strike') return 'Strike';
-    if (type === 'suspension') return 'Suspension';
-    if (type === 'ban') return 'Ban';
-    return type ? type.charAt(0).toUpperCase() + type.slice(1).replaceAll('_', ' ') : 'Action';
-  }
-
-  function statusLabel(value: unknown) {
-    const status = asText(value).toLowerCase();
-    if (status === 'ban' || status === 'banned') return 'Banned';
-    if (status === 'suspension' || status === 'suspended') return 'Suspended';
-    if (status === 'strike' || status === 'strikes') return 'Active strikes';
-    return 'Good standing';
-  }
-
-  function statusTone(value: unknown) {
-    const status = asText(value).toLowerCase();
-    if (status === 'ban' || status === 'banned') return 'status-ban';
-    if (status === 'suspension' || status === 'suspended') return 'status-suspension';
-    if (status === 'strike' || status === 'strikes') return 'status-strike';
-    return 'status-clear';
-  }
-
-  function formatIssued(value: unknown) {
-    const text = asText(value);
-    return text ? fmtDateTimeArizona(text) : '—';
-  }
-
-  function formatDay(value: unknown) {
-    const text = asText(value);
-    if (!text) return '—';
-    return fmtDateArizona(dateOnlyPattern.test(text) ? `${text}T12:00:00Z` : text);
-  }
-
-  function isEffective(action: any) {
-    try {
-      return isDisciplineActionEffective(action);
-    } catch {
-      return false;
-    }
-  }
-
-  function expiryLabel(action: any) {
-    if (action?.expires_on) return `Through ${formatDay(action.expires_on)} (inclusive)`;
-    if (asText(action?.action_type).toLowerCase() === 'ban') return 'Permanent';
-    return 'No expiration';
-  }
-
-  function sourceLabel(value: unknown) {
-    const text = asText(value);
-    if (!text) return 'Manual';
-    return text
-      .replaceAll('_', ' ')
-      .replace(/\b\w/g, (character) => character.toUpperCase());
-  }
 
   function confirmIssue(event: SubmitEvent) {
     const playerLabel = selectedPlayer?.label ?? 'this player';

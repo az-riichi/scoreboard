@@ -12,6 +12,7 @@ import {
   toArizonaDatetimeLocalValue
 } from '$lib/arizona-time';
 import { resolveCasualEvent } from '$lib/server/casual-events';
+import { loadNextGameNumber } from '$lib/server/matches';
 
 const CHOMBO_PREFIX = 'CHOMBO';
 
@@ -44,17 +45,14 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   if (matchRes.error || !matchRes.data) throw redirect(303, '/admin');
 
-  const seasonRes = await locals.supabase
-    .from('seasons')
-    .select('id, name, start_date, end_date, is_casual')
-    .eq('id', matchRes.data.season_id)
-    .maybeSingle();
-  if (seasonRes.error || !seasonRes.data) throw redirect(303, '/admin');
-  const season = seasonRes.data;
-
   const penaltyReasonPrefix = `${CHOMBO_PREFIX}:${match_id}:%`;
   const matchDay = toArizonaDatetimeLocalValue(matchRes.data.played_at).slice(0, 10);
-  const [playersRes, resultsRes, rulesetRes, lifetimeRatingsRes, eventsRes, penaltiesRes, restrictionsRes] = await Promise.all([
+  const [seasonRes, playersRes, resultsRes, rulesetRes, lifetimeRatingsRes, eventsRes, penaltiesRes, restrictionsRes] = await Promise.all([
+    locals.supabase
+      .from('seasons')
+      .select('id, name, start_date, end_date, is_casual')
+      .eq('id', matchRes.data.season_id)
+      .maybeSingle(),
     locals.supabase
       .from('players')
       .select('id, display_name, real_first_name, real_last_name, show_display_name, show_real_first_name, show_real_last_name, is_active')
@@ -86,6 +84,9 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       ? loadEffectiveRestrictions(locals, matchDay)
       : Promise.resolve({ data: [], error: null })
   ]);
+
+  if (seasonRes.error || !seasonRes.data) throw redirect(303, '/admin');
+  const season = seasonRes.data;
 
   if (restrictionsRes.error) {
     throw kitError(500, 'Could not load player eligibility.');
@@ -261,7 +262,8 @@ async function validateDraftResults(
     }
   }
 
-  if (!requireBalanced) return { ok: true as const, rows, season_id: matchRes.data.season_id };
+  const validated = { ok: true as const, rows, isCasual: seasonRes.data.is_casual === true };
+  if (!requireBalanced) return validated;
 
   const rulesetRes = await locals.supabase
     .from('rulesets')
@@ -286,7 +288,7 @@ async function validateDraftResults(
     };
   }
 
-  return { ok: true as const, rows, season_id: matchRes.data.season_id };
+  return validated;
 }
 export const actions: Actions = {
   deleteGame: async ({ locals, params }) => {
@@ -384,25 +386,15 @@ export const actions: Actions = {
     let game_number = Number.isInteger(currentGameNumber) && currentGameNumber > 0 ? currentGameNumber : 1;
 
     if (currentDay !== nextDay || currentMatchRes.data.table_mode !== table_mode || !Number.isInteger(currentGameNumber)) {
-      const dayMatchesRes = await locals.supabase
-        .from('matches')
-        .select('game_number')
-        .eq('season_id', currentMatchRes.data.season_id)
-        .gte('played_at', dayBounds.dayStart)
-        .lt('played_at', dayBounds.dayEnd)
-        .eq('table_mode', table_mode)
-        .neq('id', match_id);
-      if (dayMatchesRes.error) return fail(400, { message: dayMatchesRes.error.message });
-      game_number =
-        Math.max(
-          0,
-          ...(dayMatchesRes.data ?? [])
-            .map((row) => Number(row.game_number))
-            .filter((value) => Number.isInteger(value) && value > 0)
-        ) + 1;
-      if (!Number.isSafeInteger(game_number) || game_number > 2_147_483_647) {
-        return fail(400, { message: 'Could not allocate a valid game number.' });
-      }
+      const nextGame = await loadNextGameNumber(
+        locals.supabase,
+        currentMatchRes.data.season_id,
+        table_mode,
+        dayBounds,
+        match_id
+      );
+      if (nextGame.gameNumber == null) return fail(400, { message: nextGame.error });
+      game_number = nextGame.gameNumber;
     }
     const table_label = `${table_mode}-${game_number}`;
 
@@ -557,16 +549,9 @@ export const actions: Actions = {
       .upsert(validated.rows, { onConflict: 'match_id,seat' });
     if (saveRes.error) return fail(400, { message: saveRes.error.message });
 
-    const seasonRes = await locals.supabase
-      .from('seasons')
-      .select('is_casual')
-      .eq('id', validated.season_id)
-      .maybeSingle();
-    if (seasonRes.error || !seasonRes.data) return fail(400, { message: 'Season not found.' });
-
     const { error } = await locals.supabase.rpc('finalize_match_authorized', {
       p_match_id: match_id,
-      p_update_lifetime: !seasonRes.data.is_casual
+      p_update_lifetime: !validated.isCasual
     });
     if (error) return fail(400, { message: error.message });
 
