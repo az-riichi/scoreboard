@@ -2,6 +2,8 @@
   import { navigating, page } from '$app/stores';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
+  import { invalidate } from '$app/navigation';
+  import { startPublicDataUpdates } from '$lib/public-data/live';
 
   export let data: import('./$types').LayoutData;
 
@@ -17,6 +19,11 @@
   let mobileNavDetails: HTMLDetailsElement | null = null;
   const SITE_NAME = 'AZRM Scoreboard';
   let pageTitle = SITE_NAME;
+
+  onMount(() => startPublicDataUpdates(
+    () => data.publicDataRevision,
+    () => invalidate('app:public-data')
+  ));
 
   function asRecord(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== 'object') return null;
@@ -235,36 +242,6 @@
         --alert-error-border: #8f2f35;
         --alert-error-text: #ffb4b8;
       }
-    }
-
-    :root[data-theme='light'] {
-      color-scheme: light;
-      --bg: #f5f7fb;
-      --text: #111827;
-      --muted: #5f6b7a;
-      --card-bg: #ffffff;
-      --card-border: #e2e8f0;
-      --btn-bg: #ffffff;
-      --btn-border: #cdd5df;
-      --btn-primary-bg: #111827;
-      --btn-primary-text: #f8fafc;
-      --field-bg: #ffffff;
-      --field-border: #cdd5df;
-      --table-border: #e2e8f0;
-      --table-head: #5f6b7a;
-      --nav-bg: #ffffff;
-      --nav-border: #dbe3ec;
-      --pill-bg: #eef2f7;
-      --pill-border: #dbe3ec;
-      --alert-success-bg: #ecfdf3;
-      --alert-success-border: #86efac;
-      --alert-success-text: #14532d;
-      --alert-warning-bg: #fff7ed;
-      --alert-warning-border: #fdba74;
-      --alert-warning-text: #7c2d12;
-      --alert-error-bg: #fef2f2;
-      --alert-error-border: #fca5a5;
-      --alert-error-text: #7f1d1d;
     }
 
     :root[data-theme='dark'] {

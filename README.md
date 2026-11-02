@@ -11,6 +11,7 @@ Public (no login required):
 - Timeless Casual category whose games can be grouped and filtered by event and never change season or lifetime ratings
 - Player page: season/event stats plus togglable SP/R and placement history charts (placement-only for Casual)
 - Match page: final results (E/S/W/N seats)
+- Open public pages automatically refresh when matches are published
 
 Admin (login required):
 
@@ -115,6 +116,12 @@ deployment so neither application version loses its data source:
 
 Fresh installations should use the consolidated schema as usual.
 
+For live frontend updates on an existing project, apply
+`20260729_enable_public_data_realtime.sql`. This adds the public revision marker
+to the `supabase_realtime` publication; its existing read-only public access
+policy is sufficient. The frontend also checks periodically if live events are
+unavailable.
+
 ## Bootstrap the owner
 
 After signing up once, explicitly make the trusted account the owner:
@@ -167,10 +174,27 @@ boundary.
 
 The browser stores the revision and snapshot in the
 `azrm-scoreboard-public` IndexedDB database. Web Locks avoid duplicate refreshes
-from tabs starting together, and `BroadcastChannel` invalidates stale in-memory
-copies in other tabs. When the network is unavailable, the last complete local
+from tabs starting together, and `BroadcastChannel` prompts refreshes in other
+open tabs. Supabase Realtime watches only the public revision marker;
+publishing either a competitive or Casual match refreshes the cached snapshot
+and reruns the public page loaders without reloading the document. Bursts of
+events are coalesced, and unchanged revisions do not rerender the page. Visible,
+online tabs also check every 60 seconds and catch up after reconnecting or
+returning to the tab. When the network is unavailable, the last complete local
 snapshot remains usable. A failed or internally inconsistent refresh never
 replaces it.
+
+The server retains one serialized public snapshot per warm process and shares
+an in-flight snapshot build between requests for the same revision. Every
+request still checks the database revision before reuse, and a newly built
+snapshot is checked again before publication. This endpoint always reads with
+anonymous access, including for signed-in visitors, so it does not need an
+account lookup and never caches account-specific results.
+
+Unchanged browser refreshes read only IndexedDB metadata and retain the existing
+snapshot object. Its scored results, season/player indexes, and standings are
+reused until the revision changes. Histories use one chronological sort per
+player page and preserve full-history totals before limiting displayed rows.
 
 ## Excel import format
 

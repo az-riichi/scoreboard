@@ -29,10 +29,6 @@ export function getAdminAccess(locals: App.Locals): Promise<AdminAccess> {
   return lookup;
 }
 
-export async function getIsAdmin(locals: App.Locals): Promise<boolean> {
-  return (await getAdminAccess(locals)).isAdmin;
-}
-
 function requireSignedIn(locals: App.Locals) {
   if (!locals.user || !locals.userId) throw redirect(303, '/login');
 }

@@ -40,11 +40,10 @@
   let confirmAction: ConfirmAction = null;
 
   const playerMetaById = new Map<string, { primary: string; secondary: string | null; label: string }>();
-  const playerOptions: Array<{
+  const searchablePlayerOptions: Array<{
     id: string;
     label: string;
-    optionLabel: string;
-    isIneligible: boolean;
+    disabled: boolean;
   }> = [];
   const labelCount = new Map<string, number>();
   for (const p of data.players ?? []) {
@@ -70,18 +69,12 @@
           ? ` (suspended through ${String(p?.restriction_expires_on ?? '')})`
           : '';
     playerMetaById.set(id, { primary, secondary, label });
-    playerOptions.push({
+    searchablePlayerOptions.push({
       id,
-      label,
-      optionLabel: `${uniqueLabel}${suffix}`,
-      isIneligible: p?.is_competitive_ineligible === true
+      label: `${uniqueLabel}${suffix}`,
+      disabled: p?.is_competitive_ineligible === true
     });
   }
-  const searchablePlayerOptions = playerOptions.map((player) => ({
-    id: player.id,
-    label: player.optionLabel,
-    disabled: player.isIneligible
-  }));
 
   const penaltyPlayers = (() => {
     const seen = new Set<string>();
@@ -197,56 +190,46 @@
   $: totalDiff = targetTotalWithNoLeak - totalWithExtra;
   $: totalCheckOk = allRawPointsEntered && totalDiff === 0;
 
-  $: placementBySeat = (() => {
-    if (!allRawPointsEntered) return {};
-    const ordered = [...enteredRows].sort((a, b) => {
+  $: orderedRows = allRawPointsEntered
+    ? [...enteredRows].sort((a, b) => {
       if (a.raw_points !== b.raw_points) return b.raw_points - a.raw_points;
       return seatOrder[a.seat] - seatOrder[b.seat];
-    });
+    })
+    : [];
+
+  $: placementBySeat = (() => {
     const out: Record<string, number> = {};
-    ordered.forEach((row, idx) => {
+    orderedRows.forEach((row, idx) => {
       out[row.seat] = idx + 1;
     });
     return out;
   })();
 
   $: displayPlacementBySeat = (() => {
-    if (!allRawPointsEntered) return {};
-    const ordered = [...enteredRows].sort((a, b) => {
-      if (a.raw_points !== b.raw_points) return b.raw_points - a.raw_points;
-      return seatOrder[a.seat] - seatOrder[b.seat];
-    });
-
     const out: Record<string, number> = {};
     let idx = 0;
-    while (idx < ordered.length) {
+    while (idx < orderedRows.length) {
       const place = idx + 1;
-      const raw = ordered[idx].raw_points;
+      const raw = orderedRows[idx].raw_points;
       let j = idx + 1;
-      while (j < ordered.length && ordered[j].raw_points === raw) j += 1;
-      for (let k = idx; k < j; k += 1) out[ordered[k].seat] = place;
+      while (j < orderedRows.length && orderedRows[j].raw_points === raw) j += 1;
+      for (let k = idx; k < j; k += 1) out[orderedRows[k].seat] = place;
       idx = j;
     }
     return out;
   })();
 
   $: splitUmaBySeat = (() => {
-    if (!allRawPointsEntered) return {};
-    const ordered = [...enteredRows].sort((a, b) => {
-      if (a.raw_points !== b.raw_points) return b.raw_points - a.raw_points;
-      return seatOrder[a.seat] - seatOrder[b.seat];
-    });
-
     const out: Record<string, number> = {};
     let idx = 0;
-    while (idx < ordered.length) {
+    while (idx < orderedRows.length) {
       const startPlace = idx + 1;
-      const raw = ordered[idx].raw_points;
+      const raw = orderedRows[idx].raw_points;
       let j = idx + 1;
-      while (j < ordered.length && ordered[j].raw_points === raw) j += 1;
+      while (j < orderedRows.length && orderedRows[j].raw_points === raw) j += 1;
       const tieSize = j - idx;
       const tieUma = averageUmaForRange(startPlace, tieSize);
-      for (let k = idx; k < j; k += 1) out[ordered[k].seat] = tieUma;
+      for (let k = idx; k < j; k += 1) out[orderedRows[k].seat] = tieUma;
       idx = j;
     }
     return out;

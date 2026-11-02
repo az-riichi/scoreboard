@@ -332,6 +332,52 @@ describe('public page derivations', () => {
     expect(page!.ratingHistory).toEqual([]);
   });
 
+  it('keeps cached standings independent of callers, seasons, events, and refreshed snapshots', () => {
+    const snapshot = fixture();
+    const first = deriveStandings(snapshot, 'spring');
+    first[0].total_points = 999;
+    first.reverse();
+    expect(deriveStandings(snapshot, 'spring')[0]).toMatchObject({
+      player_id: 'p1', total_points: 60
+    });
+    const playerPage = derivePlayerPage(snapshot, 'p1', { seasonId: 'spring' })!;
+    playerPage.standingsRow!.rank = 999;
+    expect(deriveStandings(snapshot, 'spring')[0].rank).toBe(1);
+    expect(deriveStandings(snapshot, 'casual', 'missing')).toEqual([]);
+    expect(deriveStandings(snapshot, 'casual', 'event-1')[0].total_points).toBe(45);
+    expect(derivePlayerPage(snapshot, 'p1', { seasonId: 'missing' })!.stats).toBeNull();
+
+    const refreshed = fixture();
+    refreshed.revision.revision = '8';
+    refreshed.adjustments[0].points = -10;
+    expect(deriveStandings(refreshed, 'spring')[0].player_id).toBe('p2');
+    expect(deriveStandings(snapshot, 'spring')[0].player_id).toBe('p1');
+  });
+
+  it('preserves newest-match tie breaks for point and raw extremes and histories', () => {
+    const snapshot = fixture();
+    snapshot.matches = [
+      match('latest-a', 'casual', '2026-02-03T12:00:00Z'),
+      match('older', 'casual', '2026-02-01T12:00:00Z'),
+      match('latest-z', 'casual', '2026-02-03T12:00:00Z')
+    ];
+    snapshot.match_results = snapshot.matches.flatMap((row) =>
+      results(row.id, ['p1', 'p2', 'p3', 'p4'])
+    );
+
+    const page = derivePlayerPage(snapshot, 'p1', { seasonId: 'casual' })!;
+    expect(page.stats).toMatchObject({
+      best_match_id: 'latest-z', worst_match_id: 'latest-z',
+      last_played_at: '2026-02-03T12:00:00Z',
+      firsts: 3, seconds: 0, thirds: 0, fourths: 0,
+      median_points: 45, stdev_points: 0
+    });
+    expect(page.bestRawMatch!.match_id).toBe('latest-z');
+    expect(page.worstRawMatch!.match_id).toBe('latest-z');
+    expect(page.matchHistory.map((row) => row.match_id)).toEqual(['latest-z', 'latest-a', 'older']);
+    expect(page.pointHistory.map((row) => row.match_id)).toEqual(['older', 'latest-a', 'latest-z']);
+  });
+
   it('keeps full-ledger cumulative SP when only the newest 200 rows are returned', () => {
     const base = fixture();
     const casualMatches = Array.from({ length: 201 }, (_, index) =>
@@ -344,7 +390,7 @@ describe('public page derivations', () => {
     );
     const snapshot: PublicDataSnapshot = {
       ...base,
-      matches: casualMatches,
+      matches: [...casualMatches].reverse(),
       match_results: casualMatches.flatMap((row) =>
         results(row.id, ['p1', 'p2', 'p3', 'p4'])
       ),
@@ -356,5 +402,32 @@ describe('public page derivations', () => {
     expect(page!.pointHistory).toHaveLength(200);
     expect(page!.pointHistory[0].cumulative_points).toBe(90);
     expect(page!.pointHistory.at(-1)?.cumulative_points).toBe(201 * 45);
+    expect(page!.matchHistory).toHaveLength(100);
+    expect(page!.matchHistory[0].match_id).toBe('long-200');
+    expect(page!.placementHistory).toHaveLength(200);
+    expect(page!.placementHistory[0].match_id).toBe('long-001');
+    expect(page!.placementHistory.at(-1)?.match_id).toBe('long-200');
+  });
+
+  it('includes older event adjustments in capped cumulative histories without leaking other adjustments', () => {
+    const snapshot = fixture();
+    snapshot.matches = Array.from({ length: 201 }, (_, index) =>
+      match(`event-${index}`, 'casual', new Date(Date.UTC(2026, 0, index + 1)).toISOString(), {
+        casual_event_id: 'event-1'
+      })
+    );
+    snapshot.match_results = snapshot.matches.flatMap((row) =>
+      results(row.id, ['p1', 'p2', 'p3', 'p4'])
+    );
+    snapshot.adjustments = [
+      { ...snapshot.adjustments[1], match_id: 'event-0', player_id: 'p1', points: 7 },
+      { ...snapshot.adjustments[1], id: 'other-player', match_id: 'event-0', player_id: 'p2', points: 50 },
+      { ...snapshot.adjustments[1], id: 'other-match', match_id: 'missing', player_id: 'p1', points: 50 }
+    ];
+    const page = derivePlayerPage(snapshot, 'p1', { seasonId: 'casual', eventId: 'event-1' })!;
+    expect(page.pointHistory).toHaveLength(200);
+    expect(page.pointHistory[0].cumulative_points).toBe(97);
+    expect(page.pointHistory.at(-1)?.cumulative_points).toBe(201 * 45 + 7);
+    expect(page.standingsRow!.adjustment_points).toBe(7);
   });
 });

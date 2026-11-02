@@ -4,10 +4,13 @@ import type { Handle } from '@sveltejs/kit';
 
 export const handle: Handle = async ({ event, resolve }) => {
   const authResponseHeaders = new Headers();
+  // The shared scoreboard snapshot is always read with anonymous RLS, even
+  // for signed-in visitors. Polling it does not need an Auth round trip.
+  const isPublicDataRequest = event.route.id === '/api/public-data';
 
   event.locals.supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
     cookies: {
-      getAll: () => event.cookies.getAll(),
+      getAll: () => isPublicDataRequest ? [] : event.cookies.getAll(),
       setAll: (cookiesToSet, headersToSet) => {
         cookiesToSet.forEach(({ name, value, options }) => {
           event.cookies.set(name, value, { ...options, path: options.path ?? '/' });
@@ -19,7 +22,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   });
 
-  const hasSupabaseAuthCookie = event.cookies
+  const hasSupabaseAuthCookie = !isPublicDataRequest && event.cookies
     .getAll()
     .some(({ name }) => name.startsWith('sb-') && name.includes('-auth-token'));
 

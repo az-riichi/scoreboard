@@ -57,7 +57,7 @@ export const load: PageServerLoad = async ({ locals, setHeaders }) => {
     label: names.secondary ? `${names.primary} (${names.secondary})` : names.primary
   };
   const actions = actionsRes.data;
-  const matchIds = [...new Set(actions.map((action) => asText(action.match_id)).filter(Boolean))];
+  const matchIds = actions.map((action) => asText(action.match_id)).filter(Boolean);
   const matchesRes = await loadDisciplineLinkedMatches(locals.supabase, matchIds);
 
   if (matchesRes.error) throw kitError(500, 'Could not load linked matches.');

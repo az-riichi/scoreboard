@@ -10,6 +10,7 @@ import {
   parseArizonaLocalDatetimeToUtcIso
 } from '$lib/arizona-time';
 import { resolveCasualEvent } from '$lib/server/casual-events';
+import { loadNextGameNumber } from '$lib/server/matches';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const adminAccess = await requireAnyAdminPermission(locals, [
@@ -137,24 +138,9 @@ export const actions: Actions = {
       return fail(400, { message: 'Tbl must be A or M.' });
     }
 
-    const dayMatchesRes = await locals.supabase
-      .from('matches')
-      .select('game_number')
-      .eq('season_id', season_id)
-      .gte('played_at', dayBounds.dayStart)
-      .lt('played_at', dayBounds.dayEnd)
-      .eq('table_mode', table_mode);
-    if (dayMatchesRes.error) return fail(400, { message: dayMatchesRes.error.message });
-    const game_number =
-      Math.max(
-        0,
-        ...(dayMatchesRes.data ?? [])
-          .map((row) => Number(row.game_number))
-          .filter((value) => Number.isInteger(value) && value > 0)
-      ) + 1;
-    if (!Number.isSafeInteger(game_number) || game_number > 2_147_483_647) {
-      return fail(400, { message: 'Could not allocate a valid game number.' });
-    }
+    const nextGame = await loadNextGameNumber(locals.supabase, season_id, table_mode, dayBounds);
+    if (nextGame.gameNumber == null) return fail(400, { message: nextGame.error });
+    const game_number = nextGame.gameNumber;
     const table_label = `${table_mode}-${game_number}`;
 
     const extra_sticks = extra_raw === '' || /^\d+$/.test(extra_raw) ? Number(extra_raw || '0') : Number.NaN;
