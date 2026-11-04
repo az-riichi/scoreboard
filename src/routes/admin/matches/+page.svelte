@@ -25,9 +25,12 @@
 </script>
 
 <div class="card" style="margin-bottom:12px;">
-  <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
+  <div class="card-head">
     <div>
-      <div style="font-size:1.1rem; font-weight:650;">Matches</div>
+      <div class="title-row">
+        <span class="led-tag" lang="ja" aria-hidden="true">対局</span>
+        <h1 class="page-title">Matches</h1>
+      </div>
       <div class="muted">Enter and review match results</div>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -36,7 +39,7 @@
           <button class="btn" type="submit">Recompute ratings</button>
         </form>
       {/if}
-      <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
+      <a class="btn" href="/admin">Back</a>
     </div>
   </div>
 </div>
@@ -49,8 +52,8 @@
 
 {#if canAddMatches}
   <div class="card" style="margin-bottom:12px;">
-    <h3 style="margin:0 0 10px;">Create match</h3>
-  <div class="muted" style="margin-bottom:10px;">Game # and table label are auto-generated</div>
+    <h2 class="card-title">Create match</h2>
+  <div class="muted" style="margin:4px 0 12px;">Game # and table label are auto-generated</div>
   <form method="POST" action="?/create" style="display:grid; gap:10px;">
     <div style="display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
       <label style="display:grid; gap:4px;">
@@ -108,9 +111,9 @@
     {/if}
 
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
-      <label style="width:70px; display:grid; gap:4px;">
+      <label style="display:grid; gap:4px;">
         <div class="muted">Tbl type</div>
-        <select name="table_mode" bind:value={table_mode}>
+        <select name="table_mode" bind:value={table_mode} style="width:80px;">
           <option value="A">A</option>
           <option value="M">M</option>
         </select>
@@ -118,7 +121,7 @@
 
       <label style="display:grid; gap:4px;">
         <div class="muted">Extra points</div>
-        <input style="width:50px" name="extra_sticks" type="number" min="0" step="1000" bind:value={extra_sticks} />
+        <input style="width:90px" name="extra_sticks" type="number" min="0" step="1000" bind:value={extra_sticks} />
       </label>
 
       <label style="min-width:150px; flex:0 1 500px; display:grid; gap:4px;">
@@ -138,8 +141,8 @@
 
 {#if canOpenMatches}
   <div class="card">
-    <h3 style="margin:0 0 10px;">Recent matches</h3>
-    <div style="overflow:auto;">
+    <h2 class="card-title">Recent matches</h2>
+    <div style="overflow:auto; margin-top:12px;">
       <table>
       <thead>
         <tr>
@@ -160,17 +163,22 @@
             <td>{m.casual_event_name ?? '—'}</td>
             <td>{m.table_mode ?? ''}{m.game_number ?? ''}</td>
             <td>{m.extra_sticks ?? 0}</td>
-            <td>{m.status}</td>
+            <td>
+              <span class="tag">
+                <span class="led-dot" class:is-on={m.status === 'final'} class:is-amber={m.status !== 'final'} aria-hidden="true"></span>
+                {m.status}
+              </span>
+            </td>
             <td>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <a class="btn" href={`/admin/match/${m.id}`} style="text-decoration:none;">Open</a>
+                <a class="btn" href={`/admin/match/${m.id}`}>Open</a>
                 {#if m.status === 'final'}
-                  <a class="btn" href={`/match/${m.id}`} style="text-decoration:none;">Public</a>
+                  <a class="btn" href={`/match/${m.id}`}>Public</a>
                 {/if}
                 {#if canRemoveMatches}
                   <form method="POST" action="?/delete" style="margin:0;" on:submit={(e) => { if (!confirm('Delete this game? This cannot be undone.')) e.preventDefault(); }}>
                     <input type="hidden" name="match_id" value={m.id} />
-                    <button class="btn" type="submit">Delete</button>
+                    <button class="btn danger" type="submit">Delete</button>
                   </form>
                 {/if}
               </div>

@@ -30,62 +30,9 @@
     flex-wrap: wrap;
   }
 
-  .page-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-  }
-
-  .section-title {
-    font-size: 1.05rem;
-    font-weight: 650;
-  }
-
-  .private-label {
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid var(--pill-border);
-    border-radius: 999px;
-    padding: 5px 9px;
-    background: var(--pill-bg);
-    color: var(--muted);
-    font-size: 0.84rem;
-    font-weight: 650;
-  }
-
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid;
-    border-radius: 999px;
-    padding: 4px 9px;
-    font-size: 0.84rem;
-    font-weight: 700;
-    line-height: 1.2;
-  }
-
-  .status-clear {
-    color: var(--alert-success-text);
-    border-color: var(--alert-success-border);
-    background: var(--alert-success-bg);
-  }
-
-  .status-strike,
-  .status-suspension {
-    color: var(--alert-warning-text);
-    border-color: var(--alert-warning-border);
-    background: var(--alert-warning-bg);
-  }
-
-  .status-ban {
-    color: var(--alert-error-text);
-    border-color: var(--alert-error-border);
-    background: var(--alert-error-bg);
-  }
-
-  .status-muted {
-    color: var(--muted);
-    border-color: var(--pill-border);
-    background: var(--pill-bg);
+  .page-heading .muted,
+  .section-heading .muted {
+    margin-top: 4px;
   }
 
   .summary-grid {
@@ -95,17 +42,8 @@
     margin-top: 12px;
   }
 
-  .summary-item {
-    border: 1px solid var(--table-border);
-    border-radius: 14px;
-    padding: 12px;
-    min-width: 0;
-  }
-
   .summary-value {
-    margin-top: 4px;
-    font-size: 1.2rem;
-    font-weight: 700;
+    justify-self: start;
   }
 
   .effective-list {
@@ -116,6 +54,7 @@
 
   .effective-action {
     border-left: 4px solid var(--alert-warning-border);
+    box-shadow: none;
   }
 
   .effective-action.action-ban {
@@ -128,6 +67,8 @@
     gap: 8px;
     flex-wrap: wrap;
     font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
   .action-details {
@@ -189,16 +130,19 @@
 <div class="card" style="margin-bottom:12px;">
   <div class="page-heading">
     <div>
-      <div class="page-title">My discipline status</div>
+      <div class="title-row">
+        <span class="led-tag" lang="ja" aria-hidden="true">規律</span>
+        <h1 class="page-title">My discipline status</h1>
+      </div>
       <div class="muted">Your current competitive-play status and discipline record</div>
     </div>
-    <span class="private-label">Private to you and authorized club officials</span>
+    <span class="tag">Private to you and authorized club officials</span>
   </div>
 </div>
 
 {#if !player}
   <div class="card empty-state">
-    <div class="section-title">No player profile is linked to this account</div>
+    <h2 class="card-title">No player profile is linked to this account</h2>
     <p class="muted" style="margin:8px 0 0;">
       Ask a club official to link your login to your player profile. Your discipline status will appear here once it is linked.
     </p>
@@ -207,29 +151,31 @@
   <div class="card" style="margin-bottom:12px;">
     <div class="section-heading">
       <div>
-        <div class="section-title">{player.label}</div>
+        <h2 class="card-title title-plain">{player.label}</h2>
         <div class="muted">Current status</div>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
         <span class={`status-badge ${statusTone(summary?.status)}`}>{statusLabel(summary?.status)}</span>
-        <a class="btn" href={`/player/${player.id}`} style="text-decoration:none;">View profile</a>
+        <a class="btn" href={`/player/${player.id}`}>View profile</a>
       </div>
     </div>
 
     <div class="summary-grid">
-      <div class="summary-item">
-        <div class="muted">Competitive play</div>
-        <div class="summary-value" style="font-size:1rem;">
-          {statusLabel(summary?.status) === 'Good standing' ? 'Allowed' : 'Restricted'}
-        </div>
+      <div class="stat-tile">
+        <div class="stat-label">Competitive play</div>
+        {#if statusLabel(summary?.status) === 'Good standing'}
+          <span class="led led-md led-pos summary-value">Allowed</span>
+        {:else}
+          <span class="led led-md led-neg summary-value">Restricted</span>
+        {/if}
       </div>
-      <div class="summary-item">
-        <div class="muted">Active strikes</div>
-        <div class="summary-value">{summary?.activeStrikeCount ?? 0}</div>
+      <div class="stat-tile">
+        <div class="stat-label">Active strikes</div>
+        <span class="led led-md summary-value" class:led-amber={(summary?.activeStrikeCount ?? 0) > 0}>{summary?.activeStrikeCount ?? 0}</span>
       </div>
-      <div class="summary-item">
-        <div class="muted">Suspensions issued</div>
-        <div class="summary-value">{summary?.suspensionCount ?? 0}</div>
+      <div class="stat-tile">
+        <div class="stat-label">Suspensions issued</div>
+        <span class="led led-md summary-value" class:led-amber={(summary?.suspensionCount ?? 0) > 0}>{summary?.suspensionCount ?? 0}</span>
       </div>
     </div>
   </div>
@@ -237,7 +183,7 @@
   <section class="card" style="margin-bottom:12px;" aria-labelledby="current-actions-title">
     <div class="section-heading">
       <div>
-        <div id="current-actions-title" class="section-title">Currently effective actions</div>
+        <h2 id="current-actions-title" class="card-title">Currently effective actions</h2>
         <div class="muted">End dates shown below are inclusive.</div>
       </div>
       <span class="muted">{effectiveActions.length} effective</span>
@@ -289,7 +235,7 @@
   <section class="card" aria-labelledby="discipline-history-title">
     <div class="section-heading">
       <div>
-        <div id="discipline-history-title" class="section-title">Action history</div>
+        <h2 id="discipline-history-title" class="card-title">Action history</h2>
         <div class="muted">This history is visible only to you and authorized club officials.</div>
       </div>
     </div>

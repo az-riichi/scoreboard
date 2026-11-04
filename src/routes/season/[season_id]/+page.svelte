@@ -1,6 +1,7 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
-  import { fmtDate, fmtPct, fmtNum, fmtFixed } from '$lib/ui';
+  import { fmtDate, fmtPct, fmtNum, fmtFixed, fmtSigned, signTone } from '$lib/ui';
+  import { seasonKanji } from '$lib/mahjong';
   export let data: any;
 
   type SortKey = 'rank' | 'player' | 'rating' | 'sp' | 'games' | 'avg' | 'top2';
@@ -34,6 +35,11 @@
     }
     sortKey = key;
     sortDir = defaultDirByKey[key];
+  }
+
+  function ariaSort(key: SortKey, activeKey: SortKey, dir: SortDir) {
+    if (key !== activeKey) return undefined;
+    return dir === 'asc' ? 'ascending' : 'descending';
   }
 
   function numOrNull(v: unknown): number | null {
@@ -124,55 +130,50 @@
     padding: 0;
     cursor: pointer;
     text-align: left;
-    font-weight: 650;
+    font-weight: 600;
+    letter-spacing: inherit;
+    text-transform: inherit;
     white-space: nowrap;
+  }
+  .sort-head-btn.is-sorted,
+  .sort-head-btn:hover {
+    color: var(--text);
   }
   .sort-indicator {
     display: inline-block;
     margin-left: 6px;
     min-width: 1ch;
-    color: var(--muted);
+    color: var(--accent);
+  }
+  .num .sort-head-btn {
+    text-align: right;
+  }
+  .season-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px 20px;
+    flex-wrap: wrap;
+  }
+  .season-card .muted {
+    margin-top: 4px;
+  }
+  .season-controls {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .event-filter {
+    display: grid;
+    gap: 4px;
   }
   .standings-view-toggle {
-    display: inline-flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 10px;
+    margin-top: 12px;
   }
-  .standings-view-btn {
-    border: 1px solid var(--btn-border);
-    background: var(--btn-bg);
-    color: inherit;
-    border-radius: 999px;
-    padding: 6px 10px;
-    font: inherit;
-    cursor: pointer;
-    line-height: 1.1;
-  }
-  .standings-view-btn.is-active {
-    background: var(--pill-bg);
-    border-color: var(--pill-border);
-    font-weight: 650;
-  }
-  .season-mode-toggle {
-    display: inline-flex;
-    gap: 4px;
-    padding: 3px;
-    border: 1px solid var(--pill-border);
-    border-radius: 999px;
-    background: var(--pill-bg);
-  }
-  .season-mode-link {
-    padding: 6px 11px;
-    border-radius: 999px;
-    color: inherit;
-    text-decoration: none;
-    white-space: nowrap;
-  }
-  .season-mode-link.is-active {
-    background: var(--card-bg);
-    font-weight: 650;
-    box-shadow: 0 0 0 1px var(--card-border);
+  .standings-notes-desktop {
+    margin-top: 4px;
   }
   .standings-notes-mobile {
     display: none;
@@ -189,28 +190,27 @@
   .standings-row-link,
   .recent-cell-link {
     display: block;
-    margin: -10px -8px;
-    padding: 10px 8px;
+    margin: -9px -8px;
+    padding: 9px 8px;
     text-decoration: none;
     color: inherit;
     transition: background-color 120ms ease, text-decoration-color 120ms ease;
   }
   .standings-row-link:focus-visible,
   .recent-cell-link:focus-visible {
-    outline: 2px solid var(--btn-border);
+    outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
-  tbody tr:hover .standings-row-link,
-  tbody tr:focus-within .standings-row-link {
-    background: var(--pill-bg);
-    text-decoration: none;
-    text-decoration-color: var(--muted);
+  .standings-table tbody tr {
+    transition: background-color 120ms ease;
+  }
+  .standings-table tbody tr:hover,
+  .standings-table tbody tr:focus-within {
+    background: var(--row-hover);
   }
   .recent-cell-link:hover,
   .recent-cell-link:focus-visible {
-    background: var(--pill-bg);
-    text-decoration: none;
-    text-decoration-color: var(--muted);
+    color: var(--accent);
   }
   .standings-table .cell-player,
   .recent-table .cell-match,
@@ -271,53 +271,57 @@
   }
 </style>
 
-<div class="card" style="margin-bottom:12px;">
-  <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-    <div>
-      <div style="font-size:1.1rem; font-weight:650;">{data.season.name}</div>
-      <div class="muted">{data.isCasual ? 'No time limit' : `${data.season.start_date} → ${data.season.end_date}`}</div>
+<div class="card season-card" style="margin-bottom:12px;">
+  <div>
+    <div class="title-row">
+      <span class="led-tag" lang="ja" aria-hidden="true">{seasonKanji(data.season.name, data.isCasual)}</span>
+      <h1 class="page-title">{data.season.name}</h1>
     </div>
-    <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap; justify-content:flex-end;">
-      {#if data.competitiveSeason && data.casualSeason}
-        <nav class="season-mode-toggle" aria-label="Scoreboard mode">
-          <a
-            class="season-mode-link"
-            class:is-active={data.season.id === data.competitiveSeason.id}
-            href={`/season/${data.competitiveSeason.id}`}
-          >
-            Competition
-          </a>
-          <a
-            class="season-mode-link"
-            class:is-active={data.season.id === data.casualSeason.id}
-            href={`/season/${data.casualSeason.id}`}
-          >
-            Casual
-          </a>
-        </nav>
-      {/if}
-      {#if data.isCasual}
-        <form method="GET">
-          <label>
-            <div class="muted">Event</div>
-            <select name="event" value={data.eventId ?? ''} on:change={submitEventFilter}>
-              <option value="">All events</option>
-              {#each data.events as event}
-                <option value={event.id}>{event.name}</option>
-              {/each}
-            </select>
-          </label>
-        </form>
-      {:else if data.season.is_active}
-        <div class="muted">Active season</div>
-      {/if}
-    </div>
+    <div class="muted">{data.isCasual ? 'No time limit' : `${data.season.start_date} → ${data.season.end_date}`}</div>
+  </div>
+  <div class="season-controls">
+    {#if data.competitiveSeason && data.casualSeason}
+      <nav class="seg" aria-label="Scoreboard mode">
+        <a
+          class:is-active={data.season.id === data.competitiveSeason.id}
+          aria-current={data.season.id === data.competitiveSeason.id ? 'page' : undefined}
+          href={`/season/${data.competitiveSeason.id}`}
+        >
+          Competition
+        </a>
+        <a
+          class:is-active={data.season.id === data.casualSeason.id}
+          aria-current={data.season.id === data.casualSeason.id ? 'page' : undefined}
+          href={`/season/${data.casualSeason.id}`}
+        >
+          Casual
+        </a>
+      </nav>
+    {/if}
+    {#if data.isCasual}
+      <form method="GET">
+        <label class="event-filter">
+          <span class="muted">Event</span>
+          <select name="event" value={data.eventId ?? ''} on:change={submitEventFilter}>
+            <option value="">All events</option>
+            {#each data.events as event}
+              <option value={event.id}>{event.name}</option>
+            {/each}
+          </select>
+        </label>
+      </form>
+    {:else if data.season.is_active}
+      <span class="status-live"><span class="led-dot is-on is-blink" aria-hidden="true"></span>Active season</span>
+    {/if}
   </div>
 </div>
 
 <div class="card" style="margin-bottom:12px;">
   <div>
-    <div style="font-size:1.05rem; font-weight:650;">Standings</div>
+    <div class="title-row">
+      <span class="led-tag" lang="ja" aria-hidden="true">順位</span>
+      <h2 class="card-title">Standings</h2>
+    </div>
     <div class="muted standings-notes-desktop">
       {#if data.isCasual}
         Ranked by Season Points (SP) {data.eventId ? 'within the selected event' : 'across all Casual games'}, after applicable adjustments. Casual games do not change Season Rating (SR) or lifetime Rating (R).
@@ -346,12 +350,12 @@
       {/if}
     </details>
     {#if !data.isCasual}
-      <div class="standings-view-toggle" role="tablist" aria-label="Standings list filter">
+      <div class="chips standings-view-toggle" role="tablist" aria-label="Standings list filter">
         <button
           type="button"
           role="tab"
+          class="chip"
           aria-selected={standingsView === 'eligible'}
-          class="standings-view-btn {standingsView === 'eligible' ? 'is-active' : ''}"
           on:click={() => (standingsView = 'eligible')}
         >
           Eligible ({eligibleStandings.length})
@@ -359,8 +363,8 @@
         <button
           type="button"
           role="tab"
+          class="chip"
           aria-selected={standingsView === 'all'}
-          class="standings-view-btn {standingsView === 'all' ? 'is-active' : ''}"
           on:click={() => (standingsView = 'all')}
         >
           All players ({sortedStandings.length})
@@ -373,24 +377,24 @@
     <table class="standings-table">
       <thead>
         <tr>
-          <th class="col-standings-rank" style="width:72px;">
-            <button class="sort-head-btn" type="button" on:click={() => toggleSort('rank')}>
+          <th class="col-standings-rank" style="width:72px;" aria-sort={ariaSort('rank', sortKey, sortDir)}>
+            <button class="sort-head-btn" class:is-sorted={sortKey === 'rank'} type="button" on:click={() => toggleSort('rank')}>
               Rank
               {#if sortKey === 'rank'}
                 <span class="sort-indicator">{sortDir === 'asc' ? '↑' : '↓'}</span>
               {/if}
             </button>
           </th>
-          <th class="col-standings-player-head" style="width:200px;">
-            <button class="sort-head-btn" type="button" on:click={() => toggleSort('player')}>
+          <th class="col-standings-player-head" style="width:200px;" aria-sort={ariaSort('player', sortKey, sortDir)}>
+            <button class="sort-head-btn" class:is-sorted={sortKey === 'player'} type="button" on:click={() => toggleSort('player')}>
               Player
               {#if sortKey === 'player'}
                 <span class="sort-indicator">{sortDir === 'asc' ? '↑' : '↓'}</span>
               {/if}
             </button>
           </th>
-          <th class="col-standings-sp" style="width:100px;">
-            <button class="sort-head-btn" type="button" on:click={() => toggleSort('sp')}>
+          <th class="col-standings-sp num" style="width:100px;" aria-sort={ariaSort('sp', sortKey, sortDir)}>
+            <button class="sort-head-btn" class:is-sorted={sortKey === 'sp'} type="button" on:click={() => toggleSort('sp')}>
               SP
               {#if sortKey === 'sp'}
                 <span class="sort-indicator">{sortDir === 'asc' ? '↑' : '↓'}</span>
@@ -398,8 +402,8 @@
             </button>
           </th>
           {#if !data.isCasual}
-            <th class="col-standings-rating" style="width:100px;">
-              <button class="sort-head-btn" type="button" on:click={() => toggleSort('rating')}>
+            <th class="col-standings-rating num" style="width:90px;" aria-sort={ariaSort('rating', sortKey, sortDir)}>
+              <button class="sort-head-btn" class:is-sorted={sortKey === 'rating'} type="button" on:click={() => toggleSort('rating')}>
                 R
                 {#if sortKey === 'rating'}
                   <span class="sort-indicator">{sortDir === 'asc' ? '↑' : '↓'}</span>
@@ -407,24 +411,24 @@
               </button>
             </th>
           {/if}
-          <th class="col-standings-games" style="width:70px;">
-            <button class="sort-head-btn" type="button" on:click={() => toggleSort('games')}>
+          <th class="col-standings-games num" style="width:80px;" aria-sort={ariaSort('games', sortKey, sortDir)}>
+            <button class="sort-head-btn" class:is-sorted={sortKey === 'games'} type="button" on:click={() => toggleSort('games')}>
               Games
               {#if sortKey === 'games'}
                 <span class="sort-indicator">{sortDir === 'asc' ? '↑' : '↓'}</span>
               {/if}
             </button>
           </th>
-          <th class="col-standings-avg" style="width:110px;">
-            <button class="sort-head-btn" type="button" on:click={() => toggleSort('avg')}>
+          <th class="col-standings-avg num" style="width:110px;" aria-sort={ariaSort('avg', sortKey, sortDir)}>
+            <button class="sort-head-btn" class:is-sorted={sortKey === 'avg'} type="button" on:click={() => toggleSort('avg')}>
               Avg place
               {#if sortKey === 'avg'}
                 <span class="sort-indicator">{sortDir === 'asc' ? '↑' : '↓'}</span>
               {/if}
             </button>
           </th>
-          <th class="col-standings-top2" style="width:110px;">
-            <button class="sort-head-btn" type="button" on:click={() => toggleSort('top2')}>
+          <th class="col-standings-top2 num" style="width:100px;" aria-sort={ariaSort('top2', sortKey, sortDir)}>
+            <button class="sort-head-btn" class:is-sorted={sortKey === 'top2'} type="button" on:click={() => toggleSort('top2')}>
               Top2%
               {#if sortKey === 'top2'}
                 <span class="sort-indicator">{sortDir === 'asc' ? '↑' : '↓'}</span>
@@ -436,9 +440,11 @@
       <tbody>
         {#each visibleStandings as row (row.player_id)}
           {@const href = playerHref(row.player_id)}
+          {@const rank = displayRank(row)}
+          {@const spTone = signTone(row.total_points_with_adjustments, 1)}
           <tr>
             <td>
-              <a class="standings-row-link" {href} tabindex="-1">{displayRank(row) ?? '-'}</a>
+              <a class="standings-row-link" {href} tabindex="-1"><span class="rank-led" data-rank={rank}>{rank ?? '-'}</span></a>
             </td>
             <td class="cell-player">
               <a class="standings-row-link" {href}>
@@ -448,13 +454,17 @@
                 {/if}
               </a>
             </td>
-            <td><a class="standings-row-link" {href} tabindex="-1">{fmtFixed(row.total_points_with_adjustments, 1)}</a></td>
+            <td class="num">
+              <a class="standings-row-link" {href} tabindex="-1">
+                <span class="led" class:led-pos={spTone === 'pos'} class:led-neg={spTone === 'neg'}>{fmtSigned(row.total_points_with_adjustments, 1, true)}</span>
+              </a>
+            </td>
             {#if !data.isCasual}
-              <td class="col-standings-rating"><a class="standings-row-link" {href} tabindex="-1">{row.rating == null ? '—' : fmtNum(row.rating, 0)}</a></td>
+              <td class="col-standings-rating num"><a class="standings-row-link" {href} tabindex="-1">{row.rating == null ? '—' : fmtNum(row.rating, 0)}</a></td>
             {/if}
-            <td class="col-standings-games"><a class="standings-row-link" {href} tabindex="-1">{row.games_played}</a></td>
-            <td class="col-standings-avg"><a class="standings-row-link" {href} tabindex="-1">{fmtFixed(row.avg_placement, 2)}</a></td>
-            <td class="col-standings-top2"><a class="standings-row-link" {href} tabindex="-1">{fmtPct(row.top2_rate)}</a></td>
+            <td class="col-standings-games num"><a class="standings-row-link" {href} tabindex="-1">{row.games_played}</a></td>
+            <td class="col-standings-avg num"><a class="standings-row-link" {href} tabindex="-1">{fmtFixed(row.avg_placement, 2)}</a></td>
+            <td class="col-standings-top2 num"><a class="standings-row-link" {href} tabindex="-1">{fmtPct(row.top2_rate)}</a></td>
           </tr>
         {/each}
         {#if visibleStandings.length === 0}
@@ -474,8 +484,11 @@
 </div>
 
 <div class="card">
-  <div style="font-size:1.05rem; font-weight:650;">Recent matches</div>
-  <div class="muted">Last 10 finalized matches.</div>
+  <div class="title-row">
+    <span class="led-tag" lang="ja" aria-hidden="true">対局</span>
+    <h2 class="card-title">Recent matches</h2>
+  </div>
+  <div class="muted" style="margin-top:4px;">Last 10 finalized matches.</div>
 
   <div style="margin-top:12px; overflow:auto;">
     <table class="recent-table">
@@ -484,8 +497,8 @@
           <th>Date</th>
           <th>Match</th>
           <th class="col-recent-winner">Winner</th>
-          <th class="col-recent-top" style="width:90px;">Top score</th>
-          <th class="col-recent-sp" style="width:100px;">SP spread</th>
+          <th class="col-recent-top num" style="width:100px;">Top score</th>
+          <th class="col-recent-sp num" style="width:100px;">SP spread</th>
         </tr>
       </thead>
       <tbody>
@@ -508,8 +521,14 @@
                 {/if}
               {/if}
             </td>
-            <td class="col-recent-top">{m.top_raw_points == null ? '—' : fmtNum(m.top_raw_points, 0)}</td>
-            <td class="col-recent-sp">{m.sp_spread == null ? '—' : fmtNum(m.sp_spread, 1)}</td>
+            <td class="col-recent-top num">
+              {#if m.top_raw_points == null}
+                —
+              {:else}
+                <span class="led led-red">{fmtNum(m.top_raw_points, 0)}</span>
+              {/if}
+            </td>
+            <td class="col-recent-sp num">{m.sp_spread == null ? '—' : fmtNum(m.sp_spread, 1)}</td>
           </tr>
         {/each}
         {#if data.recentMatches.length === 0}

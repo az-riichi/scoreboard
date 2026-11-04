@@ -1,16 +1,16 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
+  import { seasonKanji } from '$lib/mahjong';
 
   export let data: any;
 </script>
 
 <div class="card">
-  <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-    <div>
-      <div style="font-size:1.1rem; font-weight:650;">Seasons</div>
-      <div class="muted">Pick a season to view standings and stats</div>
-    </div>
+  <div class="title-row">
+    <span class="led-tag" lang="ja" aria-hidden="true">季</span>
+    <h1 class="page-title">Seasons</h1>
   </div>
+  <div class="muted" style="margin-top:4px;">Pick a season to view standings and stats</div>
 
   <div style="margin-top:12px; overflow:auto;">
     <table>
@@ -25,10 +25,19 @@
       <tbody>
         {#each data.seasons as s}
           <tr use:clickableRow={`/season/${s.id}`}>
-            <td><a href={`/season/${s.id}`} style="text-decoration:none;">{s.name}</a></td>
-            <td>{s.is_casual ? 'Casual' : 'Regular'}</td>
+            <td>
+              <a href={`/season/${s.id}`} class="wind-cell" style="text-decoration:none; font-weight:600;">
+                <span class="wind" class:is-lit={s.is_active} lang="ja" aria-hidden="true">{seasonKanji(s.name, s.is_casual)}</span>
+                {s.name}
+              </a>
+            </td>
+            <td><span class="tag">{s.is_casual ? 'Casual' : 'Regular'}</span></td>
             <td>{s.is_casual ? 'No time limit' : `${s.start_date} → ${s.end_date}`}</td>
-            <td>{s.is_active ? 'Yes' : ''}</td>
+            <td>
+              {#if s.is_active}
+                <span class="status-live"><span class="led-dot is-on is-blink" aria-hidden="true"></span>Active</span>
+              {/if}
+            </td>
           </tr>
         {/each}
         {#if data.seasons.length === 0}

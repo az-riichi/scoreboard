@@ -151,46 +151,85 @@
     box-sizing: border-box;
   }
 
-  .searchable-select input[type='search']:focus {
-    border-color: var(--btn-primary-bg);
-    outline: none;
+  .searchable-select input[type='search'] {
+    padding-right: 32px;
+    background-image: var(--select-arrow);
+    background-repeat: no-repeat;
+    background-position: right 11px center;
+    background-size: 11px 8px;
+  }
+
+  .searchable-select input[type='search'][aria-invalid='true'] {
+    border-color: var(--neg);
   }
 
   .option-list {
     position: absolute;
     inset: calc(100% + 4px) 0 auto;
     z-index: 40;
-    max-height: 240px;
+    max-height: 260px;
     overflow-y: auto;
     padding: 4px;
     border: 1px solid var(--field-border);
-    border-radius: 12px;
-    background: var(--field-bg);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+    border-radius: 9px;
+    background: var(--card-bg);
+    box-shadow: var(--raised-shadow);
   }
 
   .option {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 9px;
     width: 100%;
     padding: 8px 10px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 6px;
     background: transparent;
     color: var(--text);
     font: inherit;
+    font-size: 0.95rem;
     text-align: left;
     cursor: pointer;
   }
 
+  .option::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--led-dim);
+  }
+
   .option.is-active,
-  .option:hover {
-    background: var(--pill-bg);
+  .option:hover:not(:disabled) {
+    background: var(--row-hover);
+  }
+
+  .option.is-active::before {
+    background: var(--led-teal);
+    box-shadow: 0 0 6px var(--led-teal);
+  }
+
+  .option[aria-selected='true'] {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .option[aria-selected='true']::before {
+    background: var(--led-green);
+    box-shadow: 0 0 6px var(--led-green);
   }
 
   .option:disabled {
     color: var(--muted);
     cursor: not-allowed;
-    opacity: 0.75;
+    opacity: 0.7;
+  }
+
+  .option:disabled::before {
+    background: var(--led-red);
+    opacity: 0.6;
   }
 
   .empty-option {

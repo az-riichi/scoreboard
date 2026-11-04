@@ -22,34 +22,37 @@
   $: canAddMatches = hasAdminPermission(access, 'add_matches');
 </script>
 
-<div class="card" style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end; margin-bottom:12px;">
+<div class="card card-head" style="margin-bottom:12px;">
   <div>
-    <div style="font-size:1.1rem; font-weight:650;">Admin</div>
+    <div class="title-row">
+      <span class="led-tag" lang="ja" aria-hidden="true">管理</span>
+      <h1 class="page-title">Admin</h1>
+    </div>
     <div class="muted">The tools available to your account are shown below</div>
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     {#if canManageSeasons}
-      <a class="btn" href="/admin/seasons" style="text-decoration:none;">Seasons</a>
+      <a class="btn" href="/admin/seasons">Seasons</a>
     {/if}
     {#if canManagePlayers}
-      <a class="btn" href="/admin/players" style="text-decoration:none;">Players</a>
+      <a class="btn" href="/admin/players">Players</a>
     {/if}
     {#if hasAdminPermission(access, 'manage_discipline')}
-      <a class="btn" href="/admin/discipline" style="text-decoration:none;">Discipline</a>
+      <a class="btn" href="/admin/discipline">Discipline</a>
     {/if}
     {#if hasAdminPermission(access, 'manage_permissions')}
-      <a class="btn" href="/admin/permissions" style="text-decoration:none;">Permissions</a>
+      <a class="btn" href="/admin/permissions">Permissions</a>
     {/if}
     {#if canManageMatches}
-      <a class="btn primary" href="/admin/matches" style="text-decoration:none;">Matches</a>
+      <a class="btn primary" href="/admin/matches">Matches</a>
     {/if}
   </div>
 </div>
 
 {#if canAddMatches}
   <div class="card">
-    <div style="font-size:1.05rem; font-weight:650;">Draft matches</div>
-    <div class="muted">Matches not yet finalized (not public)</div>
+    <h2 class="card-title">Draft matches</h2>
+    <div class="muted" style="margin-top:4px;">Matches not yet finalized (not public)</div>
 
     <div style="margin-top:12px; overflow:auto;">
       <table>
@@ -65,7 +68,7 @@
             <tr use:clickableRow={`/admin/match/${m.id}`}>
               <td>{fmtDateTime(m.played_at)}</td>
               <td>{m.table_label ?? m.id.slice(0,8)}</td>
-              <td><a class="btn" href={`/admin/match/${m.id}`} style="text-decoration:none;">Open</a></td>
+              <td class="num"><a class="btn" href={`/admin/match/${m.id}`}>Open</a></td>
             </tr>
           {/each}
           {#if data.drafts.length === 0}

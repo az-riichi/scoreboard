@@ -80,10 +80,13 @@
 
 <div class="card page-heading">
   <div>
-    <div class="heading-title">Permissions</div>
-    <div class="muted">Grant administrative tools to individual accounts</div>
+    <div class="title-row">
+      <span class="led-tag" lang="ja" aria-hidden="true">権限</span>
+      <h1 class="page-title">Permissions</h1>
+    </div>
+    <div class="muted" style="margin-top:4px;">Grant administrative tools to individual accounts</div>
   </div>
-  <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
+  <a class="btn" href="/admin">Back</a>
 </div>
 
 {#if !data.hasOwner}
@@ -211,11 +214,6 @@
     margin-bottom: 12px;
   }
 
-  .heading-title {
-    font-size: 1.1rem;
-    font-weight: 650;
-  }
-
   .owner-notice,
   .action-message {
     margin-bottom: 12px;
@@ -238,7 +236,11 @@
   }
 
   .account-selector label {
-    font-weight: 700;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
 
   .account-card {
@@ -275,14 +277,16 @@
     display: inline-flex;
     align-items: center;
     min-height: 26px;
+    box-sizing: border-box;
     padding: 3px 9px;
     border: 1px solid var(--card-border);
-    border-radius: 999px;
-    background: var(--card-bg);
+    border-radius: 6px;
+    background: var(--pill-bg);
     color: var(--muted);
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .role-admin {
@@ -310,8 +314,8 @@
   .readonly-note {
     padding: 9px 11px;
     border: 1px solid var(--card-border);
-    border-radius: 10px;
-    background: var(--bg);
+    border-radius: 8px;
+    background: var(--pill-bg);
     font-size: 0.9rem;
     font-weight: 600;
   }
@@ -327,13 +331,16 @@
     margin: 0;
     padding: 12px;
     border: 1px solid var(--card-border);
-    border-radius: 12px;
+    border-radius: 8px;
   }
 
   .permission-group legend {
     padding: 0 6px;
-    font-size: 0.9rem;
+    font-size: 0.75rem;
     font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
 
   .permission-options {
@@ -379,7 +386,7 @@
   .super-option {
     padding: 12px;
     border: 1px solid var(--alert-warning-border);
-    border-radius: 12px;
+    border-radius: 8px;
     background: var(--alert-warning-bg);
   }
 

@@ -59,8 +59,11 @@
 </style>
 
 <div class="card auth-card">
-  <h2 style="margin:0 0 10px;">Sign in</h2>
-  <p class="muted" style="margin-top:0;">Linked players can review their private discipline status. Admins can manage club records and results.</p>
+  <div class="title-row">
+    <span class="led-tag" lang="ja" aria-hidden="true">入室</span>
+    <h1 class="page-title">Sign in</h1>
+  </div>
+  <p class="muted" style="margin:8px 0 16px;">Linked players can review their private discipline status. Admins can manage club records and results.</p>
 
   {#if data?.notice}
     <div class="card alert alert-success" role="status">
@@ -95,9 +98,9 @@
     <button class="btn primary" type="submit">Sign in</button>
   </form>
 
-  <hr style="border:none; border-top:1px solid #eee; margin: 18px 0;" />
+  <hr class="divider" />
 
-  <h3 style="margin:0 0 10px;">Create an account</h3>
+  <h2 class="card-title" style="margin-bottom:10px;">Create an account</h2>
   <form method="POST" action="?/signUp" style="display:grid; gap:10px;">
     <input type="hidden" name="next" value={data?.next ?? ''} />
     <label>
@@ -113,10 +116,10 @@
     <button class="btn" type="submit">Sign up</button>
   </form>
 
-  <hr style="border:none; border-top:1px solid #eee; margin: 18px 0;" />
+  <hr class="divider" />
 
-  <h3 style="margin:0 0 10px;">Reset password</h3>
-  <p class="muted" style="margin-top:0;">Enter your account email and we’ll send you a link to choose a new password.</p>
+  <h2 class="card-title" style="margin-bottom:6px;">Reset password</h2>
+  <p class="muted" style="margin:0 0 10px;">Enter your account email and we’ll send you a link to choose a new password.</p>
   <form
     method="POST"
     action="?/requestPasswordReset"

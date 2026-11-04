@@ -17,12 +17,15 @@
 </script>
 
 <div class="card" style="margin-bottom:12px;">
-  <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
+  <div class="card-head">
     <div>
-      <div style="font-size:1.1rem; font-weight:650;">Seasons</div>
+      <div class="title-row">
+        <span class="led-tag" lang="ja" aria-hidden="true">季</span>
+        <h1 class="page-title">Seasons</h1>
+      </div>
       <div class="muted">Create and manage seasons</div>
     </div>
-    <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
+    <a class="btn" href="/admin">Back</a>
   </div>
 </div>
 
@@ -34,8 +37,8 @@
 
 {#if canManageSeasons}
   <div class="card" style="margin-bottom:12px;">
-    <h3 style="margin:0 0 10px;">Create regular season</h3>
-    <div class="muted" style="margin-bottom:10px;">Casual is a permanent, date-free category and is created automatically.</div>
+    <h2 class="card-title">Create regular season</h2>
+    <div class="muted" style="margin:4px 0 12px;">Casual is a permanent, date-free category and is created automatically.</div>
     <form method="POST" action="?/create" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
       <label style="min-width:240px;">
         <div class="muted">Name</div>
@@ -60,8 +63,8 @@
 
 {#if canImportMatches}
   <div class="card" style="margin-bottom:12px;">
-    <h3 style="margin:0 0 10px;">Import season matches (Excel)</h3>
-    <div class="muted" style="margin-bottom:10px;">
+    <h2 class="card-title">Import season matches (Excel)</h2>
+    <div class="muted" style="margin:4px 0 10px;">
       Header must include: Date, Game, Tbl, E/S/W/N Player, E/S/W/N Pts, Ex
     </div>
     <div class="muted" style="margin-bottom:10px;">
@@ -106,8 +109,8 @@
 {/if}
 
 <div class="card">
-  <h3 style="margin:0 0 10px;">Existing</h3>
-  <div style="overflow:auto;">
+  <h2 class="card-title">Existing</h2>
+  <div style="overflow:auto; margin-top:12px;">
     <table>
       <thead>
         <tr>
@@ -120,10 +123,14 @@
       <tbody>
         {#each data.seasons as s}
           <tr>
-            <td>{s.name}</td>
-            <td>{s.is_casual ? 'Casual' : 'Regular'}</td>
+            <td style="font-weight:600;">{s.name}</td>
+            <td><span class="tag">{s.is_casual ? 'Casual' : 'Regular'}</span></td>
             <td>{s.is_casual ? 'No time limit' : `${s.start_date} → ${s.end_date}`}</td>
-            <td>{s.is_active ? 'Yes' : ''}</td>
+            <td>
+              {#if s.is_active}
+                <span class="status-live"><span class="led-dot is-on" aria-hidden="true"></span>Active</span>
+              {/if}
+            </td>
           </tr>
         {/each}
       </tbody>

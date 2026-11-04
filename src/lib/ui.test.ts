@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fmtDate, fmtDateTime, fmtFixed, fmtNum, fmtPct } from './ui';
+import { fmtDate, fmtDateTime, fmtFixed, fmtNum, fmtPct, fmtSigned, signTone } from './ui';
 
 describe('cached UI formatters', () => {
   it('preserves local date and date-time formatting', () => {
@@ -43,5 +43,17 @@ describe('cached UI formatters', () => {
     expect(fmtFixed(Infinity, 1)).toBe('0.0');
     expect(fmtFixed(undefined, 0)).toBe('0');
     expect(fmtPct(0.555)).toBe('56%');
+  });
+
+  it('signs scores and leaves values that round to zero unsigned', () => {
+    expect(fmtSigned(62.3, 2)).toBe(`+${fmtNum(62.3, 2)}`);
+    expect(fmtSigned(-53, 1, true)).toBe(`−${fmtFixed(53, 1)}`);
+    expect(fmtSigned(0.004, 2)).toBe(fmtNum(0, 2));
+    expect(fmtSigned(-0.04, 1, true)).toBe(fmtFixed(0, 1));
+    expect(fmtSigned(null, 1, true)).toBe(fmtFixed(0, 1));
+    expect(signTone(12)).toBe('pos');
+    expect(signTone(-0.2, 1)).toBe('neg');
+    expect(signTone(-0.004)).toBe('');
+    expect(signTone(undefined)).toBe('');
   });
 });

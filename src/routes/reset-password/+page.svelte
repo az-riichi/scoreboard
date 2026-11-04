@@ -32,7 +32,10 @@
 </style>
 
 <div class="card auth-card">
-  <h2 style="margin:0 0 10px;">Choose a new password</h2>
+  <div class="title-row" style="margin-bottom:12px;">
+    <span class="led-tag" lang="ja" aria-hidden="true">再設定</span>
+    <h1 class="page-title">Choose a new password</h1>
+  </div>
 
   {#if form?.message}
     <div
@@ -79,8 +82,8 @@
   {/if}
 
   {#if !data.canReset}
-    <a class="btn" href="/login" style="text-decoration:none;">Back to sign in</a>
+    <a class="btn" href="/login">Back to sign in</a>
   {:else if form?.ok === true}
-    <a class="btn primary" href="/" style="text-decoration:none;">Continue</a>
+    <a class="btn primary" href="/">Continue</a>
   {/if}
 </div>

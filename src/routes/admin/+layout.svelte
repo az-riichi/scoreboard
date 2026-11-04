@@ -81,12 +81,11 @@
       align-items: center;
       gap: 10px;
       max-width: min(460px, calc(100vw - 32px));
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px solid var(--card-border);
-      background: var(--card-bg);
-      color: var(--text);
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--screen);
+      color: var(--led-amber);
+      box-shadow: inset 0 0 0 1px var(--screen-line), var(--raised-shadow);
       pointer-events: none;
     }
 
@@ -94,14 +93,16 @@
       width: 14px;
       height: 14px;
       border-radius: 999px;
-      border: 2px solid rgba(127, 127, 127, 0.25);
+      border: 2px solid rgba(255, 181, 46, 0.25);
       border-top-color: currentColor;
       animation: admin-submit-spin 0.8s linear infinite;
       flex: 0 0 auto;
     }
 
     .admin-submit-text {
-      font-weight: 600;
+      font-family: var(--font-led);
+      letter-spacing: 0.06em;
+      text-shadow: 0 0 6px var(--glow-amber);
       line-height: 1.2;
       white-space: nowrap;
       overflow: hidden;

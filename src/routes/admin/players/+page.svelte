@@ -34,12 +34,15 @@
 </script>
 
 <div class="card" style="margin-bottom:12px;">
-  <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
+  <div class="card-head">
     <div>
-      <div style="font-size:1.1rem; font-weight:650;">Players</div>
+      <div class="title-row">
+        <span class="led-tag" lang="ja" aria-hidden="true">雀士</span>
+        <h1 class="page-title">Players</h1>
+      </div>
       <div class="muted">View and manage the player roster</div>
     </div>
-    <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
+    <a class="btn" href="/admin">Back</a>
   </div>
 </div>
 
@@ -51,7 +54,7 @@
 
 {#if canAddPlayers}
   <div class="card" style="margin-bottom:12px;">
-    <h3 style="margin:0 0 10px;">Create player</h3>
+    <h2 class="card-title" style="margin-bottom:12px;">Create player</h2>
     <form method="POST" action="?/create" use:enhance style="display:flex; gap:10px; flex-wrap:nowrap; align-items:end; overflow-x:auto; padding-bottom:2px;">
       <label style="width:200px; flex:0 1 auto;">
         <div class="muted">Nickname</div>
@@ -88,8 +91,8 @@
 {/if}
 
 <div class="card">
-  <h3 style="margin:0 0 10px;">Roster</h3>
-  <div style="overflow:auto;">
+  <h2 class="card-title">Roster</h2>
+  <div style="overflow:auto; margin-top:12px;">
     <table>
       <thead>
         <tr>
@@ -113,7 +116,7 @@
             <tr>
               <td colspan={rosterColumnCount}>
                 {#if canEditPlayers}
-                  <h4 style="margin:2px 0 10px;">Player details</h4>
+                  <h3 class="card-title" style="margin:2px 0 10px; font-size:0.9rem;">Player details</h3>
                   <form method="POST" action="?/update" use:enhance style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; padding-bottom:2px;">
                     <input type="hidden" name="player_id" value={p.id} />
 
@@ -154,7 +157,7 @@
 
                 {#if canManagePlayerAccounts}
                   <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--table-border);">
-                    <h4 style="margin:0 0 10px;">Player account</h4>
+                    <h3 class="card-title" style="margin:0 0 10px; font-size:0.9rem;">Player account</h3>
                   <form method="POST" action="?/setClaim" use:enhance style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
                     <input type="hidden" name="player_id" value={p.id} />
 
@@ -215,7 +218,12 @@
                   {/if}
                 </td>
               {/if}
-              <td>{p.is_active ? 'Yes' : 'No'}</td>
+              <td>
+                <span class="tag">
+                  <span class="led-dot" class:is-on={p.is_active} aria-hidden="true"></span>
+                  {p.is_active ? 'Yes' : 'No'}
+                </span>
+              </td>
               {#if showActions}
                 <td>
                   <div style="display:flex; gap:8px; align-items:center; justify-content:flex-end;">

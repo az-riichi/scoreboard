@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { fmtNum } from '$lib/ui';
+  import { fmtNum, fmtSigned, signTone } from '$lib/ui';
+  import { ordinal, windKanji, windName } from '$lib/mahjong';
   import { fmtDateTimeArizona as fmtDateTime, toArizonaDatetimeLocalValue } from '$lib/arizona-time';
   import { ratingGamesAdjustment as gamesAdjustment } from '$lib/rating';
   import { hasAdminPermission } from '$lib/permissions';
@@ -302,13 +303,13 @@
     right: 0;
     z-index: 30;
     min-width: 220px;
-    padding: 10px;
+    padding: 12px;
     border-radius: 10px;
-    border: 1px solid rgba(0, 0, 0, 0.14);
-    background: var(--field-bg, #fff);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    border: 1px solid var(--card-border);
+    background: var(--card-bg);
+    box-shadow: var(--raised-shadow);
     display: grid;
-    gap: 8px;
+    gap: 10px;
   }
 
   .confirm-popover.align-left {
@@ -328,6 +329,49 @@
     flex-wrap: wrap;
   }
 
+  .seat-entry {
+    padding: 12px;
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    background: var(--pill-bg);
+  }
+
+  .seat-entry__label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .point-check {
+    margin: 0;
+  }
+
+  .point-check__title {
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .penalties > summary {
+    cursor: pointer;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .match-meta {
+    display: grid;
+    gap: 2px;
+    margin-top: 6px;
+  }
+
   @media (max-width: 720px) {
     .result-entry-row {
       grid-template-columns: 1fr;
@@ -336,35 +380,44 @@
 </style>
 
 <div class="card" style="margin-bottom:12px;">
-  <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:end;">
+  <div class="card-head">
     <div>
-      <div style="font-size:1.1rem; font-weight:650;">Edit match</div>
-      <div class="muted">{season?.name ?? 'Unknown season'}{isCasual ? ' · Casual' : ''}</div>
-      <div class="muted">{fmtDateTime(match.played_at)} — {match.table_label ?? match.id.slice(0,8)} — {match.status}</div>
-      <div class="muted">Tbl: {match.table_mode ?? '—'} | Game: {match.game_number ?? '—'} | Ex: {match.extra_sticks ?? 0}</div>
-      {#if isCasual}
-        <div class="muted">Event: {casualEventName ?? 'Uncategorized'}</div>
-      {/if}
-      <div style="font-size:0.8rem; color:#888;">UUID: <code>{match.id}</code></div>
-      {#if match.notes}
-        <div class="muted">Note: {match.notes}</div>
-      {/if}
+      <div class="title-row">
+        <span class="led-tag" lang="ja" aria-hidden="true">対局</span>
+        <h1 class="page-title">Edit match</h1>
+        <span class="tag">
+          <span class="led-dot" class:is-on={isFinal} class:is-amber={!isFinal} aria-hidden="true"></span>
+          {match.status}
+        </span>
+      </div>
+      <div class="match-meta">
+        <div class="muted">{season?.name ?? 'Unknown season'}{isCasual ? ' · Casual' : ''}</div>
+        <div class="muted">{fmtDateTime(match.played_at)} — {match.table_label ?? match.id.slice(0,8)}</div>
+        <div class="muted">Tbl: {match.table_mode ?? '—'} | Game: {match.game_number ?? '—'} | Ex: {match.extra_sticks ?? 0}</div>
+        {#if isCasual}
+          <div class="muted">Event: {casualEventName ?? 'Uncategorized'}</div>
+        {/if}
+        <div class="uuid">UUID: <code>{match.id}</code></div>
+        {#if match.notes}
+          <div class="muted">Note: {match.notes}</div>
+        {/if}
+      </div>
     </div>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <a class="btn" href="/admin/matches" style="text-decoration:none;">Back</a>
+      <a class="btn" href="/admin/matches">Back</a>
       {#if isFinal}
-        <a class="btn" href={`/match/${match.id}`} style="text-decoration:none;">Public view</a>
+        <a class="btn" href={`/match/${match.id}`}>Public view</a>
       {/if}
       {#if canRemoveMatches}
         <form method="POST" action="?/deleteGame" on:submit={() => closeConfirm()}>
           <div class="confirm-anchor">
-            <button class="btn" type="button" on:click={() => toggleConfirm('delete')}>Delete game</button>
+            <button class="btn danger" type="button" on:click={() => toggleConfirm('delete')}>Delete game</button>
             {#if confirmAction === 'delete'}
               <div class="confirm-popover" role="dialog" aria-label="Confirm delete game">
                 <div class="confirm-popover-text">Delete this game? This cannot be undone.</div>
                 <div class="confirm-popover-actions">
                   <button class="btn" type="button" on:click={closeConfirm}>Cancel</button>
-                  <button class="btn" type="submit">Delete</button>
+                  <button class="btn danger" type="submit">Delete</button>
                 </div>
               </div>
             {/if}
@@ -389,8 +442,8 @@
 
 {#if canAddMatches}
   <div class="card" style="margin-bottom:12px;">
-    <div style="font-size:1.05rem; font-weight:650;">Match metadata</div>
-  <div class="muted">Game # / table label are auto-generated. Times are Arizona (MST).</div>
+    <h2 class="card-title">Match metadata</h2>
+  <div class="muted" style="margin-top:4px;">Game # / table label are auto-generated. Times are Arizona (MST).</div>
 
   <form method="POST" action="?/saveMatchMeta" style="display:grid; gap:10px; margin-top:12px;">
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
@@ -501,8 +554,9 @@
 
 <div class="grid2">
   <div class="card">
-    <div style="font-size:1.05rem; font-weight:650;">
-      {canAddMatches ? 'Results entry (raw points)' : 'Match results'}
+    <div class="title-row">
+      <span class="led-tag" lang="ja" aria-hidden="true">結果</span>
+      <h2 class="card-title">{canAddMatches ? 'Results entry (raw points)' : 'Match results'}</h2>
     </div>
     {#if canAddMatches && !isCasual}
       <div class="muted" style="margin-top:4px;">Suspended and banned players are unavailable for competitive matches.</div>
@@ -511,8 +565,11 @@
     {#if canAddMatches}
       <form method="POST" action="?/saveResults" style="display:grid; gap:10px; margin-top:12px;" on:submit={closeConfirm}>
         {#each entries as row, i (row.seat)}
-          <div class="card" style="border-radius:14px;">
-            <div class="muted" style="margin-bottom:6px;">Seat {row.seat}</div>
+          <div class="seat-entry">
+            <div class="seat-entry__label">
+              <span class="wind" class:is-lit={row.seat === 'E'} lang="ja" aria-hidden="true">{windKanji(row.seat)}</span>
+              Seat {row.seat} · {windName(row.seat)}
+            </div>
             <div class="result-entry-row">
               <SearchableSelect
                 name={`p_${row.seat}`}
@@ -547,7 +604,7 @@
                   <div class="confirm-popover-actions">
                     <button class="btn" type="button" on:click={closeConfirm}>Cancel</button>
                     <button
-                      class="btn"
+                      class="btn primary"
                       type="submit"
                       formmethod="POST"
                       formaction="?/finalize"
@@ -569,7 +626,7 @@
     {/if}
 
     <div style="margin-top:14px;">
-      <div style="font-size:1.02rem; font-weight:650;">Expected outcomes</div>
+      <h3 class="card-title" style="font-size:0.92rem;">Expected outcomes</h3>
 
       <div style="margin-top:10px; overflow:auto;">
         <table>
@@ -577,31 +634,50 @@
             <tr>
               <th style="width:70px;">Seat</th>
               <th>Player</th>
-              <th style="width:120px;">Raw</th>
-              <th style="width:90px;">Place</th>
-              <th style="width:130px;">SP Δ</th>
+              <th class="num" style="width:110px;">Raw</th>
+              <th style="width:80px;">Place</th>
+              <th class="num" style="width:100px;">SP Δ</th>
               {#if !isCasual}
-                <th style="width:120px;">ΔR</th>
-                <th style="width:130px;">New R</th>
+                <th class="num" style="width:100px;">ΔR</th>
+                <th class="num" style="width:110px;">New R</th>
               {/if}
             </tr>
           </thead>
           <tbody>
             {#each expectedRows as row}
+              {@const clubTone = signTone(row.expected_club)}
+              {@const rTone = signTone(row.expected_r_delta)}
               <tr>
-                <td>{row.seat}</td>
+                <td>
+                  <span class="wind-cell">
+                    <span class="wind" class:is-lit={row.seat === 'E'} lang="ja" aria-hidden="true">{windKanji(row.seat)}</span>
+                    <span class="wind-letter"><span class="sr-only">{windName(row.seat)}</span><span aria-hidden="true">{row.seat}</span></span>
+                  </span>
+                </td>
                 <td>
                   {row.player_name_primary}
                   {#if row.player_name_secondary}
                     <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
                   {/if}
                 </td>
-                <td>{row.has_raw_points ? row.raw_points : '—'}</td>
-                <td>{row.display_placement ?? '—'}</td>
-                <td>{row.expected_club == null ? '—' : fmtNum(row.expected_club, 2)}</td>
+                <td class="num">
+                  {#if row.has_raw_points}
+                    <span class="led led-red">{fmtNum(row.raw_points, 0)}</span>
+                  {:else}
+                    —
+                  {/if}
+                </td>
+                <td>
+                  {#if row.display_placement == null}
+                    —
+                  {:else}
+                    <span class="place-chip" data-place={row.display_placement}>{ordinal(row.display_placement)}</span>
+                  {/if}
+                </td>
+                <td class="num" class:pos={clubTone === 'pos'} class:neg={clubTone === 'neg'}>{row.expected_club == null ? '—' : fmtSigned(row.expected_club, 2)}</td>
                 {#if !isCasual}
-                  <td>{row.expected_r_delta == null ? '—' : fmtNum(row.expected_r_delta, 2)}</td>
-                  <td>{row.expected_new_rate == null ? '—' : fmtNum(row.expected_new_rate, 2)}</td>
+                  <td class="num" class:pos={rTone === 'pos'} class:neg={rTone === 'neg'}>{row.expected_r_delta == null ? '—' : fmtSigned(row.expected_r_delta, 2)}</td>
+                  <td class="num">{row.expected_new_rate == null ? '—' : fmtNum(row.expected_new_rate, 2)}</td>
                 {/if}
               </tr>
             {/each}
@@ -618,19 +694,19 @@
   </div>
 
   <div class="card">
-    <div style="font-size:1.05rem; font-weight:650;">Point check</div>
+    <div class="title-row">
+      <span class="led-tag" lang="ja" aria-hidden="true">点数</span>
+      <h2 class="card-title">Point check</h2>
+    </div>
 
     <div style="margin-top:12px; display:grid; gap:10px;">
-      <div class="card" style="border-radius:14px;">
-        <div class="muted">Raw total</div>
-        <div style="font-size:1.2rem; font-weight:700;">{rawTotal}</div>
+      <div class="stat-tile">
+        <div class="stat-label">Raw total</div>
+        <span class="led led-md" class:led-pos={totalCheckOk} class:led-amber={!totalCheckOk} style="justify-self:start;">{fmtNum(rawTotal, 0)}</span>
       </div>
 
-      <div
-        class="card"
-        style={`border-radius:14px; border-color:${totalCheckOk ? 'var(--alert-success-border)' : 'var(--alert-warning-border)'}; background:${totalCheckOk ? 'var(--alert-success-bg)' : 'var(--alert-warning-bg)'}; color:${totalCheckOk ? 'var(--alert-success-text)' : 'var(--alert-warning-text)'};`}
-      >
-        <div style="font-weight:650; margin-bottom:4px;">
+      <div class="card alert point-check" class:alert-success={totalCheckOk} class:alert-warning={!totalCheckOk}>
+        <div class="point-check__title">
           {#if !allRawPointsEntered}
             Point total check: enter all scores
           {:else if totalCheckOk}
@@ -653,8 +729,8 @@
       </div>
 
       {#if canManagePenalties}
-        <details class="card" style="border-radius:14px;">
-          <summary style="cursor:pointer; font-weight:650;">Penalties / Chombo ({data.penalties.length})</summary>
+        <details class="stat-tile penalties">
+          <summary>Penalties / Chombo ({data.penalties.length})</summary>
         <div class="muted" style="margin-top:8px;">
           Penalties adjust Season Points (SP) only. They do not change Rating (R)
         </div>
@@ -704,13 +780,13 @@
               {#each data.penalties as p}
                 <tr>
                   <td>{p.player_label}</td>
-                  <td>{fmtNum(p.points, 2)}</td>
+                  <td class:pos={signTone(p.points) === 'pos'} class:neg={signTone(p.points) === 'neg'}>{fmtSigned(p.points, 2)}</td>
                   <td>{p.reason_code}</td>
                   <td>{fmtDateTime(p.created_at)}</td>
                   <td>
                     <form method="POST" action="?/removePenalty">
                       <input type="hidden" name="adjustment_id" value={p.id} />
-                      <button class="btn" type="submit">Remove</button>
+                      <button class="btn danger" type="submit">Remove</button>
                     </form>
                   </td>
                 </tr>

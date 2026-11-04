@@ -43,14 +43,9 @@
     flex-wrap: wrap;
   }
 
-  .page-title {
-    font-size: 1.1rem;
-    font-weight: 650;
-  }
-
-  .section-title {
-    font-size: 1.05rem;
-    font-weight: 650;
+  .page-heading .muted,
+  .section-heading .muted {
+    margin-top: 4px;
   }
 
   .player-form,
@@ -92,58 +87,14 @@
     margin-top: 12px;
   }
 
-  .summary-item {
-    border: 1px solid var(--table-border);
-    border-radius: 14px;
-    padding: 12px;
-    min-width: 0;
-  }
-
   .summary-value {
-    margin-top: 4px;
-    font-size: 1.2rem;
-    font-weight: 700;
-  }
-
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid;
-    border-radius: 999px;
-    padding: 4px 9px;
-    font-size: 0.84rem;
-    font-weight: 700;
-    line-height: 1.2;
-  }
-
-  .status-clear {
-    color: var(--alert-success-text);
-    border-color: var(--alert-success-border);
-    background: var(--alert-success-bg);
-  }
-
-  .status-strike,
-  .status-suspension {
-    color: var(--alert-warning-text);
-    border-color: var(--alert-warning-border);
-    background: var(--alert-warning-bg);
-  }
-
-  .status-ban {
-    color: var(--alert-error-text);
-    border-color: var(--alert-error-border);
-    background: var(--alert-error-bg);
-  }
-
-  .status-muted {
-    color: var(--muted);
-    border-color: var(--pill-border);
-    background: var(--pill-bg);
+    justify-self: start;
   }
 
   .current-action {
     margin-top: 10px;
     border-left: 4px solid var(--alert-warning-border);
+    box-shadow: none;
   }
 
   .current-action.status-ban-border {
@@ -176,6 +127,8 @@
     gap: 7px;
     flex-wrap: wrap;
     font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
   .history-row-revoked {
@@ -213,9 +166,9 @@
     margin-top: 8px;
     padding: 10px;
     border: 1px solid var(--card-border);
-    border-radius: 12px;
+    border-radius: 10px;
     background: var(--card-bg);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--raised-shadow);
   }
 
   .revoke-form input,
@@ -247,10 +200,13 @@
 <div class="card" style="margin-bottom:12px;">
   <div class="page-heading">
     <div>
-      <div class="page-title">Discipline management</div>
+      <div class="title-row">
+        <span class="led-tag" lang="ja" aria-hidden="true">規律</span>
+        <h1 class="page-title">Discipline management</h1>
+      </div>
       <div class="muted">Issue, review, and revoke private player discipline actions</div>
     </div>
-    <a class="btn" href="/admin" style="text-decoration:none;">Back</a>
+    <a class="btn" href="/admin">Back</a>
   </div>
 </div>
 
@@ -261,7 +217,7 @@
 {/if}
 
 <div class="card" style="margin-bottom:12px;">
-  <div class="section-title">Choose a player</div>
+  <h2 class="card-title">Choose a player</h2>
   <form method="GET" class="player-form">
     <label class="field">
       <span class="muted">Player</span>
@@ -283,24 +239,24 @@
   <div class="card" style="margin-bottom:12px;">
     <div class="section-heading">
       <div>
-        <div class="section-title">{selectedPlayer.label}</div>
+        <h2 class="card-title title-plain">{selectedPlayer.label}</h2>
         <div class="muted">Current discipline summary</div>
       </div>
       <span class={`status-badge ${statusTone(summary?.status)}`}>{statusLabel(summary?.status)}</span>
     </div>
 
     <div class="summary-grid">
-      <div class="summary-item">
-        <div class="muted">Active strikes</div>
-        <div class="summary-value">{summary?.activeStrikeCount ?? 0}</div>
+      <div class="stat-tile">
+        <div class="stat-label">Active strikes</div>
+        <span class="led led-md summary-value" class:led-amber={(summary?.activeStrikeCount ?? 0) > 0}>{summary?.activeStrikeCount ?? 0}</span>
       </div>
-      <div class="summary-item">
-        <div class="muted">Suspensions issued</div>
-        <div class="summary-value">{summary?.suspensionCount ?? 0}</div>
+      <div class="stat-tile">
+        <div class="stat-label">Suspensions issued</div>
+        <span class="led led-md summary-value" class:led-amber={(summary?.suspensionCount ?? 0) > 0}>{summary?.suspensionCount ?? 0}</span>
       </div>
-      <div class="summary-item">
-        <div class="muted">Current status</div>
-        <div class="summary-value" style="font-size:1rem;">{statusLabel(summary?.status)}</div>
+      <div class="stat-tile">
+        <div class="stat-label">Current status</div>
+        <span class={`status-badge summary-value ${statusTone(summary?.status)}`}>{statusLabel(summary?.status)}</span>
       </div>
     </div>
 
@@ -331,8 +287,8 @@
   </div>
 
   <div class="card" style="margin-bottom:12px;">
-    <div class="section-title">Issue an action</div>
-    <div class="muted">The issue time is recorded automatically in Arizona time.</div>
+    <h2 class="card-title">Issue an action</h2>
+    <div class="muted" style="margin-top:4px;">The issue time is recorded automatically in Arizona time.</div>
 
     <form method="POST" action={`?player=${encodeURIComponent(selectedPlayer.id)}&/issue`} class="issue-form" on:submit={confirmIssue}>
       <input type="hidden" name="player_id" value={selectedPlayer.id} />
@@ -369,7 +325,7 @@
   <div class="card">
     <div class="section-heading">
       <div>
-        <div class="section-title">Action history</div>
+        <h2 class="card-title">Action history</h2>
         <div class="muted">Effective, expired, and revoked records for this player</div>
       </div>
       <span class="muted">{actions.length} {actions.length === 1 ? 'record' : 'records'}</span>
@@ -448,7 +404,7 @@
                             aria-label={`Reason for revoking this ${actionTypeLabel(action).toLowerCase()}`}
                           ></textarea>
                         </label>
-                        <button class="btn" type="submit">Revoke action</button>
+                        <button class="btn danger" type="submit">Revoke action</button>
                       </form>
                     </details>
                   </div>
@@ -465,7 +421,7 @@
   </div>
 {:else}
   <div class="card empty-state">
-    <div class="section-title">Select a player to begin</div>
+    <h2 class="card-title">Select a player to begin</h2>
     <div class="muted" style="margin-top:5px;">Their current status, complete action history, and management controls will appear here.</div>
   </div>
 {/if}
