@@ -695,7 +695,7 @@
 
   <div class="card">
     <div class="title-row">
-      <span class="led-tag" lang="ja" aria-hidden="true">点数</span>
+      <span class="led-tag" lang="ja" aria-hidden="true">点数確認</span>
       <h2 class="card-title">Point check</h2>
     </div>
 

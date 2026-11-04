@@ -32,16 +32,52 @@
       :root {
         --boot-bg: #e7ebef;
         --boot-grid: rgba(16, 24, 32, 0.08);
+        --boot-card: #ffffff;
+        --boot-card-line: #cbd4dd;
+        --boot-card-shadow: 0 18px 40px -18px rgba(15, 24, 32, 0.35);
+        --boot-text: #0f1820;
+        --boot-muted: #526272;
+        --boot-kicker: #06756f;
+        --boot-lamp: #e6eef0;
+        --boot-lamp-line: #c3d2d6;
+        --boot-lamp-off: #a9b6c2;
+        --boot-lit: #9a5700;
+        --boot-lit-bg: #fff1d6;
+        --boot-glow: transparent;
       }
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme='light']) {
           --boot-bg: #0a0e12;
           --boot-grid: rgba(220, 235, 250, 0.05);
+          --boot-card: #0a0f14;
+          --boot-card-line: #1d2935;
+          --boot-card-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.6);
+          --boot-text: #d3dee8;
+          --boot-muted: #9fb3c6;
+          --boot-kicker: #3fd9d0;
+          --boot-lamp: #04070a;
+          --boot-lamp-line: #1d2935;
+          --boot-lamp-off: #4d6073;
+          --boot-lit: #ffb52e;
+          --boot-lit-bg: #04070a;
+          --boot-glow: rgba(255, 181, 46, 0.7);
         }
       }
       html[data-theme='dark'] {
         --boot-bg: #0a0e12;
         --boot-grid: rgba(220, 235, 250, 0.05);
+        --boot-card: #0a0f14;
+        --boot-card-line: #1d2935;
+        --boot-card-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.6);
+        --boot-text: #d3dee8;
+        --boot-muted: #9fb3c6;
+        --boot-kicker: #3fd9d0;
+        --boot-lamp: #04070a;
+        --boot-lamp-line: #1d2935;
+        --boot-lamp-off: #4d6073;
+        --boot-lit: #ffb52e;
+        --boot-lit-bg: #04070a;
+        --boot-glow: rgba(255, 181, 46, 0.7);
       }
       #azrm-boot-splash {
         position: fixed;
@@ -61,16 +97,26 @@
         visibility: hidden;
         pointer-events: none;
       }
-      /* The console screen stays dark in both themes, like the rest of the LED readouts. */
       .azrm-boot-card {
         width: min(340px, calc(100vw - 48px));
         box-sizing: border-box;
         padding: 18px 18px 16px;
         border-radius: 14px;
-        background: radial-gradient(circle at 50% 30%, rgba(63, 217, 208, 0.08), transparent 65%), #0a0f14;
-        box-shadow: inset 0 0 0 1px #1d2935, 0 18px 40px -16px rgba(0, 0, 0, 0.6);
-        color: #d3dee8;
+        background: var(--boot-card);
+        box-shadow: inset 0 0 0 1px var(--boot-card-line), var(--boot-card-shadow);
+        color: var(--boot-text);
         font: 500 0.9rem/1.35 'Chakra Petch', 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+      }
+      .azrm-boot-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .azrm-boot-logo {
+        display: block;
+        width: 44px;
+        height: 44px;
+        flex-shrink: 0;
       }
       .azrm-boot-title {
         font-weight: 700;
@@ -78,7 +124,7 @@
         text-transform: uppercase;
       }
       .azrm-boot-kicker {
-        color: #3fd9d0;
+        color: var(--boot-kicker);
         font: 400 0.68rem/1.2 'DotGothic16', ui-monospace, Consolas, monospace;
         letter-spacing: 0.12em;
         text-transform: uppercase;
@@ -94,9 +140,9 @@
         width: 30px;
         height: 30px;
         border-radius: 7px;
-        background: #04070a;
-        box-shadow: inset 0 0 0 1px #1d2935;
-        color: #4d6073;
+        background: var(--boot-lamp);
+        box-shadow: inset 0 0 0 1px var(--boot-lamp-line);
+        color: var(--boot-lamp-off);
         font: 400 1rem/1 'DotGothic16', ui-monospace, Consolas, monospace;
         animation: azrm-boot-lamp 1.6s steps(1, end) infinite;
       }
@@ -105,16 +151,16 @@
       .azrm-boot-wind:nth-child(4) { animation-delay: 1.2s; }
       .azrm-boot-subtitle {
         margin-top: 12px;
-        color: #9fb3c6;
+        color: var(--boot-muted);
         font-size: 0.82rem;
       }
       @keyframes azrm-boot-lamp {
-        0% { color: #ffb52e; text-shadow: 0 0 8px rgba(255, 181, 46, 0.7); }
-        25% { color: #4d6073; text-shadow: none; }
+        0% { color: var(--boot-lit); background: var(--boot-lit-bg); text-shadow: 0 0 8px var(--boot-glow); }
+        25% { color: var(--boot-lamp-off); background: var(--boot-lamp); text-shadow: none; }
       }
       @media (prefers-reduced-motion: reduce) {
         .azrm-boot-wind { animation: none; }
-        .azrm-boot-wind:first-child { color: #ffb52e; }
+        .azrm-boot-wind:first-child { color: var(--boot-lit); background: var(--boot-lit-bg); }
       }
     </style>
     %sveltekit.head%
@@ -125,8 +171,13 @@
     </noscript>
     <div id="azrm-boot-splash" role="status" aria-live="polite" aria-label="Loading AZRM Scoreboard">
       <div class="azrm-boot-card">
-        <div class="azrm-boot-kicker">AZ Riichi Mahjong</div>
-        <div class="azrm-boot-title">AZRM Scoreboard</div>
+        <div class="azrm-boot-brand">
+          <img class="azrm-boot-logo" src="/azrm-logo.png" alt="" width="44" height="44" />
+          <div>
+            <div class="azrm-boot-kicker">AZ Riichi Mahjong</div>
+            <div class="azrm-boot-title">Scoreboard</div>
+          </div>
+        </div>
         <div class="azrm-boot-winds" aria-hidden="true" lang="ja">
           <span class="azrm-boot-wind">東</span>
           <span class="azrm-boot-wind">南</span>

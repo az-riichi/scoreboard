@@ -488,9 +488,9 @@
     border-radius: 50%;
   }
 
-  .legend-dot.is-sp { background: var(--led-teal); box-shadow: 0 0 6px var(--led-teal); }
-  .legend-dot.is-r { background: var(--led-amber); box-shadow: 0 0 6px var(--led-amber); }
-  .legend-dot.is-place { background: var(--led-green); box-shadow: 0 0 6px var(--led-green); }
+  .legend-dot.is-sp { background: var(--led-teal); box-shadow: 0 0 6px var(--glow-teal); }
+  .legend-dot.is-r { background: var(--led-amber); box-shadow: 0 0 6px var(--glow-amber); }
+  .legend-dot.is-place { background: var(--led-green); box-shadow: 0 0 6px var(--glow-green); }
 
   .history-chart {
     margin-top: 12px;
@@ -738,7 +738,7 @@
 
     <div class="card">
       <div class="title-row">
-        <span class="led-tag" lang="ja" aria-hidden="true">記録</span>
+        <span class="led-tag" lang="ja" aria-hidden="true">最高・最低</span>
         <h2 class="card-title">Best / worst games</h2>
       </div>
 
@@ -781,7 +781,7 @@
 
   <div class="card" style="margin-bottom:12px;">
     <div class="title-row">
-      <span class="led-tag" lang="ja" aria-hidden="true">推移</span>
+      <span class="led-tag" lang="ja" aria-hidden="true">成績推移</span>
       <h2 class="card-title">Match history</h2>
     </div>
 
@@ -992,7 +992,7 @@
 
   <div class="card">
       <div class="title-row">
-        <span class="led-tag" lang="ja" aria-hidden="true">対局</span>
+        <span class="led-tag" lang="ja" aria-hidden="true">対局履歴</span>
         <h2 class="card-title">Recent matches</h2>
       </div>
       <div class="muted" style="margin-top:4px;">Last 100 matches (most recent first).</div>

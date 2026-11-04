@@ -19,13 +19,14 @@ export function ordinal(place: unknown) {
   return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 }
 
-// Kanji shown on a season's LED tag: the time of year when the name says it, 遊 (play) for Casual.
+// Japanese label for a season's LED tag: the time of year when the name says it,
+// カジュアル for the unranked Casual category, otherwise シーズン.
 export function seasonKanji(name: unknown, isCasual = false) {
-  if (isCasual) return '遊';
+  if (isCasual) return 'カジュアル';
   const text = String(name ?? '').toLowerCase();
   if (text.includes('spring')) return '春';
   if (text.includes('summer')) return '夏';
   if (text.includes('fall') || text.includes('autumn')) return '秋';
   if (text.includes('winter')) return '冬';
-  return '季';
+  return 'シーズン';
 }

@@ -33,7 +33,7 @@
 
 <div class="card auth-card">
   <div class="title-row" style="margin-bottom:12px;">
-    <span class="led-tag" lang="ja" aria-hidden="true">再設定</span>
+    <span class="led-tag" lang="ja" aria-hidden="true">パスワード再設定</span>
     <h1 class="page-title">Choose a new password</h1>
   </div>
 

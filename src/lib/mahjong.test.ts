@@ -17,13 +17,13 @@ describe('mahjong display helpers', () => {
     expect(ordinal(undefined)).toBe('—');
   });
 
-  it('picks a seasonal kanji from the season name', () => {
+  it('picks a seasonal label from the season name', () => {
     expect(seasonKanji('Spring 2026')).toBe('春');
     expect(seasonKanji('Summer League')).toBe('夏');
     expect(seasonKanji('Fall 2026')).toBe('秋');
     expect(seasonKanji('Autumn Cup')).toBe('秋');
     expect(seasonKanji('Winter 2027')).toBe('冬');
-    expect(seasonKanji('Season 4')).toBe('季');
-    expect(seasonKanji('Fall 2026', true)).toBe('遊');
+    expect(seasonKanji('Season 4')).toBe('シーズン');
+    expect(seasonKanji('Fall 2026', true)).toBe('カジュアル');
   });
 });

@@ -102,10 +102,10 @@
   }
 
   .table-seat__pts {
-    color: var(--led-red);
+    color: var(--led-score);
     font-family: var(--font-led);
     font-size: 1rem;
-    text-shadow: 0 0 7px var(--glow-red);
+    text-shadow: 0 0 7px var(--glow-score);
   }
 
   .table-map .place-chip {
@@ -127,7 +127,7 @@
     gap: 3px;
     min-width: 0;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--screen-tint);
     box-shadow: inset 0 0 0 1px var(--screen-line);
     text-align: center;
   }
@@ -268,7 +268,7 @@
 <div class="card">
   {#if data.isCasual}
     <div class="title-row">
-      <span class="led-tag" lang="ja" aria-hidden="true">遊</span>
+      <span class="led-tag" lang="ja" aria-hidden="true">カジュアル</span>
       <h2 class="card-title">Casual match</h2>
     </div>
     <div class="muted" style="margin-top:8px;">

@@ -20,7 +20,7 @@
   <div class="card-head">
     <div>
       <div class="title-row">
-        <span class="led-tag" lang="ja" aria-hidden="true">季</span>
+        <span class="led-tag" lang="ja" aria-hidden="true">シーズン</span>
         <h1 class="page-title">Seasons</h1>
       </div>
       <div class="muted">Create and manage seasons</div>

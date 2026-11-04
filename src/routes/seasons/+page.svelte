@@ -7,7 +7,7 @@
 
 <div class="card">
   <div class="title-row">
-    <span class="led-tag" lang="ja" aria-hidden="true">季</span>
+    <span class="led-tag" lang="ja" aria-hidden="true">シーズン</span>
     <h1 class="page-title">Seasons</h1>
   </div>
   <div class="muted" style="margin-top:4px;">Pick a season to view standings and stats</div>

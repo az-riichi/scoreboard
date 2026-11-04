@@ -201,7 +201,7 @@
   <div class="page-heading">
     <div>
       <div class="title-row">
-        <span class="led-tag" lang="ja" aria-hidden="true">規律</span>
+        <span class="led-tag" lang="ja" aria-hidden="true">処分</span>
         <h1 class="page-title">Discipline management</h1>
       </div>
       <div class="muted">Issue, review, and revoke private player discipline actions</div>

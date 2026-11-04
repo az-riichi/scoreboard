@@ -83,9 +83,9 @@
       max-width: min(460px, calc(100vw - 32px));
       padding: 10px 14px;
       border-radius: 10px;
-      background: var(--screen);
+      background: var(--lit-bg);
       color: var(--led-amber);
-      box-shadow: inset 0 0 0 1px var(--screen-line), var(--raised-shadow);
+      box-shadow: inset 0 0 0 1px var(--lit-line), var(--raised-shadow);
       pointer-events: none;
     }
 
@@ -93,7 +93,7 @@
       width: 14px;
       height: 14px;
       border-radius: 999px;
-      border: 2px solid rgba(255, 181, 46, 0.25);
+      border: 2px solid var(--lit-line);
       border-top-color: currentColor;
       animation: admin-submit-spin 0.8s linear infinite;
       flex: 0 0 auto;

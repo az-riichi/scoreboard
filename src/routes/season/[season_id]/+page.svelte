@@ -160,14 +160,15 @@
   }
   .season-controls {
     display: flex;
-    gap: 12px;
-    align-items: flex-end;
+    gap: 10px 14px;
+    align-items: center;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
   .event-filter {
-    display: grid;
-    gap: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
   .standings-view-toggle {
     margin-top: 12px;
@@ -319,7 +320,7 @@
 <div class="card" style="margin-bottom:12px;">
   <div>
     <div class="title-row">
-      <span class="led-tag" lang="ja" aria-hidden="true">順位</span>
+      <span class="led-tag" lang="ja" aria-hidden="true">順位表</span>
       <h2 class="card-title">Standings</h2>
     </div>
     <div class="muted standings-notes-desktop">
@@ -485,7 +486,7 @@
 
 <div class="card">
   <div class="title-row">
-    <span class="led-tag" lang="ja" aria-hidden="true">対局</span>
+    <span class="led-tag" lang="ja" aria-hidden="true">最近の対局</span>
     <h2 class="card-title">Recent matches</h2>
   </div>
   <div class="muted" style="margin-top:4px;">Last 10 finalized matches.</div>

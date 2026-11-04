@@ -203,10 +203,10 @@
 <header class="app-header">
   <div class="app-header__in">
     <a class="app-brand" href="/" aria-label="AZRM Scoreboard home">
-      <span class="app-mark" aria-hidden="true" lang="ja">東</span>
+      <img class="app-logo" src="/azrm-logo.png" alt="" width="42" height="42" />
       <span class="app-brand__text">
         <span class="app-brand__kicker">AZ Riichi Mahjong</span>
-        <span class="app-brand__name">AZRM Scoreboard</span>
+        <span class="app-brand__name">Scoreboard</span>
       </span>
     </a>
 

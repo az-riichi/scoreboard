@@ -131,7 +131,7 @@
   <div class="page-heading">
     <div>
       <div class="title-row">
-        <span class="led-tag" lang="ja" aria-hidden="true">規律</span>
+        <span class="led-tag" lang="ja" aria-hidden="true">処分</span>
         <h1 class="page-title">My discipline status</h1>
       </div>
       <div class="muted">Your current competitive-play status and discipline record</div>

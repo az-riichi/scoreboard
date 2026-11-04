@@ -60,7 +60,7 @@
 
 <div class="card auth-card">
   <div class="title-row">
-    <span class="led-tag" lang="ja" aria-hidden="true">入室</span>
+    <span class="led-tag" lang="ja" aria-hidden="true">ログイン</span>
     <h1 class="page-title">Sign in</h1>
   </div>
   <p class="muted" style="margin:8px 0 16px;">Linked players can review their private discipline status. Admins can manage club records and results.</p>

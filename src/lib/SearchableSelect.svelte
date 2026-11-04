@@ -208,7 +208,7 @@
 
   .option.is-active::before {
     background: var(--led-teal);
-    box-shadow: 0 0 6px var(--led-teal);
+    box-shadow: 0 0 6px var(--glow-teal);
   }
 
   .option[aria-selected='true'] {
@@ -218,7 +218,7 @@
 
   .option[aria-selected='true']::before {
     background: var(--led-green);
-    box-shadow: 0 0 6px var(--led-green);
+    box-shadow: 0 0 6px var(--glow-green);
   }
 
   .option:disabled {
