@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { clickableRow } from '$lib/clickable-row';
-  import { fmtDate, fmtPct, fmtNum, fmtFixed, fmtSigned, signTone } from '$lib/ui';
+  import MatchSummaryTable from '$lib/MatchSummaryTable.svelte';
+  import { fmtPct, fmtNum, fmtFixed, fmtSigned, signTone } from '$lib/ui';
   import { seasonKanji } from '$lib/mahjong';
   export let data: any;
 
@@ -188,8 +188,7 @@
   .standings-notes-mobile[open] summary {
     margin-bottom: 6px;
   }
-  .standings-row-link,
-  .recent-cell-link {
+  .standings-row-link {
     display: block;
     margin: -9px -8px;
     padding: 9px 8px;
@@ -197,8 +196,7 @@
     color: inherit;
     transition: background-color 120ms ease, text-decoration-color 120ms ease;
   }
-  .standings-row-link:focus-visible,
-  .recent-cell-link:focus-visible {
+  .standings-row-link:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
@@ -209,13 +207,7 @@
   .standings-table tbody tr:focus-within {
     background: var(--row-hover);
   }
-  .recent-cell-link:hover,
-  .recent-cell-link:focus-visible {
-    color: var(--accent);
-  }
-  .standings-table .cell-player,
-  .recent-table .cell-match,
-  .recent-table .cell-winner {
+  .standings-table .cell-player {
     overflow-wrap: anywhere;
   }
   @media (max-width: 760px) {
@@ -225,14 +217,12 @@
     .standings-notes-mobile {
       display: block;
     }
-    .standings-table .col-standings-top2,
-    .recent-table .col-recent-sp {
+    .standings-table .col-standings-top2 {
       display: none;
     }
   }
   @media (max-width: 680px) {
-    .standings-table .col-standings-avg,
-    .recent-table .col-recent-top {
+    .standings-table .col-standings-avg {
       display: none;
     }
   }
@@ -250,14 +240,11 @@
       width: auto !important;
     }
     .standings-table th,
-    .standings-table td,
-    .recent-table th,
-    .recent-table td {
+    .standings-table td {
       padding-left: 6px;
       padding-right: 6px;
     }
-    .standings-row-link,
-    .recent-cell-link {
+    .standings-row-link {
       margin-left: -6px;
       margin-right: -6px;
       padding-left: 6px;
@@ -485,57 +472,25 @@
 </div>
 
 <div class="card">
-  <div class="title-row">
-    <span class="led-tag" lang="ja" aria-hidden="true">最近の対局</span>
-    <h2 class="card-title">Recent matches</h2>
+  <div class="card-head">
+    <div>
+      <div class="title-row">
+        <span class="led-tag" lang="ja" aria-hidden="true">最近の対局</span>
+        <h2 class="card-title">Recent matches</h2>
+      </div>
+      <div class="muted">Last 10 finalized matches.</div>
+    </div>
+    {#if data.matchCount > 0}
+      <a
+        class="btn"
+        href={`/season/${data.season.id}/matches${data.eventId ? `?event=${encodeURIComponent(data.eventId)}` : ''}`}
+      >
+        All matches ({data.matchCount})
+      </a>
+    {/if}
   </div>
-  <div class="muted" style="margin-top:4px;">Last 10 finalized matches.</div>
 
   <div style="margin-top:12px; overflow:auto;">
-    <table class="recent-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Match</th>
-          <th class="col-recent-winner">Winner</th>
-          <th class="col-recent-top num" style="width:100px;">Top score</th>
-          <th class="col-recent-sp num" style="width:100px;">SP spread</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each data.recentMatches as m}
-          <tr use:clickableRow={`/match/${m.id}`}>
-            <td>{fmtDate(m.played_at)}</td>
-            <td class="cell-match"><a class="recent-cell-link" href={`/match/${m.id}`}>{m.table_label ?? m.id.slice(0, 8)}</a></td>
-            <td class="col-recent-winner cell-winner">
-              {#if m.winner_player_id}
-                <a class="recent-cell-link" href={playerHref(m.winner_player_id)}>
-                  {m.winner_name_primary ?? m.winner_name ?? '—'}
-                  {#if m.winner_name_secondary}
-                    <span class="muted" style="margin-left:6px;">({m.winner_name_secondary})</span>
-                  {/if}
-                </a>
-              {:else}
-                {m.winner_name_primary ?? m.winner_name ?? '—'}
-                {#if m.winner_name_secondary}
-                  <span class="muted" style="margin-left:6px;">({m.winner_name_secondary})</span>
-                {/if}
-              {/if}
-            </td>
-            <td class="col-recent-top num">
-              {#if m.top_raw_points == null}
-                —
-              {:else}
-                <span class="led led-red">{fmtNum(m.top_raw_points, 0)}</span>
-              {/if}
-            </td>
-            <td class="col-recent-sp num">{m.sp_spread == null ? '—' : fmtNum(m.sp_spread, 1)}</td>
-          </tr>
-        {/each}
-        {#if data.recentMatches.length === 0}
-          <tr><td colspan="5" class="muted">No matches yet.</td></tr>
-        {/if}
-      </tbody>
-    </table>
+    <MatchSummaryTable matches={data.recentMatches} seasonId={data.season.id} eventId={data.eventId} />
   </div>
 </div>

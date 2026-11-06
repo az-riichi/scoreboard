@@ -4,6 +4,7 @@ import {
   deriveMatchPage,
   derivePlayerPage,
   derivePublicData,
+  deriveSeasonMatchesPage,
   deriveSeasonPage,
   deriveStandings
 } from './derive';
@@ -261,6 +262,54 @@ describe('public page derivations', () => {
       top_raw_points: 40000,
       sp_spread: 90
     });
+  });
+
+  it('lists every season match newest first while the season page keeps the latest ten', () => {
+    const snapshot = fixture();
+    for (let day = 3; day <= 14; day += 1) {
+      const id = `extra-${day}`;
+      snapshot.matches.push(
+        match(id, 'spring', `2026-02-${String(day).padStart(2, '0')}T12:00:00Z`)
+      );
+      snapshot.match_results.push(...results(id, ['p1', 'p2', 'p3', 'p4']));
+    }
+
+    const page = deriveSeasonMatchesPage(snapshot, 'spring');
+    expect(page!.matches).toHaveLength(14);
+    expect(page!.matches[0]).toMatchObject({
+      id: 'extra-14',
+      winner_player_id: 'p1',
+      top_raw_points: 40000,
+      sp_spread: 90
+    });
+    expect(page!.matches[13].id).toBe('m1');
+
+    const seasonPage = deriveSeasonPage(snapshot, 'spring');
+    expect(seasonPage!.recentMatches.map((row) => row.id)).toEqual(
+      page!.matches.slice(0, 10).map((row) => row.id)
+    );
+    expect(seasonPage!.matchCount).toBe(14);
+  });
+
+  it('filters the match list to a casual event and ignores events on other seasons', () => {
+    const snapshot = fixture();
+    snapshot.matches.push(
+      match('m4', 'casual', '2026-02-04T12:00:00Z', { include_in_lifetime_rating: false })
+    );
+    snapshot.match_results.push(...results('m4', ['p1', 'p2', 'p3', 'p4']));
+
+    const ids = (seasonId: string, eventId?: string) =>
+      deriveSeasonMatchesPage(snapshot, seasonId, { eventId })!.matches.map((row) => row.id);
+
+    expect(ids('casual')).toEqual(['m4', 'm3']);
+    expect(ids('casual', 'event-1')).toEqual(['m3']);
+    expect(deriveSeasonPage(snapshot, 'casual', { eventId: 'event-1' })!.matchCount).toBe(1);
+    expect(ids('spring', 'event-1')).toEqual(['m2', 'm1']);
+    expect(deriveSeasonMatchesPage(snapshot, 'spring', { eventId: 'event-1' })!.eventId).toBeNull();
+  });
+
+  it('finds no match list for an unknown season', () => {
+    expect(deriveSeasonMatchesPage(fixture(), 'missing')).toBeNull();
   });
 
   it('replays lifetime rating state and exposes the same deltas on match pages', () => {

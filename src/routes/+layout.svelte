@@ -52,6 +52,7 @@
     if (section === 'season') {
       const season = asRecord(pageRecord?.season);
       const seasonName = getFieldText(season, 'name');
+      if (parts[2] === 'matches') return `${seasonName ?? 'Season'} Matches | ${SITE_NAME}`;
       return `${seasonName ?? 'Season Standings'} | ${SITE_NAME}`;
     }
 

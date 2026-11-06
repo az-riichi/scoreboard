@@ -273,6 +273,15 @@ export type SeasonPageData = {
   casualSeason: PublicSeason | null;
   standings: StandingsRow[];
   recentMatches: RecentMatchSummary[];
+  matchCount: number;
+};
+
+export type SeasonMatchesPageData = {
+  season: PublicSeason;
+  isCasual: boolean;
+  events: PublicCasualEvent[];
+  eventId: string | null;
+  matches: RecentMatchSummary[];
 };
 
 export type MatchPageResult = DerivedFinalResult & PlayerNameParts;

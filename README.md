@@ -7,7 +7,7 @@ SvelteKit frontend for the AZ Riichi Mahjong database (seasons, players, matches
 Public (no login required):
 
 - Seasons list
-- Season standings (cumulative points + basic stats)
+- Season standings (cumulative points + basic stats) and a full match list for each season
 - Timeless Casual category whose games can be grouped and filtered by event and never change season or lifetime ratings
 - Player page: season/event stats plus togglable SP/R and placement history charts (placement-only for Casual)
 - Match page: final results (E/S/W/N seats)

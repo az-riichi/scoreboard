@@ -25,12 +25,14 @@ import type {
   RawMatchExtreme,
   RecentMatchSummary,
   RedactedPublicPlayer,
+  SeasonMatchesPageData,
   SeasonPageData,
   SeasonsPageData,
   StandingsRow
 } from './types';
 
 const FALLBACK_RATING_START_DATE = '2026-01-01';
+const RECENT_MATCH_LIMIT = 10;
 
 export type PublicDataModel = {
   snapshot: PublicDataSnapshot;
@@ -643,16 +645,20 @@ function playerStatsForRows(
   };
 }
 
-function deriveRecentMatches(
+function matchesNewestFirst(
   model: PublicDataModel,
   seasonId: string,
   eventId: string | null
-): RecentMatchSummary[] {
-  const matches = (model.matchesBySeasonId.get(seasonId) ?? [])
+): PublicFinalMatch[] {
+  return (model.matchesBySeasonId.get(seasonId) ?? [])
     .filter((match) => eventId == null || match.casual_event_id === eventId)
-    .sort((left, right) => -compareMatchesAscending(left, right))
-    .slice(0, 10);
+    .sort((left, right) => -compareMatchesAscending(left, right));
+}
 
+function summarizeMatches(
+  model: PublicDataModel,
+  matches: readonly PublicFinalMatch[]
+): RecentMatchSummary[] {
   return matches.map((match) => {
     const rows = model.resultsByMatchId.get(match.id) ?? [];
     const winner = rows.find((row) => row.placement === 1) ?? null;
@@ -685,6 +691,41 @@ export function deriveSeasonsPage(source: PublicDataSource): SeasonsPageData {
   };
 }
 
+function seasonEventScope(
+  model: PublicDataModel,
+  season: PublicSeason,
+  requestedEventId: string | null | undefined
+) {
+  const isCasual = season.is_casual === true;
+  const events = isCasual
+    ? [...model.snapshot.casual_events].sort(
+        (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+      )
+    : [];
+  const requested = clean(requestedEventId);
+  const eventId = isCasual && requested && model.eventsById.has(requested) ? requested : null;
+  return { isCasual, events, eventId };
+}
+
+export function deriveSeasonMatchesPage(
+  source: PublicDataSource,
+  seasonId: string,
+  options: SeasonPageOptions = {}
+): SeasonMatchesPageData | null {
+  const model = modelFor(source);
+  const season = model.seasonsById.get(seasonId);
+  if (!season) return null;
+
+  const { isCasual, events, eventId } = seasonEventScope(model, season, options.eventId);
+  return {
+    season,
+    isCasual,
+    events,
+    eventId,
+    matches: summarizeMatches(model, matchesNewestFirst(model, seasonId, eventId))
+  };
+}
+
 export function deriveSeasonPage(
   source: PublicDataSource,
   seasonId: string,
@@ -694,17 +735,8 @@ export function deriveSeasonPage(
   const season = model.seasonsById.get(seasonId);
   if (!season) return null;
 
-  const isCasual = season.is_casual === true;
-  const events = isCasual
-    ? [...model.snapshot.casual_events].sort(
-        (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
-      )
-    : [];
-  const requestedEventId = clean(options.eventId);
-  const eventId =
-    isCasual && requestedEventId && model.eventsById.has(requestedEventId)
-      ? requestedEventId
-      : null;
+  const { isCasual, events, eventId } = seasonEventScope(model, season, options.eventId);
+  const matches = matchesNewestFirst(model, seasonId, eventId);
 
   return {
     season,
@@ -719,7 +751,8 @@ export function deriveSeasonPage(
     casualSeason:
       model.snapshot.seasons.find((candidate) => candidate.is_casual) ?? null,
     standings: deriveStandings(model, seasonId, eventId),
-    recentMatches: deriveRecentMatches(model, seasonId, eventId)
+    recentMatches: summarizeMatches(model, matches.slice(0, RECENT_MATCH_LIMIT)),
+    matchCount: matches.length
   };
 }
 
