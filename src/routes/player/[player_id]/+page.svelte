@@ -576,7 +576,7 @@
           </div>
         </div>
         <div class="readout">
-          <div class="stat-label">Rated games</div>
+          <div class="stat-label">Ranked games</div>
           <span class="led led-lg">{data.currentRating?.games_played ?? 0}</span>
         </div>
       </div>
@@ -855,9 +855,9 @@
                 </td>
                 <td><span class="place-chip" data-place={r.placement}>{ordinal(r.placement)}</span></td>
                 <td class="num" class:neg={r.raw_points < 0}>{fmtNum(r.raw_points, 0)}</td>
-                <td class="num" class:pos={spTone === 'pos'} class:neg={spTone === 'neg'}>{fmtSigned(r.club_points, 1)}</td>
+                <td class="num" class:pos={spTone === 'pos'} class:neg={spTone === 'neg'}>{fmtSigned(r.club_points, 1, true)}</td>
                 {#if !data.isCasualSeason}
-                  <td class="num col-delta-r" class:pos={deltaTone === 'pos'} class:neg={deltaTone === 'neg'}>{rating ? fmtSigned(rating.delta, 1) : '—'}</td>
+                  <td class="num col-delta-r" class:pos={deltaTone === 'pos'} class:neg={deltaTone === 'neg'}>{rating ? fmtSigned(rating.delta, 1, true) : '—'}</td>
                   <td class="num col-rating">{rating ? fmtNum(rating.new_rate, 0) : '—'}</td>
                 {/if}
               </tr>

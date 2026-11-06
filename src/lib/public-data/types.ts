@@ -290,13 +290,20 @@ export type SeasonMatchesPageData = {
 
 export type MatchPageResult = DerivedFinalResult & PlayerNameParts;
 
+export type MatchRatingRow = RatingHistoryRow & {
+  /** Null when this was the player's first ranked game. */
+  rank_before: number | null;
+  rank_after: number;
+};
+
 export type MatchPageData = {
   match: PublicFinalMatch;
   season: PublicSeason | null;
   casualEvent: PublicCasualEvent | null;
   isCasual: boolean;
   results: MatchPageResult[];
-  ratingDeltas: RatingHistoryRow[];
+  ratingDeltas: MatchRatingRow[];
+  ratingTableAverage: number | null;
 };
 
 export type PlayerHistory = {

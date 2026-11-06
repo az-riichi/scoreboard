@@ -674,7 +674,7 @@
                     <span class="place-chip" data-place={row.display_placement}>{ordinal(row.display_placement)}</span>
                   {/if}
                 </td>
-                <td class="num" class:pos={clubTone === 'pos'} class:neg={clubTone === 'neg'}>{row.expected_club == null ? '—' : fmtSigned(row.expected_club, 2)}</td>
+                <td class="num" class:pos={clubTone === 'pos'} class:neg={clubTone === 'neg'}>{row.expected_club == null ? '—' : fmtSigned(row.expected_club, 1, true)}</td>
                 {#if !isCasual}
                   <td class="num" class:pos={rTone === 'pos'} class:neg={rTone === 'neg'}>{row.expected_r_delta == null ? '—' : fmtSigned(row.expected_r_delta, 2)}</td>
                   <td class="num">{row.expected_new_rate == null ? '—' : fmtNum(row.expected_new_rate, 2)}</td>

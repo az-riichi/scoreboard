@@ -10,6 +10,7 @@ import type {
   LifetimeRatings,
   LifetimeRatingState,
   MatchPageData,
+  MatchRatingRow,
   PlayerMatchHistoryRow,
   PlayerHistory,
   PlayerLifetime,
@@ -775,9 +776,7 @@ export function deriveMatchPage(
     ...row,
     ...playerNameParts(model.playersById, row.player_id)
   }));
-  const ratingDeltas = [
-    ...(model.lifetimeRatings.historyByMatchId.get(matchId) ?? [])
-  ].sort((left, right) => left.placement - right.placement);
+  const ratingRows = model.lifetimeRatings.historyByMatchId.get(matchId) ?? [];
 
   return {
     match,
@@ -787,8 +786,49 @@ export function deriveMatchPage(
       : null,
     isCasual: season?.is_casual === true,
     results,
-    ratingDeltas
+    ratingDeltas: withRatingRanks(model.lifetimeRatings.history, ratingRows),
+    ratingTableAverage:
+      ratingRows.length > 0
+        ? ratingRows.reduce((total, row) => total + row.old_rate, 0) / ratingRows.length
+        : null
   };
+}
+
+/** Ranks the same way as the lifetime rating state: tied rates share a rank. */
+function ratingRank(rates: ReadonlyMap<string, number>, playerId: string): number | null {
+  const own = rates.get(playerId);
+  if (own == null) return null;
+
+  const higherRates = new Set<number>();
+  for (const rate of rates.values()) {
+    if (rate > own) higherRates.add(rate);
+  }
+  return higherRates.size + 1;
+}
+
+function withRatingRanks(
+  history: readonly RatingHistoryRow[],
+  matchRows: readonly RatingHistoryRow[]
+): MatchRatingRow[] {
+  if (matchRows.length === 0) return [];
+
+  // History is chronological, so this stops with every rate as it stood before the match.
+  const rates = new Map<string, number>();
+  for (const row of history) {
+    if (row.match_id === matchRows[0].match_id) break;
+    rates.set(row.player_id, row.new_rate);
+  }
+
+  const ranksBefore = new Map(
+    matchRows.map((row) => [row.player_id, ratingRank(rates, row.player_id)])
+  );
+  for (const row of matchRows) rates.set(row.player_id, row.new_rate);
+
+  return matchRows.map((row) => ({
+    ...row,
+    rank_before: ranksBefore.get(row.player_id) ?? null,
+    rank_after: ratingRank(rates, row.player_id)!
+  }));
 }
 
 function matchAdjustmentTotal(

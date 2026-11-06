@@ -336,6 +336,27 @@ describe('public page derivations', () => {
     });
   });
 
+  it('reports each rank change on match ratings', () => {
+    const snapshot = fixture();
+    const ratings = deriveLifetimeRatings(snapshot);
+    const first = deriveMatchPage(snapshot, 'm1')!;
+    const latest = deriveMatchPage(snapshot, 'm2')!;
+
+    for (const row of first.ratingDeltas) {
+      expect(row.rank_before).toBeNull();
+    }
+    for (const row of latest.ratingDeltas) {
+      const previous = first.ratingDeltas.find((other) => other.player_id === row.player_id);
+      expect(row.rank_before).toBe(previous?.rank_after ?? null);
+      expect(row.rank_after).toBe(ratings.stateByPlayerId.get(row.player_id)?.rank);
+    }
+
+    const oldRates = latest.ratingDeltas.map((row) => row.old_rate);
+    expect(latest.ratingTableAverage).toBeCloseTo(
+      oldRates.reduce((total, rate) => total + rate, 0) / oldRates.length
+    );
+  });
+
   it('builds player stats and chronological SP, placement, and rating histories', () => {
     const page = derivePlayerPage(fixture(), 'p1', { seasonId: 'spring' });
 
@@ -448,7 +469,7 @@ describe('public page derivations', () => {
       expect(lifetime!.titles).toBe(0);
     });
 
-    it('counts busts and has no rating for a player without rated games', () => {
+    it('counts busts and has no rating for a player without ranked games', () => {
       const snapshot = fixture();
       snapshot.seasons.push({
         id: 'trial',

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
   import DateText from '$lib/DateText.svelte';
-  import { fmtNum, fmtSegScore, fmtSigned, signTone } from '$lib/ui';
+  import { fmtFixed, fmtNum, fmtSegScore, fmtSigned, signTone } from '$lib/ui';
   import { ordinal, windKanji, windName } from '$lib/mahjong';
   export let data: any;
 
@@ -30,10 +30,8 @@
     return places;
   })();
 
-  $: displayPlaceByPlayer = new Map<string, number>(
-    data.results
-      .map((result: any) => [result.player_id, displayPlaceBySeat.get(result.seat)] as const)
-      .filter((entry: readonly [string, number | undefined]): entry is readonly [string, number] => entry[1] != null)
+  $: ratingRows = results.flatMap((result) =>
+    data.ratingDeltas.filter((row: any) => row.player_id === result.player_id)
   );
 
   $: matchLabel = data.match.table_label ?? data.match.id.slice(0, 8);
@@ -209,6 +207,122 @@
       width: auto !important;
     }
   }
+
+  .rating-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+
+  .rating-moves {
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .rating-move {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 120px 160px 72px;
+    column-gap: 12px;
+    align-items: center;
+    padding: 9px 8px;
+    border-bottom: 1px solid var(--table-row);
+    text-decoration: none;
+    transition: background-color 120ms ease;
+  }
+
+  .rating-moves li:last-child .rating-move {
+    border-bottom: 0;
+  }
+
+  .rating-move:hover,
+  .rating-move:focus-visible {
+    background: var(--row-hover);
+  }
+
+  .rating-move:hover .rating-move__name {
+    color: var(--accent);
+  }
+
+  .rating-move__who {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 8px;
+    min-width: 0;
+  }
+
+  .rating-move__name {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rating-move__rank,
+  .rating-move__game {
+    color: var(--muted);
+    font-size: var(--type-small);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .rating-move__rates {
+    color: var(--led-amber);
+    font-family: var(--font-num);
+    font-size: var(--type-num);
+    line-height: 1.2;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .rating-move__before {
+    color: var(--muted);
+  }
+
+  .rating-move__arrow {
+    font-family: var(--font-ui);
+    font-size: var(--type-small);
+  }
+
+  .rating-move__delta {
+    font-family: var(--font-num);
+    font-size: var(--type-num);
+    line-height: 1.2;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 700px) {
+    .rating-move {
+      /* The areas overlap so the wide R values can't squeeze the name on the line above. */
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        'who who delta'
+        'rank rates rates';
+      padding: 10px 0;
+    }
+
+    .rating-move:hover,
+    .rating-move:focus-visible {
+      background: none;
+    }
+
+    .rating-move__who { grid-area: who; }
+    .rating-move__delta { grid-area: delta; }
+    .rating-move__rank { grid-area: rank; }
+    .rating-move__rates { grid-area: rates; }
+  }
+
+  /* The new R and the change already imply where each player started. */
+  @media (max-width: 340px) {
+    .rating-move__before {
+      display: none;
+    }
+  }
 </style>
 
 <div class="card" style="margin-bottom:12px;">
@@ -295,7 +409,7 @@
                 </a>
               </td>
               <td class="num"><span class="led led-red">{fmtNum(r.raw_points, 0)}</span></td>
-              <td class="num" class:pos={spTone === 'pos'} class:neg={spTone === 'neg'}>{fmtSigned(r.club_points, 2)}</td>
+              <td class="num" class:pos={spTone === 'pos'} class:neg={spTone === 'neg'}>{fmtSigned(r.club_points, 1, true)}</td>
               <td class="col-place"><span class="place-chip" data-place={place}>{ordinal(place)}</span></td>
             </tr>
           {/each}
@@ -307,41 +421,44 @@
 
 {#if data.ratingDeltas.length > 0}
   <div class="card">
-    <div class="title-row">
-      <span class="led-tag" lang="ja" aria-hidden="true">レート</span>
-      <h2 class="card-title">Rating (R)</h2>
+    <div class="rating-head">
+      <div class="title-row">
+        <span class="led-tag" lang="ja" aria-hidden="true">レート</span>
+        <h2 class="card-title">Rating (R)</h2>
+      </div>
+      <div class="muted">Table avg {fmtNum(data.ratingTableAverage, 0)}</div>
     </div>
 
-    <div style="margin-top:12px; overflow:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>Player</th>
-            <th class="col-place" style="width:80px;">Place</th>
-            <th class="num col-value" style="width:120px;">ΔR</th>
-            <th class="num col-value" style="width:120px;">New R</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each data.ratingDeltas as row}
-            {@const place = displayPlaceByPlayer.get(row.player_id) ?? row.placement}
-            {@const deltaTone = signTone(row.delta)}
-            <tr use:clickableRow={playerHref(row.player_id)}>
-              <td>
-                <a href={playerHref(row.player_id)} style="text-decoration:none;">
-                  {row.player_name_primary}
-                  {#if row.player_name_secondary}
-                    <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
-                  {/if}
-                </a>
-              </td>
-              <td class="col-place"><span class="place-chip" data-place={place}>{ordinal(place)}</span></td>
-              <td class="num" class:pos={deltaTone === 'pos'} class:neg={deltaTone === 'neg'}>{fmtSigned(row.delta, 2)}</td>
-              <td class="num">{fmtNum(row.new_rate, 2)}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+    <ol class="rating-moves">
+      {#each ratingRows as row (row.player_id)}
+        {@const tone = signTone(row.delta)}
+        <li>
+          <a class="rating-move" href={playerHref(row.player_id)}>
+            <span class="rating-move__who">
+              <span class="rating-move__name">{row.player_name_primary}</span>
+              <span class="rating-move__game">{ordinal(row.games_played_before + 1)} ranked game</span>
+            </span>
+            <span class="rating-move__rank">
+              {#if row.rank_before == null}
+                #{row.rank_after}
+              {:else if row.rank_before === row.rank_after}
+                #{row.rank_after} (unchanged)
+              {:else}
+                #{row.rank_before} → #{row.rank_after}
+              {/if}
+            </span>
+            <span class="rating-move__rates">
+              <span class="rating-move__before">
+                {fmtFixed(row.old_rate)}
+                <span class="rating-move__arrow" aria-hidden="true">→</span>
+                <span class="sr-only">to</span>
+              </span>
+              <span class="rating-move__after">{fmtFixed(row.new_rate)}</span>
+            </span>
+            <span class="rating-move__delta" class:pos={tone === 'pos'} class:neg={tone === 'neg'}>{fmtSigned(row.delta, 2, true)}</span>
+          </a>
+        </li>
+      {/each}
+    </ol>
   </div>
 {/if}
