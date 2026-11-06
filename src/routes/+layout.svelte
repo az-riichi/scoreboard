@@ -46,6 +46,7 @@
     if (section === 'login') return `Login | ${SITE_NAME}`;
     if (section === 'reset-password') return `Reset Password | ${SITE_NAME}`;
     if (section === 'seasons') return `Seasons | ${SITE_NAME}`;
+    if (section === 'hall-of-fame') return `Hall of Fame | ${SITE_NAME}`;
     if (section === 'discipline') return `My Discipline | ${SITE_NAME}`;
 
     if (section === 'season') {
@@ -93,12 +94,13 @@
 
   $: pageTitle = resolvePageTitle($page.url.pathname, $page.data);
 
-  type NavSection = 'seasons' | 'standings' | 'admin' | 'discipline' | 'login' | null;
+  type NavSection = 'seasons' | 'standings' | 'hall-of-fame' | 'admin' | 'discipline' | 'login' | null;
 
   function navSection(pathname: string): NavSection {
     const section = pathname.split('/').filter(Boolean)[0];
     if (section === 'seasons') return 'seasons';
     if (section === 'season' || section === 'match' || section === 'player') return 'standings';
+    if (section === 'hall-of-fame') return 'hall-of-fame';
     if (section === 'admin') return 'admin';
     if (section === 'discipline') return 'discipline';
     if (section === 'login' || section === 'reset-password') return 'login';
@@ -216,6 +218,7 @@
         {#if data.activeSeasonId}
           <a href={`/season/${data.activeSeasonId}`} class="nav-key" class:is-active={activeNav === 'standings'} aria-current={activeNav === 'standings' ? 'page' : undefined}>Standings</a>
         {/if}
+        <a href="/hall-of-fame" class="nav-key" class:is-active={activeNav === 'hall-of-fame'} aria-current={activeNav === 'hall-of-fame' ? 'page' : undefined}>Hall of Fame</a>
         {#if data.isAdmin}
           <a href="/admin" class="nav-key" class:is-active={activeNav === 'admin'} aria-current={activeNav === 'admin' ? 'page' : undefined}>Admin</a>
         {/if}
@@ -266,6 +269,7 @@
             {#if data.activeSeasonId}
               <a href={`/season/${data.activeSeasonId}`} class="nav-key" class:is-active={activeNav === 'standings'}>Standings</a>
             {/if}
+            <a href="/hall-of-fame" class="nav-key" class:is-active={activeNav === 'hall-of-fame'}>Hall of Fame</a>
             {#if data.isAdmin}
               <a href="/admin" class="nav-key" class:is-active={activeNav === 'admin'}>Admin</a>
             {/if}

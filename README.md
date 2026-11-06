@@ -11,6 +11,7 @@ Public (no login required):
 - Timeless Casual category whose games can be grouped and filtered by event and never change season or lifetime ratings
 - Player page: season/event stats plus togglable SP/R and placement history charts (placement-only for Casual)
 - Match page: final results (E/S/W/N seats)
+- Hall of Fame: season champions plus match and player records, for any season or all time
 - Open public pages automatically refresh when matches are published
 
 Admin (login required):

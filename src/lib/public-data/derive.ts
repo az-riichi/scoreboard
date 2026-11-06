@@ -85,7 +85,7 @@ function clean(value: unknown): string {
   return String(value ?? '').trim();
 }
 
-function compareDateText(left: string | null, right: string | null): number {
+export function compareDateText(left: string | null, right: string | null): number {
   if (left == null && right == null) return 0;
   if (left == null) return 1;
   if (right == null) return -1;
@@ -108,7 +108,7 @@ function compareDateTextDescendingNullsLast(
   return -compareDateText(left, right);
 }
 
-function compareMatchesAscending(left: PublicFinalMatch, right: PublicFinalMatch): number {
+export function compareMatchesAscending(left: PublicFinalMatch, right: PublicFinalMatch): number {
   return compareDateText(left.played_at, right.played_at) || left.id.localeCompare(right.id);
 }
 
@@ -125,14 +125,14 @@ function seasonStartDescending(left: PublicSeason, right: PublicSeason): number 
   );
 }
 
-function matchLabel(match: PublicFinalMatch): string {
+export function matchLabel(match: PublicFinalMatch): string {
   const explicit = clean(match.table_label);
   if (explicit) return explicit;
   if (match.table_mode && match.game_number) return `${match.table_mode}-${match.game_number}`;
   return match.id;
 }
 
-function playerNameParts(
+export function playerNameParts(
   playersById: ReadonlyMap<string, RedactedPublicPlayer>,
   playerId: string
 ): PlayerNameParts {

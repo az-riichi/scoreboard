@@ -867,6 +867,11 @@ tbody tr[data-clickable-row]:hover,
 tbody tr[data-clickable-row]:focus-within { background: var(--row-hover); }
 
 @media (max-width: 780px) { .grid2 { grid-template-columns: 1fr; } }
+/* Keep the brand whole: a crowded desktop nav wraps onto a second row instead. */
+@media (min-width: 761px) {
+  .app-brand { flex-shrink: 0; }
+  .header-right { flex-shrink: 1; }
+}
 @media (max-width: 760px) {
   .desktop-header-nav { display: none; }
   .mobile-nav { display: block; }
