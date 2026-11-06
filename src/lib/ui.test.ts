@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { fmtDate, fmtDateTime, fmtFixed, fmtNum, fmtPct, fmtSigned, signTone } from './ui';
+import { fmtDate, fmtDateTime, fmtFixed, fmtNum, fmtPct, fmtSegScore, fmtSigned, signTone } from './ui';
+
+describe('fmtSegScore', () => {
+  it('uses only digits and a plain minus, which is all a 7-segment display can show', () => {
+    expect(fmtSegScore(86000)).toBe('86000');
+    expect(fmtSegScore(600)).toBe('600');
+    expect(fmtSegScore(-35300)).toBe('-35300');
+    expect(fmtSegScore('48700')).toBe('48700');
+  });
+
+  it('shows zero for an empty or invalid score', () => {
+    expect(fmtSegScore(0)).toBe('0');
+    expect(fmtSegScore(-0)).toBe('0');
+    expect(fmtSegScore(undefined)).toBe('0');
+    expect(fmtSegScore('n/a')).toBe('0');
+  });
+});
 
 describe('cached UI formatters', () => {
   it('preserves local date and date-time formatting', () => {

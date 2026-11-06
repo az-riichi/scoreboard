@@ -318,7 +318,7 @@
   }
 
   .confirm-popover-text {
-    font-size: 0.86rem;
+    font-size: var(--type-small);
     line-height: 1.3;
   }
 
@@ -341,7 +341,7 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
-    font-size: 0.72rem;
+    font-size: var(--type-label);
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -626,7 +626,7 @@
     {/if}
 
     <div style="margin-top:14px;">
-      <h3 class="card-title" style="font-size:0.92rem;">Expected outcomes</h3>
+      <h3 class="card-title" style="font-size:var(--type-small);">Expected outcomes</h3>
 
       <div style="margin-top:10px; overflow:auto;">
         <table>

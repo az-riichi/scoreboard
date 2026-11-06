@@ -1,7 +1,7 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
   import DateText from '$lib/DateText.svelte';
-  import { fmtNum, fmtSigned, signTone } from '$lib/ui';
+  import { fmtNum, fmtSegScore, fmtSigned, signTone } from '$lib/ui';
   import { ordinal, windKanji, windName } from '$lib/mahjong';
   export let data: any;
 
@@ -96,17 +96,31 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.82rem;
+    font-size: var(--type-label);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
 
+  /* Reads like the table's own display: lit segments over six dim, unlit digits. */
   .table-seat__pts {
+    position: relative;
+    min-width: calc(6 * 0.8156em);
     color: var(--led-score);
-    font-family: var(--font-led);
-    font-size: 1rem;
-    text-shadow: 0 0 7px var(--glow-score);
+    font-family: var(--font-seg);
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: right;
+  }
+
+  .table-seat__pts::before {
+    content: '888888';
+    position: absolute;
+    top: 0;
+    right: 0;
+    color: var(--led-dim);
+    opacity: 0.22;
   }
 
   .table-map .place-chip {
@@ -136,8 +150,8 @@
   .table-center__kanji {
     color: var(--led-amber);
     font-family: var(--font-led);
-    font-size: 1.25rem;
-    text-shadow: 0 0 8px var(--glow-amber);
+    font-size: 24px;
+    line-height: 1.1;
   }
 
   .table-center__label {
@@ -146,8 +160,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--led-teal);
-    font-family: var(--font-led);
-    font-size: 0.8rem;
+    font-size: var(--type-label);
+    font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -169,11 +183,18 @@
     }
 
     .table-seat__name {
-      font-size: 0.9rem;
+      font-size: var(--type-small);
     }
 
     .table-seat__pts {
-      font-size: 1.1rem;
+      font-size: 18px;
+    }
+  }
+
+  /* Six digits must still fit a seat on the smallest phones. */
+  @media (max-width: 360px) {
+    .table-seat__pts {
+      font-size: 14px;
     }
   }
 
@@ -234,7 +255,7 @@
             <span class="place-chip" data-place={place}>{ordinal(place)}</span>
           </div>
           <div class="table-seat__name">{r.player_name_primary}</div>
-          <div class="table-seat__pts">{fmtNum(r.raw_points, 0)}</div>
+          <div class="table-seat__pts">{fmtSegScore(r.raw_points)}</div>
         </div>
       {/each}
       <div class="table-center">

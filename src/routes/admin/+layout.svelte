@@ -100,9 +100,7 @@
     }
 
     .admin-submit-text {
-      font-family: var(--font-led);
       letter-spacing: 0.06em;
-      text-shadow: 0 0 6px var(--glow-amber);
       line-height: 1.2;
       white-space: nowrap;
       overflow: hidden;

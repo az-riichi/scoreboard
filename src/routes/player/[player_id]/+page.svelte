@@ -85,7 +85,7 @@
         <h1 class="page-title title-plain">
           {data.player.player_name_primary}
           {#if data.player.player_name_secondary}
-            <span class="muted" style="font-size: 1rem; margin-left:6px; font-weight:500;">({data.player.player_name_secondary})</span>
+            <span class="muted" style="margin-left:6px; font-weight:500;">({data.player.player_name_secondary})</span>
           {/if}
         </h1>
       </div>
@@ -208,7 +208,8 @@
 
   .stat-list {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Three across when they fit a label and its value, and fewer when they do not. */
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 124px), 1fr));
     gap: 6px 14px;
     margin: 12px 0 0;
   }
@@ -223,7 +224,7 @@
 
   .stat-list dt {
     color: var(--muted);
-    font-size: 0.88rem;
+    font-size: var(--type-small);
   }
 
   .stat-list dd {
@@ -263,7 +264,7 @@
     margin: 8px 0 0;
     padding: 0;
     list-style: none;
-    font-size: 0.85rem;
+    font-size: var(--type-small);
   }
 
   .place-legend li {
@@ -318,7 +319,7 @@
     align-items: center;
     gap: 7px;
     color: var(--muted);
-    font-size: 0.85rem;
+    font-size: var(--type-small);
     letter-spacing: 0.04em;
   }
 
@@ -386,14 +387,6 @@
     .col-delta-r,
     .col-season-detail {
       display: none;
-    }
-
-    .stat-list {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .stat-list--long {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     /* Share the first row with the view control instead of taking a row alone. */
@@ -554,7 +547,7 @@
         />
       </label>
 
-      <div class="muted" style="flex:1 1 100%; font-size:0.95rem;">
+      <div class="muted" style="flex:1 1 100%;">
         Media is only shown when a custom message is set
       </div>
 
@@ -623,7 +616,7 @@
         </div>
       </div>
 
-      <dl class="stat-list" class:stat-list--long={data.lifetime}>
+      <dl class="stat-list">
         <div><dt>Avg placement</dt><dd>{fmtFixed(data.stats?.avg_placement)}</dd></div>
         <div><dt>Avg SP</dt><dd>{fmtSigned(data.stats?.avg_points, 2)}</dd></div>
         <div><dt>Top 2%</dt><dd>{fmtPct(data.stats?.top2_rate)}</dd></div>

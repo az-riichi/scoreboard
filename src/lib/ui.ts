@@ -63,6 +63,12 @@ export function fmtNum(x: number | null | undefined, digits = 2) {
   return formatter.format(n);
 }
 
+// A raw score as a 7-segment display shows it: digits and a minus sign, with no separators.
+export function fmtSegScore(x: unknown) {
+  const n = Math.round(Number(x));
+  return Number.isFinite(n) ? String(n + 0) : '0';
+}
+
 function roundsToZero(n: number, digits: number) {
   return Number(Math.abs(n).toFixed(digits)) === 0;
 }

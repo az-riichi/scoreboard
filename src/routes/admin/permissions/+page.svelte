@@ -235,7 +235,7 @@
   }
 
   .account-selector label {
-    font-size: 0.72rem;
+    font-size: var(--type-label);
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -259,7 +259,7 @@
   }
 
   .account-email {
-    font-size: 1.05rem;
+    font-size: 17px;
     font-weight: 650;
     overflow-wrap: anywhere;
   }
@@ -267,7 +267,7 @@
   .account-id {
     margin-top: 2px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.78rem;
+    font-size: var(--type-label);
     overflow-wrap: anywhere;
   }
 
@@ -282,7 +282,7 @@
     border-radius: 6px;
     background: var(--pill-bg);
     color: var(--muted);
-    font-size: 0.72rem;
+    font-size: var(--type-chip);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -315,7 +315,7 @@
     border: 1px solid var(--card-border);
     border-radius: 8px;
     background: var(--pill-bg);
-    font-size: 0.9rem;
+    font-size: var(--type-small);
     font-weight: 600;
   }
 
@@ -335,7 +335,7 @@
 
   .permission-group legend {
     padding: 0 6px;
-    font-size: 0.75rem;
+    font-size: var(--type-label);
     font-weight: 700;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -372,7 +372,7 @@
 
   .permission-description {
     margin-top: 2px;
-    font-size: 0.83rem;
+    font-size: var(--type-label);
     line-height: 1.35;
   }
 

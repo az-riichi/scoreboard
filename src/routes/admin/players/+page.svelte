@@ -115,7 +115,7 @@
             <tr>
               <td colspan={rosterColumnCount}>
                 {#if canEditPlayers}
-                  <h3 class="card-title" style="margin:2px 0 10px; font-size:0.9rem;">Player details</h3>
+                  <h3 class="card-title" style="margin:2px 0 10px; font-size:var(--type-small);">Player details</h3>
                   <form method="POST" action="?/update" use:enhance style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; padding-bottom:2px;">
                     <input type="hidden" name="player_id" value={p.id} />
 
@@ -156,7 +156,7 @@
 
                 {#if canManagePlayerAccounts}
                   <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--table-border);">
-                    <h3 class="card-title" style="margin:0 0 10px; font-size:0.9rem;">Player account</h3>
+                    <h3 class="card-title" style="margin:0 0 10px; font-size:var(--type-small);">Player account</h3>
                   <form method="POST" action="?/setClaim" use:enhance style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
                     <input type="hidden" name="player_id" value={p.id} />
 

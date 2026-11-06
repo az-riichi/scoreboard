@@ -191,7 +191,7 @@
         : [0, 0.25, 0.5, 0.75, 1].map((t) => margin.top + plotHeight * t),
       spRange,
       rRange,
-      tipHeight: isPlacement ? 112 : 176
+      tipHeight: isPlacement ? 122 : 196
     };
   }
 
@@ -312,7 +312,8 @@
   }
 
   text {
-    font-family: var(--font-led);
+    font-family: var(--font-ui);
+    font-weight: 500;
   }
 
   .line-sp { filter: drop-shadow(0 0 4px var(--glow-teal)); }
@@ -350,7 +351,7 @@
     background: var(--card-bg);
     box-shadow: var(--raised-shadow);
     color: var(--text);
-    font-size: 0.88rem;
+    font-size: var(--type-small);
     line-height: 1.35;
     text-decoration: none;
     pointer-events: none;
@@ -389,8 +390,9 @@
 
   .chart-tip__rows dd {
     margin: 0;
-    font-family: var(--font-led);
-    font-size: 0.95rem;
+    font-family: var(--font-num);
+    font-size: var(--type-num);
+    line-height: 1.1;
     white-space: nowrap;
   }
 
@@ -402,7 +404,7 @@
     padding-top: 5px;
     border-top: 1px solid var(--table-row);
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: var(--type-label);
   }
 </style>
 

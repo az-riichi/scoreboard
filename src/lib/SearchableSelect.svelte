@@ -187,7 +187,7 @@
     background: transparent;
     color: var(--text);
     font: inherit;
-    font-size: 0.95rem;
+    font-size: var(--type-note);
     text-align: left;
     cursor: pointer;
   }

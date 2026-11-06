@@ -48,9 +48,9 @@
   .hof-group-title {
     margin: 18px 0 8px;
     color: var(--led-teal);
-    font-size: 0.75rem;
+    font-size: var(--type-label);
     font-weight: 600;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
   .hof-grid {
@@ -81,6 +81,7 @@
   }
   .hof-podium__rows {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 6px;
     margin: 4px 0 0;
     padding: 0;
@@ -101,12 +102,12 @@
   .hof-record__title {
     margin: 0;
     color: var(--text);
-    font-size: 0.8rem;
+    font-size: var(--type-small);
   }
   .hof-record__desc {
     margin-top: 2px;
     color: var(--muted);
-    font-size: 0.82rem;
+    font-size: var(--type-small);
     line-height: 1.3;
   }
   .hof-lead {
@@ -132,11 +133,11 @@
   .hof-holder__joiner {
     color: var(--muted);
     font-weight: 400;
-    font-size: 0.88rem;
+    font-size: var(--type-small);
   }
   .hof-detail {
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: var(--type-small);
     line-height: 1.3;
     text-decoration: none;
   }
@@ -144,7 +145,7 @@
     color: var(--accent);
   }
   .hof-ongoing {
-    font-size: 0.78rem;
+    font-size: var(--type-label);
   }
 
   /* One game's final scores. */
@@ -168,16 +169,15 @@
   .hof-seat__name {
     overflow: hidden;
     color: var(--led-mid);
-    font-size: 0.68rem;
+    font-size: var(--type-label);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .hof-seat__pts {
     color: var(--led-score);
-    font-family: var(--font-led);
-    font-size: 0.8rem;
+    font-family: var(--font-num);
+    font-size: var(--type-num);
     line-height: 1.2;
-    text-shadow: 0 0 7px var(--glow-score);
     white-space: nowrap;
   }
   .hof-seat.is-holder .hof-seat__name {
@@ -186,12 +186,13 @@
   }
   .hof-seat.is-holder .hof-seat__pts {
     color: var(--led-amber);
-    text-shadow: 0 0 7px var(--glow-amber);
   }
 
   /* Runners-up */
   .hof-runners {
     display: grid;
+    /* Without this, long text that cannot wrap widens the whole card. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 3px;
     margin: 2px 0 0;
     padding: 7px 0 0;
@@ -203,7 +204,7 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
-    font-size: 0.86rem;
+    font-size: var(--type-note);
     text-decoration: none;
   }
   .hof-runner:hover .hof-clip {
@@ -211,9 +212,8 @@
   }
   .hof-runner .rank-led {
     min-width: 22px;
-    height: 20px;
+    height: 24px;
     padding: 0 3px;
-    font-size: 0.78rem;
   }
   .hof-clip {
     flex: 1;
@@ -224,47 +224,20 @@
   }
   .hof-runner__value {
     color: var(--led-mid);
-    font-family: var(--font-led);
-    font-size: 0.85rem;
+    font-family: var(--font-num);
+    font-size: var(--type-num);
+    line-height: 1.1;
     white-space: nowrap;
   }
   .hof-more {
     color: var(--muted);
-    font-size: 0.78rem;
+    font-size: var(--type-label);
   }
 
-  @media (max-width: 1024px) {
-    .hof-group-title {
-      font-size: 0.82rem;
-    }
-    .hof-record__title {
-      font-size: 0.88rem;
-    }
-    .hof-record__desc {
-      font-size: 0.9rem;
-    }
-    .hof-detail {
-      font-size: 0.88rem;
-    }
-    .hof-seat__name {
-      font-size: 0.78rem;
-    }
+  /* Four scores must still fit side by side on the smallest phones. */
+  @media (max-width: 360px) {
     .hof-seat__pts {
-      font-size: 0.92rem;
-    }
-    .hof-runner {
-      font-size: 0.95rem;
-    }
-    .hof-runner .rank-led {
-      min-width: 26px;
-      height: 24px;
-      font-size: 0.88rem;
-    }
-    .hof-runner__value {
-      font-size: 0.95rem;
-    }
-    .hof-more {
-      font-size: 0.85rem;
+      font-size: var(--type-body);
     }
   }
 </style>
