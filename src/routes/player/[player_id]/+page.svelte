@@ -7,6 +7,7 @@
   import { PLAYER_PROFILE_MEDIA_URL_MAX_CHARS, PLAYER_PROFILE_MESSAGE_MAX_CHARS } from '$lib/player-profile-content';
   import { BIG_WIN_MIN_POINTS, isBigWin } from '$lib/placement-chart';
   import { LIFETIME_SEASON_ID } from '$lib/public-data/derive';
+  import { backToSeason } from '$lib/season-return';
   export let data: any;
   export let form: any;
 
@@ -61,6 +62,11 @@
   $: tableRows = historyRange === 'all' ? history.matchHistory : history.matchHistory.slice(0, Number(historyRange));
   $: hasBigWin = showPlacementHistory && placementRows.some((row: any) => isBigWin(row.placement, row.raw_points));
   $: selectedSeason = data.seasons.find((s: any) => s.id === data.seasonId);
+  // Lifetime isn't a season, so it goes back to the current one.
+  $: backSeasonId = selectedSeason?.id ?? data.activeSeasonId;
+  $: backHref = backSeasonId
+    ? `/season/${backSeasonId}${data.eventId ? `?event=${encodeURIComponent(data.eventId)}` : ''}`
+    : '/seasons';
   $: seasonNames = new Map<string, string>(data.seasons.map((s: any) => [s.id, s.name]));
   $: ratingByMatch = new Map<string, any>(history.ratingHistory.map((row: any) => [row.match_id, row]));
   // Column shown only when the rows can come from more than one season.
@@ -79,7 +85,7 @@
 
 <div class="card" style="margin-bottom:12px;">
   <div class="card-head">
-    <div>
+    <div class="profile-identity">
       <div class="title-row">
         <span class="led-tag" lang="ja" aria-hidden="true">雀士</span>
         <h1 class="page-title title-plain">
@@ -89,36 +95,38 @@
           {/if}
         </h1>
       </div>
-    </div>
 
-    <div class="profile-controls">
-      <form method="GET" class="profile-filter">
-        <label>
-          <span class="muted">Season</span>
-          <select name="season" bind:value={season} style="min-width:240px;" on:change={submitSelect}>
-            <option value={LIFETIME_SEASON_ID}>Lifetime</option>
-            {#each data.seasons as s}
-              <option value={s.id}>{s.name}</option>
-            {/each}
-          </select>
-        </label>
-      </form>
-
-      {#if data.isCasualSeason}
+      <div class="profile-controls">
         <form method="GET" class="profile-filter">
-          <input type="hidden" name="season" value={data.seasonId} />
           <label>
-            <span class="muted">Event</span>
-            <select name="event" bind:value={eventId} style="min-width:200px;" on:change={submitSelect}>
-              <option value="">All events</option>
-              {#each data.events ?? [] as event}
-                <option value={event.id}>{event.name}</option>
+            <span class="muted">Season</span>
+            <select name="season" bind:value={season} style="min-width:220px;" on:change={submitSelect}>
+              <option value={LIFETIME_SEASON_ID}>Lifetime</option>
+              {#each data.seasons as s}
+                <option value={s.id}>{s.name}</option>
               {/each}
             </select>
           </label>
         </form>
-      {/if}
 
+        {#if data.isCasualSeason}
+          <form method="GET" class="profile-filter">
+            <input type="hidden" name="season" value={data.seasonId} />
+            <label>
+              <span class="muted">Event</span>
+              <select name="event" bind:value={eventId} style="min-width:220px;" on:change={submitSelect}>
+                <option value="">All events</option>
+                {#each data.events ?? [] as event}
+                  <option value={event.id}>{event.name}</option>
+                {/each}
+              </select>
+            </label>
+          </form>
+        {/if}
+      </div>
+    </div>
+
+    <div class="profile-actions">
       {#if data.canEditDisplay}
         <button
           class="btn"
@@ -131,6 +139,7 @@
           ⚙
         </button>
       {/if}
+      <a class="btn" use:backToSeason href={backHref}>{backSeasonId ? 'Back to season' : 'Back to seasons'}</a>
     </div>
   </div>
 </div>
@@ -181,25 +190,37 @@
 <style>
   .profile-controls {
     display: flex;
-    gap: 10px;
-    align-items: flex-end;
+    gap: 8px 14px;
     flex-wrap: wrap;
+    margin-top: 10px;
   }
 
   .profile-filter {
-    display: flex;
-    align-items: flex-end;
     min-width: 0;
   }
 
   .profile-filter label {
-    display: grid;
-    gap: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
+  }
+
+  /* The fixed width lines up the Season and Event selects when they stack. */
+  .profile-filter .muted {
+    flex: none;
+    width: 52px;
+    margin-top: 0;
   }
 
   .profile-filter select {
     max-width: 100%;
+  }
+
+  .profile-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
 
   .season-readouts {
@@ -398,15 +419,12 @@
       order: -1;
     }
 
+    .profile-identity,
     .profile-filter,
     .profile-filter label,
     .profile-filter select {
       width: 100%;
       min-width: 0 !important;
-    }
-
-    .profile-controls {
-      width: 100%;
     }
   }
 

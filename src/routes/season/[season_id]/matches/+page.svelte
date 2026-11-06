@@ -1,5 +1,6 @@
 <script lang="ts">
   import MatchSummaryTable from '$lib/MatchSummaryTable.svelte';
+  import { backToSeason } from '$lib/season-return';
 
   export let data: import('./$types').PageData;
 
@@ -48,7 +49,7 @@
           </label>
         </form>
       {/if}
-      <a class="btn" href={seasonHref}>Back to season</a>
+      <a class="btn" use:backToSeason href={seasonHref}>Back to season</a>
     </div>
   </div>
 

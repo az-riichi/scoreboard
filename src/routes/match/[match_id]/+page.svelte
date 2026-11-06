@@ -3,6 +3,7 @@
   import DateText from '$lib/DateText.svelte';
   import { fmtFixed, fmtNum, fmtSegScore, fmtSigned, signTone } from '$lib/ui';
   import { ordinal, windKanji, windName } from '$lib/mahjong';
+  import { backToSeason } from '$lib/season-return';
   export let data: any;
 
   const seatOrder: Record<string, number> = { E: 1, S: 2, W: 3, N: 4 };
@@ -345,6 +346,7 @@
     </div>
     <a
       class="btn"
+      use:backToSeason
       href={`/season/${data.match.season_id}${data.match.casual_event_id ? `?event=${data.match.casual_event_id}` : ''}`}
     >
       Back to season

@@ -1,17 +1,44 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+  import { beforeNavigate } from '$app/navigation';
   import MatchSummaryTable from '$lib/MatchSummaryTable.svelte';
   import { fmtPct, fmtNum, fmtFixed, fmtSigned, signTone } from '$lib/ui';
   import { seasonKanji } from '$lib/mahjong';
+  import {
+    rememberSeasonView,
+    returningSeasonView,
+    type SeasonView,
+    type SortDir,
+    type SortKey,
+    type StandingsView
+  } from '$lib/season-return';
+  import type { Snapshot } from './$types';
   export let data: any;
 
-  type SortKey = 'rank' | 'player' | 'rating' | 'sp' | 'games' | 'avg' | 'top2';
-  type SortDir = 'asc' | 'desc';
-  type StandingsView = 'eligible' | 'all';
-
-  let sortKey: SortKey = 'rank';
-  let sortDir: SortDir = 'asc';
-  let standingsView: StandingsView = data.isCasual ? 'all' : 'eligible';
+  const returning = returningSeasonView();
+  let sortKey: SortKey = returning?.sortKey ?? 'rank';
+  let sortDir: SortDir = returning?.sortDir ?? 'asc';
+  let standingsView: StandingsView = returning?.standingsView ?? (data.isCasual ? 'all' : 'eligible');
   let standingsSeasonId = data.season.id;
+
+  function currentView(): SeasonView {
+    return { scrollY: window.scrollY, sortKey, sortDir, standingsView };
+  }
+
+  beforeNavigate(({ from }) => {
+    if (from) rememberSeasonView(from.url, currentView());
+  });
+
+  // Covers the browser's Back and Forward buttons and reloads. SvelteKit scrolls before it
+  // restores this, when the page can still be too short to reach the saved position.
+  export const snapshot: Snapshot<SeasonView> = {
+    capture: currentView,
+    async restore(view) {
+      ({ sortKey, sortDir, standingsView } = view);
+      await tick();
+      window.scrollTo(0, view.scrollY);
+    }
+  };
 
   $: if (data.season.id !== standingsSeasonId) {
     standingsSeasonId = data.season.id;
