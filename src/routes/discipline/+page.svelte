@@ -83,23 +83,16 @@
 
   .history-wrap {
     margin-top: 12px;
-    overflow-x: auto;
-  }
-
-  .history-wrap table {
-    min-width: 900px;
   }
 
   .date-stack,
   .status-stack {
     display: grid;
+    justify-items: start;
     gap: 4px;
-    min-width: 160px;
   }
 
   .reason-cell {
-    min-width: 220px;
-    max-width: 360px;
     overflow-wrap: anywhere;
   }
 
@@ -120,6 +113,15 @@
       grid-template-columns: 1fr;
     }
   }
+
+  /* "Suspensions" is too long for a third of the smallest phones. */
+  @media (max-width: 420px) {
+    .summary-grid {
+      grid-auto-flow: row;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      row-gap: 12px;
+    }
+  }
 </style>
 
 <div class="card" style="margin-bottom:12px;">
@@ -129,8 +131,8 @@
         <span class="led-tag" lang="ja" aria-hidden="true">処分</span>
         <h1 class="page-title">My discipline status</h1>
       </div>
+      <div class="muted" style="margin-top:4px;">Private to you and authorized club officials</div>
     </div>
-    <span class="tag">Private to you and authorized club officials</span>
   </div>
 </div>
 
@@ -232,8 +234,8 @@
       </div>
     </div>
 
-    <div class="history-wrap">
-      <table>
+    <div class="history-wrap table-stack-scope">
+      <table class="table-stack">
         <caption class="sr-only">Private discipline history for {player.label}</caption>
         <thead>
           <tr>
@@ -249,23 +251,25 @@
           {#each actions as action}
             <tr class:history-row-revoked={!!action.revoked_at}>
               <td><span class={`status-badge ${statusTone(action.action_type)}`}>{actionTypeLabel(action)}</span></td>
-              <td>{formatIssued(action.issued_at)}</td>
-              <td>
+              <td data-label="Issued">{formatIssued(action.issued_at)}</td>
+              <td data-label="Effective">
                 <div class="date-stack">
                   <span>From {formatDay(action.effective_on ?? action.issued_at)}</span>
                   <span class="muted">{expiryLabel(action)}</span>
                 </div>
               </td>
-              <td class="reason-cell">
-                <div>{action.reason || 'No reason recorded'}</div>
-                {#if action.match_id && action.match_is_public === true}
-                  <div class="muted" style="margin-top:4px;">
-                    Match: <a href={`/match/${action.match_id}`}>{action.match_label ?? action.match_id.slice(0, 8)}</a>
-                  </div>
-                {/if}
+              <td class="reason-cell" data-label="Reason">
+                <div>
+                  <div>{action.reason || 'No reason recorded'}</div>
+                  {#if action.match_id && action.match_is_public === true}
+                    <div class="muted" style="margin-top:4px;">
+                      Match: <a href={`/match/${action.match_id}`}>{action.match_label ?? action.match_id.slice(0, 8)}</a>
+                    </div>
+                  {/if}
+                </div>
               </td>
-              <td>{sourceLabel(action.source)}</td>
-              <td>
+              <td data-label="Source">{sourceLabel(action.source)}</td>
+              <td data-label="Status">
                 <div class="status-stack">
                   {#if action.revoked_at}
                     <span class="status-badge status-muted">Revoked</span>

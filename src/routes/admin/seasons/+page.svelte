@@ -16,6 +16,22 @@
   $: canAddPlayers = hasAdminPermission(access, 'add_players');
 </script>
 
+<style>
+  /* Ruleset names are long, so that column gets the most room. */
+  @media (min-width: 761px) {
+    .import-form {
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.3fr) minmax(0, 1.2fr) auto;
+    }
+  }
+
+  /* The period already says "No time limit" for the one casual category. */
+  @media (max-width: 560px) {
+    .col-type {
+      display: none;
+    }
+  }
+</style>
+
 <div class="card" style="margin-bottom:12px;">
   <div class="card-head">
     <div>
@@ -38,24 +54,24 @@
   <div class="card" style="margin-bottom:12px;">
     <h2 class="card-title">Create regular season</h2>
     <div class="muted" style="margin:4px 0 12px;">Casual is a permanent, date-free category and is created automatically.</div>
-    <form method="POST" action="?/create" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
-      <label style="min-width:240px;">
-        <div class="muted">Name</div>
+    <form method="POST" action="?/create" class="form-grid">
+      <label class="field">
+        <span class="muted">Name</span>
         <input name="name" bind:value={name} placeholder="Spring 2026" required />
       </label>
-      <label>
-        <div class="muted">Start</div>
+      <label class="field">
+        <span class="muted">Start</span>
         <input name="start_date" bind:value={start_date} type="date" required />
       </label>
-      <label>
-        <div class="muted">End</div>
+      <label class="field">
+        <span class="muted">End</span>
         <input name="end_date" bind:value={end_date} type="date" required />
       </label>
-      <label style="display:flex; gap:8px; align-items:center; padding: 8px 0;">
+      <label class="check-field">
         <input name="is_active" type="checkbox" bind:checked={is_active} />
         <span class="muted">Set active</span>
       </label>
-      <button class="btn primary" type="submit" style="margin-left: auto">Create</button>
+      <button class="btn primary" type="submit">Create</button>
     </form>
   </div>
 {/if}
@@ -74,31 +90,31 @@
       {/if}
     </div>
 
-    <form method="POST" action="?/importExcel" enctype="multipart/form-data" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
-      <label style="min-width:240px;">
-        <div class="muted">Season</div>
-        <select name="season_id" bind:value={importSeasonId} required style="min-width:240px;">
+    <form method="POST" action="?/importExcel" enctype="multipart/form-data" class="form-grid import-form">
+      <label class="field">
+        <span class="muted">Season</span>
+        <select name="season_id" bind:value={importSeasonId} required>
           {#each data.seasons as s}
             <option value={s.id}>{s.name}{s.is_casual ? ' (no time limit)' : ''}{s.is_active ? ' (active)' : ''}</option>
           {/each}
         </select>
       </label>
 
-      <label style="min-width:240px;">
-        <div class="muted">Ruleset</div>
-        <select name="ruleset_id" bind:value={importRulesetId} required style="min-width:240px;">
+      <label class="field">
+        <span class="muted">Ruleset</span>
+        <select name="ruleset_id" bind:value={importRulesetId} required>
           {#each data.rulesets as r}
             <option value={r.id}>{r.name}</option>
           {/each}
         </select>
       </label>
 
-      <label style="min-width:280px;">
-        <div class="muted">Excel file</div>
+      <label class="field">
+        <span class="muted">Excel file</span>
         <input name="file" type="file" accept=".xlsx,.xls,.xlsm" required />
       </label>
 
-      <button class="btn primary" type="submit" style="margin-left: auto">Import</button>
+      <button class="btn primary" type="submit">Import</button>
     </form>
 
     {#if data.rulesets.length === 0}
@@ -114,16 +130,16 @@
       <thead>
         <tr>
           <th>Name</th>
-          <th style="width:120px;">Type</th>
+          <th class="col-type" style="width:120px;">Type</th>
           <th style="width:250px;">Period</th>
-          <th style="width:120px;">Active</th>
+          <th style="width:110px;"><span class="sr-only">Active</span></th>
         </tr>
       </thead>
       <tbody>
         {#each data.seasons as s}
           <tr>
             <td style="font-weight:600;">{s.name}</td>
-            <td><span class="tag">{s.is_casual ? 'Casual' : 'Regular'}</span></td>
+            <td class="col-type"><span class="tag">{s.is_casual ? 'Casual' : 'Regular'}</span></td>
             <td>{s.is_casual ? 'No time limit' : `${s.start_date} → ${s.end_date}`}</td>
             <td>
               {#if s.is_active}

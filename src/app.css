@@ -949,6 +949,23 @@ input[type='file']::file-selector-button {
 }
 input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
 
+/* Fields fill their column, so a long option or a date picker can't widen the page. */
+.field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
+.field > input:not([type='checkbox']):not([type='radio']),
+.field > select,
+.field > textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+/* Date pickers render taller than text fields, which would knock a row's labels out of line. */
+.field > input:not([type='checkbox']):not([type='radio']),
+.field > select { min-height: 37px; }
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 10px 12px;
+  align-items: end;
+}
+.form-grid > .btn { justify-self: end; }
+.check-field { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+
 /* ---------- Tables ---------- */
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th,
@@ -969,7 +986,31 @@ tbody tr[data-clickable-row] { cursor: pointer; transition: background-color 120
 tbody tr[data-clickable-row]:hover,
 tbody tr[data-clickable-row]:focus-within { background: var(--row-hover); }
 
-@media (max-width: 780px) { .grid2 { grid-template-columns: 1fr; } }
+/* A wide table turns into labelled blocks when its wrapper is narrow. Cells name themselves with data-label. */
+.table-stack-scope { container-type: inline-size; }
+@container (max-width: 799px) {
+  .table-stack,
+  .table-stack tbody,
+  .table-stack tr { display: block; }
+  .table-stack thead { display: none; }
+  .table-stack tr { padding: 10px 0; border-bottom: 1px solid var(--table-row); }
+  .table-stack tr:last-child { border-bottom: 0; }
+  .table-stack td { display: block; padding: 3px 0; border: 0; }
+  .table-stack td[data-label] {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 10px;
+    align-items: baseline;
+  }
+  .table-stack td[data-label]::before {
+    content: attr(data-label);
+    color: var(--table-head);
+    font-size: var(--type-label);
+    font-weight: 600;
+  }
+}
+
+@media (max-width: 780px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
 /* Keep the brand whole: a crowded desktop nav wraps onto a second row instead. */
 @media (min-width: 901px) {
   .app-brand { flex-shrink: 0; }
@@ -978,6 +1019,11 @@ tbody tr[data-clickable-row]:focus-within { background: var(--row-hover); }
 @media (max-width: 900px) {
   .desktop-header-nav { display: none; }
   .mobile-nav { display: block; }
+}
+/* Signed in, the nav has too many keys for one row until the window is this wide. */
+@media (max-width: 1040px) {
+  .has-long-nav .desktop-header-nav { display: none; }
+  .has-long-nav .mobile-nav { display: block; }
 }
 /* Phones and tablets: larger labels and touch targets. */
 @media (max-width: 1024px) {
@@ -1003,6 +1049,7 @@ tbody tr[data-clickable-row]:focus-within { background: var(--row-hover); }
   .readout { padding: 0 10px; }
   .readout .led-lg { font-size: 28px; }
   .readout .led-md { font-size: 24px; }
+  .form-grid > .btn { justify-self: stretch; }
 }
 @media (max-width: 420px) {
   .app-header__in { gap: 8px; }

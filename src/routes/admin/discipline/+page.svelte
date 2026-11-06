@@ -43,6 +43,16 @@
     flex-wrap: wrap;
   }
 
+  /* A long title wraps beside the Back button instead of pushing it onto its own row. */
+  .page-heading {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+
+  .page-heading > div {
+    min-width: 0;
+  }
+
   .section-heading .muted {
     margin-top: 4px;
   }
@@ -55,28 +65,18 @@
   }
 
   .player-form {
-    grid-template-columns: minmax(240px, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
+  }
+
+  .issue-form > .btn {
+    justify-self: end;
   }
 
   .issue-grid {
     display: grid;
-    grid-template-columns: minmax(180px, 0.65fr) minmax(240px, 1fr);
+    grid-template-columns: minmax(0, 0.65fr) minmax(0, 1fr);
     gap: 10px;
-  }
-
-  .field {
-    display: grid;
-    gap: 4px;
-    min-width: 0;
-  }
-
-  .field > :global(input),
-  .field > :global(select),
-  .field > :global(textarea) {
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
   }
 
   .summary-grid {
@@ -110,11 +110,6 @@
 
   .history-wrap {
     margin-top: 12px;
-    overflow-x: auto;
-  }
-
-  .history-wrap table {
-    min-width: 980px;
   }
 
   .action-name {
@@ -132,15 +127,13 @@
   }
 
   .reason-cell {
-    min-width: 220px;
-    max-width: 360px;
     overflow-wrap: anywhere;
   }
 
   .date-stack {
     display: grid;
+    justify-items: start;
     gap: 3px;
-    min-width: 170px;
   }
 
   .revoke-control {
@@ -182,7 +175,7 @@
     .player-form,
     .issue-grid,
     .action-details {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .player-form .btn,
@@ -247,10 +240,6 @@
       <div class="readout">
         <div class="stat-label">Suspensions issued</div>
         <span class="led led-md summary-value" class:led-amber={(summary?.suspensionCount ?? 0) > 0}>{summary?.suspensionCount ?? 0}</span>
-      </div>
-      <div class="readout">
-        <div class="stat-label">Current status</div>
-        <span class={`status-badge summary-value ${statusTone(summary?.status)}`}>{statusLabel(summary?.status)}</span>
       </div>
     </div>
 
@@ -325,8 +314,8 @@
       <span class="muted">{actions.length} {actions.length === 1 ? 'record' : 'records'}</span>
     </div>
 
-    <div class="history-wrap">
-      <table>
+    <div class="history-wrap table-stack-scope">
+      <table class="table-stack">
         <caption class="sr-only">Discipline action history for {selectedPlayer.label}</caption>
         <thead>
           <tr>
@@ -343,32 +332,33 @@
             <tr class:history-row-revoked={!!action.revoked_at}>
               <td>
                 <div class="action-name">
-                  {actionTypeLabel(action)}
                   <span class={`status-badge ${statusTone(action.action_type)}`}>{actionTypeLabel(action)}</span>
                 </div>
               </td>
-              <td>{formatIssued(action.issued_at)}</td>
-              <td>
+              <td data-label="Issued">{formatIssued(action.issued_at)}</td>
+              <td data-label="Effective">
                 <div class="date-stack">
                   <span>From {formatDay(action.effective_on ?? action.issued_at)}</span>
                   <span class="muted">{expiryLabel(action)}</span>
                 </div>
               </td>
-              <td class="reason-cell">
-                <div>{action.reason || 'No reason recorded'}</div>
-                {#if action.match_id}
-                  <div class="muted" style="margin-top:4px;">
-                    Match:
-                    {#if canOpenAdminMatches}
-                      <a href={`/admin/match/${action.match_id}`}>{action.match_label ?? action.match_id.slice(0, 8)}</a>
-                    {:else}
-                      {action.match_label ?? action.match_id.slice(0, 8)}
-                    {/if}
-                  </div>
-                {/if}
+              <td class="reason-cell" data-label="Reason">
+                <div>
+                  <div>{action.reason || 'No reason recorded'}</div>
+                  {#if action.match_id}
+                    <div class="muted" style="margin-top:4px;">
+                      Match:
+                      {#if canOpenAdminMatches}
+                        <a href={`/admin/match/${action.match_id}`}>{action.match_label ?? action.match_id.slice(0, 8)}</a>
+                      {:else}
+                        {action.match_label ?? action.match_id.slice(0, 8)}
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
               </td>
-              <td>{sourceLabel(action.source)}</td>
-              <td>
+              <td data-label="Source">{sourceLabel(action.source)}</td>
+              <td data-label="Status">
                 {#if action.revoked_at}
                   <div class="date-stack">
                     <span class="status-badge status-muted">Revoked</span>

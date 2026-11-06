@@ -226,12 +226,19 @@
 
   .account-list {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
 
   .account-selector {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 7px;
+  }
+
+  .account-selector select {
+    width: 100%;
+    min-width: 0;
   }
 
   .account-selector label {
@@ -396,7 +403,7 @@
 
   @media (max-width: 760px) {
     .permission-groups {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>

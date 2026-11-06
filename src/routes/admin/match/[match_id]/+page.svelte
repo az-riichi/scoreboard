@@ -284,12 +284,19 @@
 </script>
 
 <style>
+  /* Player and score stay side by side, so four seats fit on a phone screen. */
   .result-entry-row {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) 160px;
+    grid-template-columns: minmax(0, 1fr) 120px;
     gap: 10px;
     align-items: center;
     width: 100%;
+  }
+
+  .seat-points {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .confirm-anchor {
@@ -372,9 +379,32 @@
     margin-top: 6px;
   }
 
-  @media (max-width: 720px) {
+  @media (max-width: 560px) {
+    /* The seat entries above already show each seat and score. */
+    .col-seat,
+    .col-raw {
+      display: none;
+    }
+
+    /* Fixed column widths would squeeze the player's name once the columns above are gone. */
+    .col-fluid {
+      width: auto !important;
+    }
+
+    /* The delete button can sit at the left edge here, so the popover opens rightward. */
+    .confirm-popover {
+      left: 0;
+      right: auto;
+    }
+  }
+
+  @media (max-width: 420px) {
     .result-entry-row {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr) 96px;
+    }
+
+    .col-new-r {
+      display: none;
     }
   }
 </style>
@@ -588,7 +618,8 @@
                 required
                 bind:value={entries[i].raw_points}
                 disabled={isFinal}
-                style="width:130px; justify-self:start;"
+                class="seat-points"
+                aria-label={`Raw points for seat ${row.seat}`}
               />
             </div>
           </div>
@@ -624,73 +655,6 @@
     {:else}
       <div class="muted" style="margin-top:4px;">You have read-only access to these results.</div>
     {/if}
-
-    <div style="margin-top:14px;">
-      <h3 class="card-title" style="font-size:var(--type-small);">Expected outcomes</h3>
-
-      <div style="margin-top:10px; overflow:auto;">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:70px;">Seat</th>
-              <th>Player</th>
-              <th class="num" style="width:110px;">Raw</th>
-              <th style="width:80px;">Place</th>
-              <th class="num" style="width:100px;">SP Δ</th>
-              {#if !isCasual}
-                <th class="num" style="width:100px;">ΔR</th>
-                <th class="num" style="width:110px;">New R</th>
-              {/if}
-            </tr>
-          </thead>
-          <tbody>
-            {#each expectedRows as row}
-              {@const clubTone = signTone(row.expected_club)}
-              {@const rTone = signTone(row.expected_r_delta)}
-              <tr>
-                <td>
-                  <span class="wind-cell">
-                    <span class="wind" class:is-lit={row.seat === 'E'} lang="ja" aria-hidden="true">{windKanji(row.seat)}</span>
-                    <span class="wind-letter"><span class="sr-only">{windName(row.seat)}</span><span aria-hidden="true">{row.seat}</span></span>
-                  </span>
-                </td>
-                <td>
-                  {row.player_name_primary}
-                  {#if row.player_name_secondary}
-                    <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
-                  {/if}
-                </td>
-                <td class="num">
-                  {#if row.has_raw_points}
-                    <span class="led led-red">{fmtNum(row.raw_points, 0)}</span>
-                  {:else}
-                    —
-                  {/if}
-                </td>
-                <td>
-                  {#if row.display_placement == null}
-                    —
-                  {:else}
-                    <span class="place-chip" data-place={row.display_placement}>{ordinal(row.display_placement)}</span>
-                  {/if}
-                </td>
-                <td class="num" class:pos={clubTone === 'pos'} class:neg={clubTone === 'neg'}>{row.expected_club == null ? '—' : fmtSigned(row.expected_club, 1, true)}</td>
-                {#if !isCasual}
-                  <td class="num" class:pos={rTone === 'pos'} class:neg={rTone === 'neg'}>{row.expected_r_delta == null ? '—' : fmtSigned(row.expected_r_delta, 2)}</td>
-                  <td class="num">{row.expected_new_rate == null ? '—' : fmtNum(row.expected_new_rate, 2)}</td>
-                {/if}
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-
-      {#if !hasFourDistinctPlayers}
-        <div class="muted" style="margin-top:8px;">
-          {isCasual ? 'Pick 4 distinct players to preview SP and placements' : 'Pick 4 distinct players to preview SP and R changes'}
-        </div>
-      {/if}
-    </div>
   </div>
 
   <div class="card">
@@ -735,38 +699,36 @@
           Penalties adjust Season Points (SP) only. They do not change Rating (R)
         </div>
 
-        <form method="POST" action="?/addPenalty" style="display:grid; gap:10px; margin-top:10px;">
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
-            <div style="display:grid; gap:4px;">
-              <label for="penalty_player">Player</label>
-              <select id="penalty_player" name="player_id" required style="min-width:220px;">
-                {#if penaltyPlayers.length === 0}
-                  <option value="" disabled selected>Enter and save results first</option>
-                {:else}
-                  <option value="" disabled selected>Select player</option>
-                  {#each penaltyPlayers as p}
-                    <option value={p.id}>{p.label}</option>
-                  {/each}
-                {/if}
-              </select>
-            </div>
-
-            <div style="display:grid; gap:4px;">
-              <label for="penalty_points">Points</label>
-              <input id="penalty_points" name="points" type="number" step="1" required style="width:120px;" />
-            </div>
-
-            <div style="display:grid; gap:4px;">
-              <label for="penalty_reason">Reason code</label>
-              <input id="penalty_reason" name="reason_code" type="text" placeholder="CHOMBO" required style="width:170px;" />
-            </div>
-
-            <button class="btn" type="submit" disabled={penaltyPlayers.length === 0}>Add penalty</button>
+        <form method="POST" action="?/addPenalty" class="form-grid" style="margin-top:10px;">
+          <div class="field">
+            <label for="penalty_player">Player</label>
+            <select id="penalty_player" name="player_id" required>
+              {#if penaltyPlayers.length === 0}
+                <option value="" disabled selected>Enter and save results first</option>
+              {:else}
+                <option value="" disabled selected>Select player</option>
+                {#each penaltyPlayers as p}
+                  <option value={p.id}>{p.label}</option>
+                {/each}
+              {/if}
+            </select>
           </div>
+
+          <div class="field">
+            <label for="penalty_points">Points</label>
+            <input id="penalty_points" name="points" type="number" step="1" required />
+          </div>
+
+          <div class="field">
+            <label for="penalty_reason">Reason code</label>
+            <input id="penalty_reason" name="reason_code" type="text" placeholder="CHOMBO" required />
+          </div>
+
+          <button class="btn" type="submit" disabled={penaltyPlayers.length === 0}>Add penalty</button>
         </form>
 
-        <div style="margin-top:10px; overflow:auto;">
-          <table>
+        <div class="table-stack-scope" style="margin-top:10px;">
+          <table class="table-stack">
             <thead>
               <tr>
                 <th>Player</th>
@@ -779,10 +741,10 @@
             <tbody>
               {#each data.penalties as p}
                 <tr>
-                  <td>{p.player_label}</td>
-                  <td class:pos={signTone(p.points) === 'pos'} class:neg={signTone(p.points) === 'neg'}>{fmtSigned(p.points, 2)}</td>
-                  <td>{p.reason_code}</td>
-                  <td>{fmtDateTime(p.created_at)}</td>
+                  <td data-label="Player">{p.player_label}</td>
+                  <td data-label="Points" class:pos={signTone(p.points) === 'pos'} class:neg={signTone(p.points) === 'neg'}>{fmtSigned(p.points, 2)}</td>
+                  <td data-label="Reason">{p.reason_code}</td>
+                  <td data-label="Created">{fmtDateTime(p.created_at)}</td>
                   <td>
                     <form method="POST" action="?/removePenalty">
                       <input type="hidden" name="adjustment_id" value={p.id} />
@@ -801,4 +763,71 @@
       {/if}
     </div>
   </div>
+</div>
+
+<div class="card" style="margin-top:12px;">
+  <h2 class="card-title">Expected outcomes</h2>
+
+  <div style="margin-top:10px; overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-seat" style="width:70px;">Seat</th>
+          <th>Player</th>
+          <th class="num col-raw" style="width:110px;">Raw</th>
+          <th class="col-fluid" style="width:80px;">Place</th>
+          <th class="num col-fluid" style="width:100px;">SP Δ</th>
+          {#if !isCasual}
+            <th class="num col-fluid" style="width:100px;">ΔR</th>
+            <th class="num col-new-r col-fluid" style="width:110px;">New R</th>
+          {/if}
+        </tr>
+      </thead>
+      <tbody>
+        {#each expectedRows as row}
+          {@const clubTone = signTone(row.expected_club)}
+          {@const rTone = signTone(row.expected_r_delta)}
+          <tr>
+            <td class="col-seat">
+              <span class="wind-cell">
+                <span class="wind" class:is-lit={row.seat === 'E'} lang="ja" aria-hidden="true">{windKanji(row.seat)}</span>
+                <span class="wind-letter"><span class="sr-only">{windName(row.seat)}</span><span aria-hidden="true">{row.seat}</span></span>
+              </span>
+            </td>
+            <td>
+              {row.player_name_primary}
+              {#if row.player_name_secondary}
+                <span class="muted" style="margin-left:6px;">({row.player_name_secondary})</span>
+              {/if}
+            </td>
+            <td class="num col-raw">
+              {#if row.has_raw_points}
+                <span class="led led-red">{fmtNum(row.raw_points, 0)}</span>
+              {:else}
+                —
+              {/if}
+            </td>
+            <td>
+              {#if row.display_placement == null}
+                —
+              {:else}
+                <span class="place-chip" data-place={row.display_placement}>{ordinal(row.display_placement)}</span>
+              {/if}
+            </td>
+            <td class="num" class:pos={clubTone === 'pos'} class:neg={clubTone === 'neg'}>{row.expected_club == null ? '—' : fmtSigned(row.expected_club, 1, true)}</td>
+            {#if !isCasual}
+              <td class="num" class:pos={rTone === 'pos'} class:neg={rTone === 'neg'}>{row.expected_r_delta == null ? '—' : fmtSigned(row.expected_r_delta, 2)}</td>
+              <td class="num col-new-r">{row.expected_new_rate == null ? '—' : fmtNum(row.expected_new_rate, 2)}</td>
+            {/if}
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  </div>
+
+  {#if !hasFourDistinctPlayers}
+    <div class="muted" style="margin-top:8px;">
+      {isCasual ? 'Pick 4 distinct players to preview SP and placements' : 'Pick 4 distinct players to preview SP and R changes'}
+    </div>
+  {/if}
 </div>

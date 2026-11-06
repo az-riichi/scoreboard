@@ -203,7 +203,7 @@
   <div class="sr-only" role="status" aria-live="polite">Loading page</div>
 {/if}
 
-<header class="app-header">
+<header class="app-header" class:has-long-nav={data.user}>
   <div class="app-header__in">
     <a class="app-brand" href="/" aria-label="AZRM Scoreboard home">
       <img class="app-logo" src="/azrm-logo.png" alt="" width="42" height="42" />
