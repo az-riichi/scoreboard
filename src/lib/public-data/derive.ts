@@ -11,6 +11,9 @@ import type {
   LifetimeRatingState,
   MatchPageData,
   PlayerMatchHistoryRow,
+  PlayerHistory,
+  PlayerLifetime,
+  PlayerLifetimeSeason,
   PlayerNameParts,
   PlayerPageData,
   PlayerPlacementHistoryRow,
@@ -33,6 +36,9 @@ import type {
 
 const FALLBACK_RATING_START_DATE = '2026-01-01';
 const RECENT_MATCH_LIMIT = 10;
+
+/** Selects every competition season on the player page. Casual stays separate, as it does for ratings. */
+export const LIFETIME_SEASON_ID = 'lifetime';
 
 export type PublicDataModel = {
   snapshot: PublicDataSnapshot;
@@ -845,6 +851,146 @@ function eligibleSeasonRank(
   return null;
 }
 
+function historyForRows(
+  model: PublicDataModel,
+  playerId: string,
+  eventId: string | null,
+  rows: readonly DerivedFinalResult[]
+): Omit<PlayerHistory, 'ratingHistory'> {
+  const chronologicalRows = [...rows].sort(compareResultsAscending);
+
+  const matchHistory = chronologicalRows.slice(-100).reverse().map((row) => {
+    const match = model.matchesById.get(row.match_id)!;
+    return {
+      ...row,
+      match_label: matchLabel(match)
+    };
+  });
+
+  let cumulativePoints = 0;
+  const historyStart = Math.max(0, chronologicalRows.length - 200);
+  for (let index = 0; index < historyStart; index += 1) {
+    const row = chronologicalRows[index];
+    cumulativePoints +=
+      row.club_points + (eventId ? matchAdjustmentTotal(model, row.match_id, playerId) : 0);
+  }
+  const pointHistory = chronologicalRows.slice(historyStart).map((row) => {
+    const match = model.matchesById.get(row.match_id)!;
+    if (eventId) {
+      const adjustmentPoints = matchAdjustmentTotal(
+        model,
+        row.match_id,
+        playerId
+      );
+      const pointsWithAdjustments = row.club_points + adjustmentPoints;
+      cumulativePoints += pointsWithAdjustments;
+      return {
+        season_id: row.season_id,
+        casual_event_id: eventId,
+        casual_event_name: model.eventsById.get(eventId)?.name ?? null,
+        player_id: playerId,
+        display_name: row.display_name,
+        played_at: row.played_at,
+        match_id: row.match_id,
+        match_label: matchLabel(match),
+        placement: row.placement,
+        raw_points: row.raw_points,
+        club_points: row.club_points,
+        adjustment_points: adjustmentPoints,
+        points_with_adjustments: pointsWithAdjustments,
+        cumulative_points: cumulativePoints
+      };
+    }
+
+    cumulativePoints += row.club_points;
+    return {
+      season_id: row.season_id,
+      player_id: playerId,
+      display_name: row.display_name,
+      played_at: row.played_at,
+      match_id: row.match_id,
+      match_label: matchLabel(match),
+      placement: row.placement,
+      raw_points: row.raw_points,
+      club_points: row.club_points,
+      cumulative_points: cumulativePoints
+    };
+  });
+
+  const placementHistory = chronologicalRows.slice(historyStart).map(
+    (row): PlayerPlacementHistoryRow => ({
+      season_id: row.season_id,
+      player_id: playerId,
+      display_name: row.display_name,
+      played_at: row.played_at,
+      match_id: row.match_id,
+      match_label: matchLabel(model.matchesById.get(row.match_id)!),
+      placement: row.placement,
+      raw_points: row.raw_points,
+      club_points: row.club_points,
+      casual_event_id: row.casual_event_id,
+      casual_event_name: row.casual_event_name
+    })
+  );
+
+  return { matchHistory, pointHistory, placementHistory };
+}
+
+function competitionRowsFor(model: PublicDataModel, playerId: string): DerivedFinalResult[] {
+  return (model.resultsByPlayerId.get(playerId) ?? []).filter(
+    (result) => model.seasonsById.get(result.season_id)?.is_casual !== true
+  );
+}
+
+function lifetimeFor(
+  model: PublicDataModel,
+  playerId: string,
+  rows: readonly DerivedFinalResult[]
+): PlayerLifetime {
+  const seasons = model.snapshot.seasons
+    .filter((season) => !season.is_casual)
+    .sort(seasonStartDescending)
+    .flatMap((season): PlayerLifetimeSeason[] => {
+      const standings = standingsForScope(model, season.id, null);
+      const standing = standings.find((row) => row.player_id === playerId);
+      if (!standing) return [];
+      return [
+        {
+          season_id: season.id,
+          season_name: season.name,
+          is_active: season.is_active,
+          games_played: standing.games_played,
+          total_points: standing.total_points_with_adjustments,
+          avg_placement: standing.avg_placement,
+          top2_rate: standing.top2_rate,
+          rank: eligibleSeasonRank(standings, playerId, false)
+        }
+      ];
+    });
+  const ranks = seasons.flatMap((season) => (season.rank == null ? [] : [season.rank]));
+  const ratings = model.lifetimeRatings.historyByPlayerId.get(playerId) ?? [];
+
+  return {
+    seasons,
+    total_points: seasons.reduce((total, season) => total + season.total_points, 0),
+    titles: seasons.filter((season) => season.rank === 1 && !season.is_active).length,
+    best_rank: ranks.length > 0 ? Math.min(...ranks) : null,
+    peak_rating: ratings.length > 0 ? Math.max(...ratings.map((row) => row.new_rate)) : null,
+    busts: rows.filter((row) => row.tobi).length
+  };
+}
+
+function competitionHistoryFor(model: PublicDataModel, playerId: string): PlayerHistory {
+  const history = historyForRows(model, playerId, null, competitionRowsFor(model, playerId));
+  const shownMatchIds = new Set(history.pointHistory.map((row) => row.match_id));
+  return {
+    ...history,
+    ratingHistory: (model.lifetimeRatings.historyByPlayerId.get(playerId) ?? []).filter((row) =>
+      shownMatchIds.has(row.match_id)
+    )
+  };
+}
+
 export function derivePlayerPage(
   source: PublicDataSource,
   playerId: string,
@@ -856,6 +1002,7 @@ export function derivePlayerPage(
 
   const seasons = [...model.snapshot.seasons].sort(seasonStartDescending);
   const requestedSeasonId = clean(options.seasonId);
+  const isLifetime = requestedSeasonId === LIFETIME_SEASON_ID;
   const activeSeason =
     [...model.snapshot.seasons]
       .filter((season) => season.is_active && !season.is_casual)
@@ -894,10 +1041,18 @@ export function derivePlayerPage(
   let ratingHistory: RatingHistoryRow[] = [];
   let bestRawMatch: RawMatchExtreme | null = null;
   let worstRawMatch: RawMatchExtreme | null = null;
+  let lifetime: PlayerLifetime | null = null;
+  const competitionHistory = competitionHistoryFor(model, playerId);
 
-  if (seasonId) {
+  if (isLifetime) {
+    const rows = competitionRowsFor(model, playerId);
+    stats = playerStatsForRows(model, LIFETIME_SEASON_ID, playerId, null, rows);
+    ({ matchHistory, pointHistory, placementHistory, ratingHistory } = competitionHistory);
+    bestRawMatch = rawExtreme(rows, -1);
+    worstRawMatch = rawExtreme(rows, 1);
+    lifetime = lifetimeFor(model, playerId, rows);
+  } else if (seasonId) {
     const scopedRows = resultsForPlayer(model, seasonId, playerId, eventId);
-    const chronologicalRows = [...scopedRows].sort(compareResultsAscending);
     const standings = standingsForScope(model, seasonId, eventId);
     stats = playerStatsForRows(model, seasonId, playerId, eventId, scopedRows);
     const standing = standings.find((row) => row.player_id === playerId);
@@ -908,73 +1063,12 @@ export function derivePlayerPage(
       isCasualSeason
     );
 
-    matchHistory = chronologicalRows.slice(-100).reverse().map((row) => {
-      const match = model.matchesById.get(row.match_id)!;
-      return {
-        ...row,
-        match_label: matchLabel(match)
-      };
-    });
-
-    let cumulativePoints = 0;
-    const historyStart = Math.max(0, chronologicalRows.length - 200);
-    for (let index = 0; index < historyStart; index += 1) {
-      const row = chronologicalRows[index];
-      cumulativePoints +=
-        row.club_points + (eventId ? matchAdjustmentTotal(model, row.match_id, playerId) : 0);
-    }
-    pointHistory = chronologicalRows.slice(historyStart).map((row) => {
-      const match = model.matchesById.get(row.match_id)!;
-      if (eventId) {
-        const adjustmentPoints = matchAdjustmentTotal(
-          model,
-          row.match_id,
-          playerId
-        );
-        const pointsWithAdjustments = row.club_points + adjustmentPoints;
-        cumulativePoints += pointsWithAdjustments;
-        return {
-          season_id: row.season_id,
-          casual_event_id: eventId,
-          casual_event_name: model.eventsById.get(eventId)?.name ?? null,
-          player_id: playerId,
-          display_name: row.display_name,
-          played_at: row.played_at,
-          match_id: row.match_id,
-          match_label: matchLabel(match),
-          club_points: row.club_points,
-          adjustment_points: adjustmentPoints,
-          points_with_adjustments: pointsWithAdjustments,
-          cumulative_points: cumulativePoints
-        };
-      }
-
-      cumulativePoints += row.club_points;
-      return {
-        season_id: row.season_id,
-        player_id: playerId,
-        display_name: row.display_name,
-        played_at: row.played_at,
-        match_id: row.match_id,
-        match_label: matchLabel(match),
-        club_points: row.club_points,
-        cumulative_points: cumulativePoints
-      };
-    });
-
-    placementHistory = chronologicalRows.slice(historyStart).map(
-      (row): PlayerPlacementHistoryRow => ({
-        season_id: row.season_id,
-        player_id: playerId,
-        display_name: row.display_name,
-        played_at: row.played_at,
-        match_id: row.match_id,
-        match_label: matchLabel(model.matchesById.get(row.match_id)!),
-        placement: row.placement,
-        casual_event_id: row.casual_event_id,
-        casual_event_name: row.casual_event_name
-      })
-    );
+    ({ matchHistory, pointHistory, placementHistory } = historyForRows(
+      model,
+      playerId,
+      eventId,
+      scopedRows
+    ));
 
     if (
       selectedSeason &&
@@ -1016,6 +1110,9 @@ export function derivePlayerPage(
     pointHistory,
     placementHistory,
     ratingHistory,
+    competitionHistory,
+    isLifetime,
+    lifetime,
     bestRawMatch,
     worstRawMatch
   };

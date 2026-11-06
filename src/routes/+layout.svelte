@@ -226,19 +226,15 @@
 
         {#if data.user}
           <a href="/discipline" class="nav-key" class:is-active={activeNav === 'discipline'} aria-current={activeNav === 'discipline' ? 'page' : undefined}>My discipline</a>
-          <span class="nav-session" title="Signed in">
-            <span class="led-dot is-on" aria-hidden="true"></span>
-            Signed in
-            <form method="POST" action="/logout">
-              <button class="nav-key" type="submit">Sign out</button>
-            </form>
-          </span>
+          <form method="POST" action="/logout" class="nav-session">
+            <button class="nav-key" type="submit">Sign out</button>
+          </form>
         {:else}
           <a href="/login" class="nav-key" class:is-active={activeNav === 'login'} aria-current={activeNav === 'login' ? 'page' : undefined}>Sign in</a>
         {/if}
       </nav>
 
-      <div class="theme-toggle" title={themePreference === 'system' ? 'Theme: System (auto)' : `Theme: ${themePreference}`}>
+      <div class="theme-toggle">
         <button
           class="theme-icon {resolvedTheme === 'light' ? 'is-active' : ''} {themePreference === 'system' && resolvedTheme === 'light' ? 'is-system' : ''}"
           type="button"
@@ -283,7 +279,6 @@
 
           {#if data.user}
             <div class="mobile-nav__auth">
-              <span class="nav-session"><span class="led-dot is-on" aria-hidden="true"></span>Signed in</span>
               <form method="POST" action="/logout">
                 <button class="nav-key mobile-nav__signout" type="submit">Sign out</button>
               </form>

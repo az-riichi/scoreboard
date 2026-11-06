@@ -59,11 +59,10 @@
 </style>
 
 <div class="card auth-card">
-  <div class="title-row">
+  <div class="title-row" style="margin-bottom:14px;">
     <span class="led-tag" lang="ja" aria-hidden="true">ログイン</span>
     <h1 class="page-title">Sign in</h1>
   </div>
-  <p class="muted" style="margin:8px 0 16px;">Linked players can review their private discipline status. Admins can manage club records and results.</p>
 
   {#if data?.notice}
     <div class="card alert alert-success" role="status">
@@ -118,8 +117,7 @@
 
   <hr class="divider" />
 
-  <h2 class="card-title" style="margin-bottom:6px;">Reset password</h2>
-  <p class="muted" style="margin:0 0 10px;">Enter your account email and we’ll send you a link to choose a new password.</p>
+  <h2 class="card-title" style="margin-bottom:10px;">Reset password</h2>
   <form
     method="POST"
     action="?/requestPasswordReset"

@@ -43,7 +43,6 @@
     flex-wrap: wrap;
   }
 
-  .page-heading .muted,
   .section-heading .muted {
     margin-top: 4px;
   }
@@ -81,10 +80,7 @@
   }
 
   .summary-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    margin-top: 12px;
+    margin-top: 14px;
   }
 
   .summary-value {
@@ -185,7 +181,6 @@
   @media (max-width: 760px) {
     .player-form,
     .issue-grid,
-    .summary-grid,
     .action-details {
       grid-template-columns: 1fr;
     }
@@ -204,7 +199,6 @@
         <span class="led-tag" lang="ja" aria-hidden="true">処分</span>
         <h1 class="page-title">Discipline management</h1>
       </div>
-      <div class="muted">Issue, review, and revoke private player discipline actions</div>
     </div>
     <a class="btn" href="/admin">Back</a>
   </div>
@@ -245,16 +239,16 @@
       <span class={`status-badge ${statusTone(summary?.status)}`}>{statusLabel(summary?.status)}</span>
     </div>
 
-    <div class="summary-grid">
-      <div class="stat-tile">
+    <div class="readouts summary-grid">
+      <div class="readout">
         <div class="stat-label">Active strikes</div>
         <span class="led led-md summary-value" class:led-amber={(summary?.activeStrikeCount ?? 0) > 0}>{summary?.activeStrikeCount ?? 0}</span>
       </div>
-      <div class="stat-tile">
+      <div class="readout">
         <div class="stat-label">Suspensions issued</div>
         <span class="led led-md summary-value" class:led-amber={(summary?.suspensionCount ?? 0) > 0}>{summary?.suspensionCount ?? 0}</span>
       </div>
-      <div class="stat-tile">
+      <div class="readout">
         <div class="stat-label">Current status</div>
         <span class={`status-badge summary-value ${statusTone(summary?.status)}`}>{statusLabel(summary?.status)}</span>
       </div>

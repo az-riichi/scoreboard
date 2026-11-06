@@ -28,7 +28,6 @@
       <span class="led-tag" lang="ja" aria-hidden="true">管理</span>
       <h1 class="page-title">Admin</h1>
     </div>
-    <div class="muted">The tools available to your account are shown below</div>
   </div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     {#if canManageSeasons}

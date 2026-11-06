@@ -15,7 +15,6 @@
     key: string;
     kanji: string;
     title: string;
-    subtitle: string;
     groups: HallGroup[];
   };
 
@@ -25,14 +24,12 @@
       key: 'matches',
       kanji: '対局記録',
       title: 'Match records',
-      subtitle: 'Single games worth remembering. Open any table to see the full result.',
       groups: data.matchGroups
     },
     {
       key: 'players',
       kanji: '雀士記録',
       title: 'Player records',
-      subtitle: 'Runs, reversals and rivalries built over many games.',
       groups: data.playerGroups
     }
   ];
@@ -47,9 +44,6 @@
   }
   .hof-section {
     margin-top: 12px;
-  }
-  .hof-section > .muted {
-    margin-top: 4px;
   }
   .hof-group-title {
     margin: 18px 0 8px;
@@ -150,19 +144,20 @@
     color: var(--accent);
   }
   .hof-ongoing {
-    font-size: 0.7rem;
+    font-size: 0.78rem;
   }
 
-  /* One game's final scores, styled as the table's own readout. */
+  /* One game's final scores. */
   .hof-table {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 2px;
-    padding: 7px 5px;
+    padding-top: 7px;
+    border-top: 1px solid var(--table-row);
     text-decoration: none;
   }
-  .hof-table:hover {
-    box-shadow: inset 0 0 0 1px var(--accent);
+  .hof-table:hover .hof-seat__name {
+    color: var(--accent);
   }
   .hof-seat {
     display: grid;
@@ -237,6 +232,41 @@
     color: var(--muted);
     font-size: 0.78rem;
   }
+
+  @media (max-width: 1024px) {
+    .hof-group-title {
+      font-size: 0.82rem;
+    }
+    .hof-record__title {
+      font-size: 0.88rem;
+    }
+    .hof-record__desc {
+      font-size: 0.9rem;
+    }
+    .hof-detail {
+      font-size: 0.88rem;
+    }
+    .hof-seat__name {
+      font-size: 0.78rem;
+    }
+    .hof-seat__pts {
+      font-size: 0.92rem;
+    }
+    .hof-runner {
+      font-size: 0.95rem;
+    }
+    .hof-runner .rank-led {
+      min-width: 26px;
+      height: 24px;
+      font-size: 0.88rem;
+    }
+    .hof-runner__value {
+      font-size: 0.95rem;
+    }
+    .hof-more {
+      font-size: 0.85rem;
+    }
+  }
 </style>
 
 <div class="card hof-head">
@@ -245,8 +275,7 @@
     <h1 class="page-title">Hall of Fame</h1>
   </div>
   <div class="muted">
-    The club's highs, lows and strangest results.
-    {data.gameCount} {data.gameCount === 1 ? 'game' : 'games'}, {data.playerCount} {data.playerCount === 1 ? 'player' : 'players'}.
+    {data.gameCount} {data.gameCount === 1 ? 'game' : 'games'}, {data.playerCount} {data.playerCount === 1 ? 'player' : 'players'}
   </div>
 
   <nav class="seg hof-scope" aria-label="Hall of Fame season">
@@ -260,12 +289,6 @@
       </a>
     {/each}
   </nav>
-
-  {#if data.isAllTime}
-    <div class="muted" style="margin-top:10px;">
-      All time covers every season, including Casual. Streaks carry across competition seasons, with Casual games counted as their own run.
-    </div>
-  {/if}
 </div>
 
 {#if data.podiums.length > 0}
@@ -274,9 +297,6 @@
       <span class="led-tag" lang="ja" aria-hidden="true">{data.isAllTime ? '歴代王者' : '表彰台'}</span>
       <h2 class="card-title">{data.isAllTime ? 'Season champions' : 'Podium'}</h2>
     </div>
-    {#if !data.season?.is_casual}
-      <div class="muted">Season Points after adjustments, among players with 5 or more games in the season.</div>
-    {/if}
 
     <div class="hof-grid hof-podiums">
       {#each data.podiums as podium (podium.season.id)}
@@ -324,7 +344,6 @@
         <span class="led-tag" lang="ja" aria-hidden="true">{section.kanji}</span>
         <h2 class="card-title">{section.title}</h2>
       </div>
-      <div class="muted">{section.subtitle}</div>
 
       {#each section.groups as group (group.key)}
         <h3 class="hof-group-title">{group.title}</h3>
@@ -362,7 +381,7 @@
               {/if}
 
               {#if lead.table}
-                <a class="hof-table screen-panel" href={lead.href}>
+                <a class="hof-table" href={lead.href}>
                   {#each lead.table as seat (seat.player_id)}
                     <span class="hof-seat" class:is-holder={seat.is_holder}>
                       <span class="hof-seat__name">{seat.name}</span>
@@ -376,7 +395,7 @@
                 <ol class="hof-runners">
                   {#each runners as entry, index (index)}
                     <li>
-                      <a class="hof-runner" href={entry.href} title={entry.detail}>
+                      <a class="hof-runner" href={entry.href}>
                         <span class="rank-led" data-rank={entry.rank}>{entry.rank}</span>
                         <span class="hof-clip">
                           {#if entry.players.length > 0}

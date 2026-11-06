@@ -1,6 +1,7 @@
 import { fmtDateArizona, toArizonaDatetimeLocalValue } from '../arizona-time';
 import { fmtFixed, fmtNum, fmtPct, fmtSigned } from '../ui';
 import {
+  LIFETIME_SEASON_ID,
   compareDateText,
   compareMatchesAscending,
   derivePublicData,
@@ -157,7 +158,7 @@ function seasonName(ctx: Context, seasonId: string): string {
 function hallPlayer(ctx: Context, playerId: string, seasonId: string | null): HallPlayer {
   return {
     player_id: playerId,
-    href: seasonId ? `/player/${playerId}?season=${seasonId}` : `/player/${playerId}`,
+    href: `/player/${playerId}?season=${seasonId ?? LIFETIME_SEASON_ID}`,
     ...playerNameParts(ctx.model.playersById, playerId)
   };
 }

@@ -12,6 +12,11 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
   day: 'numeric'
 });
 
+const monthDayFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric'
+});
+
 const numberFormatters = new Map<number, Intl.NumberFormat>();
 const fixedNumberFormatters = new Map<number, Intl.NumberFormat>();
 
@@ -28,6 +33,15 @@ export function fmtDate(ts: string) {
   try {
     const d = new Date(ts);
     return Number.isNaN(d.getTime()) ? d.toString() : dateFormatter.format(d);
+  } catch {
+    return ts;
+  }
+}
+
+export function fmtMonthDay(ts: string) {
+  try {
+    const d = new Date(ts);
+    return Number.isNaN(d.getTime()) ? d.toString() : monthDayFormatter.format(d);
   } catch {
     return ts;
   }

@@ -235,6 +235,8 @@ export type PlayerPointHistoryRow = {
   played_at: string;
   match_id: string;
   match_label: string;
+  placement: number;
+  raw_points: number;
   club_points: number;
   adjustment_points?: number;
   points_with_adjustments?: number;
@@ -249,6 +251,8 @@ export type PlayerPlacementHistoryRow = {
   match_id: string;
   match_label: string;
   placement: number;
+  raw_points: number;
+  club_points: number;
   casual_event_id: string | null;
   casual_event_name: string | null;
 };
@@ -295,7 +299,40 @@ export type MatchPageData = {
   ratingDeltas: RatingHistoryRow[];
 };
 
-export type PlayerPageData = {
+export type PlayerHistory = {
+  matchHistory: PlayerMatchHistoryRow[];
+  pointHistory: PlayerPointHistoryRow[];
+  placementHistory: PlayerPlacementHistoryRow[];
+  ratingHistory: RatingHistoryRow[];
+};
+
+export type PlayerLifetimeSeason = {
+  season_id: string;
+  season_name: string;
+  is_active: boolean;
+  games_played: number;
+  total_points: number;
+  avg_placement: number;
+  top2_rate: number;
+  /** Null until the player has enough games to be ranked in that season. */
+  rank: number | null;
+};
+
+export type PlayerLifetime = {
+  seasons: PlayerLifetimeSeason[];
+  total_points: number;
+  /** Finished seasons won. A season still in progress does not count yet. */
+  titles: number;
+  best_rank: number | null;
+  peak_rating: number | null;
+  busts: number;
+};
+
+export type PlayerPageData = PlayerHistory & {
+  /** Every competition game across seasons. The top-level histories cover the selected season. */
+  competitionHistory: PlayerHistory;
+  isLifetime: boolean;
+  lifetime: PlayerLifetime | null;
   player: RedactedPublicPlayer & PlayerNameParts;
   profileMessageHtml: string | null;
   profileMedia: PlayerProfileMedia;
@@ -315,10 +352,6 @@ export type PlayerPageData = {
   stats: PlayerStats | null;
   standingsRow: StandingsRow | null;
   seasonEligibleRank: number | null;
-  matchHistory: PlayerMatchHistoryRow[];
-  pointHistory: PlayerPointHistoryRow[];
-  placementHistory: PlayerPlacementHistoryRow[];
-  ratingHistory: RatingHistoryRow[];
   bestRawMatch: RawMatchExtreme | null;
   worstRawMatch: RawMatchExtreme | null;
 };

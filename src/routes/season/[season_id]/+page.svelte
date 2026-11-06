@@ -173,21 +173,6 @@
   .standings-view-toggle {
     margin-top: 12px;
   }
-  .standings-notes-desktop {
-    margin-top: 4px;
-  }
-  .standings-notes-mobile {
-    display: none;
-    margin-top: 6px;
-  }
-  .standings-notes-mobile summary {
-    cursor: pointer;
-    color: var(--muted);
-    font-size: 0.95rem;
-  }
-  .standings-notes-mobile[open] summary {
-    margin-bottom: 6px;
-  }
   .standings-row-link {
     display: block;
     margin: -9px -8px;
@@ -211,12 +196,6 @@
     overflow-wrap: anywhere;
   }
   @media (max-width: 760px) {
-    .standings-notes-desktop {
-      display: none;
-    }
-    .standings-notes-mobile {
-      display: block;
-    }
     .standings-table .col-standings-top2 {
       display: none;
     }
@@ -265,7 +244,9 @@
       <span class="led-tag" lang="ja" aria-hidden="true">{seasonKanji(data.season.name, data.isCasual)}</span>
       <h1 class="page-title">{data.season.name}</h1>
     </div>
-    <div class="muted">{data.isCasual ? 'No time limit' : `${data.season.start_date} → ${data.season.end_date}`}</div>
+    {#if !data.isCasual}
+      <div class="muted">{data.season.start_date} → {data.season.end_date}</div>
+    {/if}
   </div>
   <div class="season-controls">
     {#if data.competitiveSeason && data.casualSeason}
@@ -299,7 +280,7 @@
         </label>
       </form>
     {:else if data.season.is_active}
-      <span class="status-live"><span class="led-dot is-on is-blink" aria-hidden="true"></span>Active season</span>
+      <span class="status-live"><span class="led-dot is-on is-blink" aria-hidden="true"></span>Active</span>
     {/if}
   </div>
 </div>
@@ -310,34 +291,8 @@
       <span class="led-tag" lang="ja" aria-hidden="true">順位表</span>
       <h2 class="card-title">Standings</h2>
     </div>
-    <div class="muted standings-notes-desktop">
-      {#if data.isCasual}
-        Ranked by Season Points (SP) {data.eventId ? 'within the selected event' : 'across all Casual games'}, after applicable adjustments. Casual games do not change Season Rating (SR) or lifetime Rating (R).
-      {:else if data.isRatingSeason}
-        Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) does not reset.
-      {:else}
-        Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) starts in the next season.
-      {/if}
-    </div>
     {#if !data.isCasual}
-      <div class="muted standings-notes-desktop">A total of 5 or more games is required to be eligible for ranks in that season.</div>
-    {/if}
-    <details class="standings-notes-mobile">
-      <summary>Notes</summary>
-      <div class="muted">
-        {#if data.isCasual}
-          Ranked by Season Points (SP) {data.eventId ? 'within the selected event' : 'across all Casual games'}, after applicable adjustments. Casual games do not change Season Rating (SR) or lifetime Rating (R).
-        {:else if data.isRatingSeason}
-          Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) does not reset.
-        {:else}
-          Ranked by Season Points (SP), after adjustments. SP resets each season; Rating (R) starts in the next season.
-        {/if}
-      </div>
-      {#if !data.isCasual}
-        <div class="muted" style="margin-top:4px;">A total of 5 or more games is required to be eligible for ranks in that season.</div>
-      {/if}
-    </details>
-    {#if !data.isCasual}
+      <div class="muted" style="margin-top:4px;">5+ games to rank</div>
       <div class="chips standings-view-toggle" role="tablist" aria-label="Standings list filter">
         <button
           type="button"
@@ -478,7 +433,6 @@
         <span class="led-tag" lang="ja" aria-hidden="true">最近の対局</span>
         <h2 class="card-title">Recent matches</h2>
       </div>
-      <div class="muted">Last 10 finalized matches.</div>
     </div>
     {#if data.matchCount > 0}
       <a

@@ -84,7 +84,6 @@
       <span class="led-tag" lang="ja" aria-hidden="true">権限</span>
       <h1 class="page-title">Permissions</h1>
     </div>
-    <div class="muted" style="margin-top:4px;">Grant administrative tools to individual accounts</div>
   </div>
   <a class="btn" href="/admin">Back</a>
 </div>

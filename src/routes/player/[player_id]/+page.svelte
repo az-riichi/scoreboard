@@ -1,9 +1,12 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
-  import { fmtDateTime, fmtNum, fmtPct, fmtFixed, fmtSigned, signTone } from '$lib/ui';
+  import DateText from '$lib/DateText.svelte';
+  import MatchHistoryChart from '$lib/MatchHistoryChart.svelte';
+  import { fmtNum, fmtPct, fmtFixed, fmtSigned, signTone } from '$lib/ui';
   import { ordinal, windKanji, windName } from '$lib/mahjong';
   import { PLAYER_PROFILE_MEDIA_URL_MAX_CHARS, PLAYER_PROFILE_MESSAGE_MAX_CHARS } from '$lib/player-profile-content';
-  import { placementChartY } from '$lib/placement-chart';
+  import { BIG_WIN_MIN_POINTS, isBigWin } from '$lib/placement-chart';
+  import { LIFETIME_SEASON_ID } from '$lib/public-data/derive';
   export let data: any;
   export let form: any;
 
@@ -33,184 +36,35 @@
 
   type HistoryRange = '10' | '20' | '50' | 'all';
   type HistoryView = 'score' | 'placement';
-  type ChartPoint = { row: any; x: number; y: number };
 
   const historyRangeOptions: { key: HistoryRange; label: string }[] = [
     { key: '10', label: 'Last 10' },
     { key: '20', label: 'Last 20' },
     { key: '50', label: 'Last 50' },
-    { key: 'all', label: 'All time' }
+    { key: 'all', label: 'All' }
   ];
 
-  let historyRange: HistoryRange = '10';
-  let historyView: HistoryView = 'score';
-  const chartWidth = 1280;
-  const chartHeight = 500;
-  const plot = { left: 64, right: 64, top: 18, bottom: 92 };
+  let historyRange: HistoryRange = '20';
+  let historyView: HistoryView = 'placement';
+  let seasonOnly = false;
 
-  function historySlice(rows: any[], range: HistoryRange) {
-    if (range === 'all') return rows;
-    const n = Number(range);
-    if (!Number.isFinite(n) || n <= 0) return rows;
-    return rows.slice(-n);
-  }
-
-  function toTime(value: unknown) {
-    const t = new Date(String(value ?? '')).getTime();
-    return Number.isFinite(t) ? t : null;
-  }
-
-  function seriesRange(values: number[], fallback: [number, number]): [number, number] {
-    if (values.length === 0) return fallback;
-    let min = values[0];
-    let max = values[0];
-    for (const value of values) {
-      if (value < min) min = value;
-      if (value > max) max = value;
-    }
-    if (min === max) {
-      const bump = Math.max(Math.abs(min) * 0.05, 1);
-      min -= bump;
-      max += bump;
-    }
-    const pad = (max - min) * 0.08;
-    return [min - pad, max + pad];
-  }
-
-  function pathFrom(points: ChartPoint[]) {
-    if (points.length === 0) return '';
-    return points
-      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
-      .join(' ');
-  }
-
-  function spPointTooltip(row: any) {
-    const label = String(row?.match_label ?? String(row?.match_id ?? '').slice(0, 8));
-    const date = row?.played_at ? fmtDateTime(row.played_at) : '';
-    const pointsDelta = row?.points_with_adjustments ?? row?.club_points;
-    return `${label}${date ? ` • ${date}` : ''}\nSP Δ ${fmtNum(pointsDelta, 2)} | Cum SP ${fmtNum(row?.cumulative_points, 2)}`;
-  }
-
-  function rPointTooltip(row: any) {
-    const label = String(row?.match_label ?? String(row?.match_id ?? '').slice(0, 8));
-    const date = row?.played_at ? fmtDateTime(row.played_at) : '';
-    return `${label}${date ? ` • ${date}` : ''}\nPlace ${row?.placement ?? '-'} | ΔR ${fmtNum(row?.delta, 2)} | R ${fmtNum(row?.new_rate, 2)}`;
-  }
-
-  function placementPointTooltip(row: any) {
-    const label = String(row?.match_label ?? String(row?.match_id ?? '').slice(0, 8));
-    const date = row?.played_at ? fmtDateTime(row.played_at) : '';
-    return `${label}${date ? ` • ${date}` : ''}\nPlacement ${row?.placement ?? '-'}`;
+  function latestGames(rows: any[], range: HistoryRange) {
+    return range === 'all' ? rows : rows.slice(-Number(range));
   }
 
   $: showPlacementHistory = data.isCasualSeason || historyView === 'placement';
-  $: spRows = showPlacementHistory ? [] : historySlice(data.pointHistory ?? [], historyRange);
-  $: rRows = showPlacementHistory ? [] : historySlice(data.ratingHistory ?? [], historyRange);
-  $: placementRows = showPlacementHistory ? historySlice(data.placementHistory ?? [], historyRange) : [];
-  $: plotWidth = chartWidth - plot.left - plot.right;
-  $: plotHeight = chartHeight - plot.top - plot.bottom;
-  $: spRange = seriesRange(
-    spRows
-      .map((row: any) => Number(row?.cumulative_points))
-      .filter((v: number) => Number.isFinite(v)),
-    [0, 1]
-  );
-  $: rRange = seriesRange(
-    rRows
-      .map((row: any) => Number(row?.new_rate))
-      .filter((v: number) => Number.isFinite(v)),
-    [0, 1]
-  );
-
-  function rowGameKey(row: any) {
-    const matchId = String(row?.match_id ?? '').trim();
-    if (matchId) return matchId;
-    const ts = toTime(row?.played_at);
-    return `t-${ts ?? 'na'}-${String(row?.played_at ?? '')}`;
-  }
-
-  function xAtIndex(idx: number, total: number) {
-    if (total <= 1) return plot.left + plotWidth / 2;
-    return plot.left + (idx / (total - 1)) * plotWidth;
-  }
-
-  function ySp(value: number) {
-    const [yMin, yMax] = spRange;
-    if (yMax === yMin) return plot.top + plotHeight / 2;
-    return plot.top + (1 - (value - yMin) / (yMax - yMin)) * plotHeight;
-  }
-
-  function yR(value: number) {
-    const [yMin, yMax] = rRange;
-    if (yMax === yMin) return plot.top + plotHeight / 2;
-    return plot.top + (1 - (value - yMin) / (yMax - yMin)) * plotHeight;
-  }
-
-  function yPlacement(value: number) {
-    return placementChartY(value, plot.top, plotHeight) ?? plot.top;
-  }
-
-  $: chartRows = showPlacementHistory ? placementRows : [...spRows, ...rRows];
-
-  $: xGameTicks = (() => {
-    const byMatch = new Map<string, { key: string; ts: number; label: string }>();
-    for (const row of chartRows) {
-      const ts = toTime(row?.played_at);
-      if (ts == null) continue;
-      const key = rowGameKey(row);
-      if (byMatch.has(key)) continue;
-      const fallbackLabel = String(row?.match_id ?? '').slice(0, 8) || 'Game';
-      const label = String(row?.match_label ?? fallbackLabel).trim();
-      byMatch.set(key, { key, ts, label });
-    }
-    return Array.from(byMatch.values())
-      .sort((a, b) => a.ts - b.ts)
-      .map((tick, idx) => ({ ...tick, idx }));
-  })();
-  $: xByGameKey = new Map<string, number>(
-    xGameTicks.map((tick) => [tick.key, xAtIndex(tick.idx, xGameTicks.length)])
-  );
-  $: xTickStride = Math.max(1, Math.ceil(xGameTicks.length / 28));
-  $: xAxisTicks = xGameTicks.filter((tick, i) => i % xTickStride === 0 || i === xGameTicks.length - 1);
-
-  $: spPoints = spRows
-    .map((row: any) => {
-      const value = Number(row?.cumulative_points);
-      if (!Number.isFinite(value)) return null;
-      const x = xByGameKey.get(rowGameKey(row));
-      if (x == null) return null;
-      return { row, x, y: ySp(value) };
-    })
-    .filter((p: ChartPoint | null): p is ChartPoint => p !== null);
-
-  $: rPoints = rRows
-    .map((row: any) => {
-      const value = Number(row?.new_rate);
-      if (!Number.isFinite(value)) return null;
-      const x = xByGameKey.get(rowGameKey(row));
-      if (x == null) return null;
-      return { row, x, y: yR(value) };
-    })
-    .filter((p: ChartPoint | null): p is ChartPoint => p !== null);
-
-  $: placementPoints = placementRows
-    .map((row: any) => {
-      const value = Number(row?.placement);
-      if (!Number.isInteger(value) || value < 1 || value > 4) return null;
-      const x = xByGameKey.get(rowGameKey(row));
-      if (x == null) return null;
-      return { row, x, y: yPlacement(value) };
-    })
-    .filter((p: ChartPoint | null): p is ChartPoint => p !== null);
-
-  $: spPath = pathFrom(spPoints);
-  $: rPath = pathFrom(rPoints);
-  $: placementPath = pathFrom(placementPoints);
-  $: hasHistoryData = showPlacementHistory
-    ? placementPoints.length > 0
-    : spPoints.length > 0 || rPoints.length > 0;
-  $: yGridYs = [0, 0.25, 0.5, 0.75, 1].map((t) => plot.top + plotHeight * t);
-  $: placementAxisTicks = [1, 2, 3, 4].map((placement) => ({ placement, y: yPlacement(placement) }));
+  $: isSeasonScope = data.isCasualSeason || seasonOnly;
+  $: history = isSeasonScope ? data : data.competitionHistory;
+  $: placementRows = latestGames(history.placementHistory, historyRange);
+  $: pointRows = latestGames(history.pointHistory, historyRange);
+  // This list runs newest first, unlike the chart's rows.
+  $: tableRows = historyRange === 'all' ? history.matchHistory : history.matchHistory.slice(0, Number(historyRange));
+  $: hasBigWin = showPlacementHistory && placementRows.some((row: any) => isBigWin(row.placement, row.raw_points));
+  $: selectedSeason = data.seasons.find((s: any) => s.id === data.seasonId);
+  $: seasonNames = new Map<string, string>(data.seasons.map((s: any) => [s.id, s.name]));
+  $: ratingByMatch = new Map<string, any>(history.ratingHistory.map((row: any) => [row.match_id, row]));
+  // Column shown only when the rows can come from more than one season.
+  $: showSeasonColumn = !isSeasonScope;
 
   $: placementCounts = [
     { place: 1, count: Number(data.stats?.firsts ?? 0) },
@@ -219,7 +73,7 @@
     { place: 4, count: Number(data.stats?.fourths ?? 0) }
   ];
   $: placementTotal = placementCounts.reduce((sum, item) => sum + (Number.isFinite(item.count) ? item.count : 0), 0);
-  $: seasonSp = data.standingsRow?.total_points_with_adjustments ?? data.stats?.total_points;
+  $: seasonSp = data.lifetime?.total_points ?? data.standingsRow?.total_points_with_adjustments ?? data.stats?.total_points;
   $: seasonSpTone = signTone(seasonSp);
 </script>
 
@@ -235,7 +89,6 @@
           {/if}
         </h1>
       </div>
-      <div class="muted">Player profile</div>
     </div>
 
     <div class="profile-controls">
@@ -243,6 +96,7 @@
         <label>
           <span class="muted">Season</span>
           <select name="season" bind:value={season} style="min-width:240px;" on:change={submitSelect}>
+            <option value={LIFETIME_SEASON_ID}>Lifetime</option>
             {#each data.seasons as s}
               <option value={s.id}>{s.name}</option>
             {/each}
@@ -272,7 +126,6 @@
           aria-expanded={profileSettingsOpen}
           aria-controls="player-profile-settings-card"
           aria-label={profileSettingsOpen ? 'Hide profile settings' : 'Show profile settings'}
-          title={profileSettingsOpen ? 'Hide profile settings' : 'Show profile settings'}
           on:click={() => (profileSettingsOpen = !profileSettingsOpen)}
         >
           ⚙
@@ -349,22 +202,8 @@
     max-width: 100%;
   }
 
-  .stat-grid {
-    display: grid;
-    gap: 10px;
-  }
-
-  .stat-grid--r {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  }
-
-  .stat-grid--season {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin-top: 12px;
-  }
-
-  .stat-grid .led {
-    justify-self: start;
+  .season-readouts {
+    margin-top: 14px;
   }
 
   .stat-list {
@@ -399,6 +238,7 @@
 
   .place-bar {
     display: flex;
+    gap: 2px;
     height: 10px;
     margin-top: 8px;
     overflow: hidden;
@@ -411,10 +251,10 @@
     min-width: 0;
   }
 
-  .p1 { background: var(--led-teal); }
-  .p2 { background: var(--led-green); }
-  .p3 { background: var(--led-amber); }
-  .p4 { background: var(--led-red); }
+  .p1 { background: var(--place-1); }
+  .p2 { background: var(--place-2); }
+  .p3 { background: var(--place-3); }
+  .p4 { background: var(--place-4); }
 
   .place-legend {
     display: flex;
@@ -459,7 +299,6 @@
 
   .history-toolbar {
     display: flex;
-    justify-content: space-between;
     gap: 10px;
     flex-wrap: wrap;
     align-items: center;
@@ -471,6 +310,7 @@
     gap: 14px;
     align-items: center;
     flex-wrap: wrap;
+    margin-left: auto;
   }
 
   .legend-item {
@@ -490,35 +330,103 @@
 
   .legend-dot.is-sp { background: var(--led-teal); box-shadow: 0 0 6px var(--glow-teal); }
   .legend-dot.is-r { background: var(--led-amber); box-shadow: 0 0 6px var(--glow-amber); }
-  .legend-dot.is-place { background: var(--led-green); box-shadow: 0 0 6px var(--glow-green); }
 
-  .history-chart {
-    margin-top: 12px;
-    padding: 6px;
-  }
-
-  .history-chart svg {
+  .legend-logo {
     display: block;
+    width: 18px;
+    height: 18px;
+  }
+
+  .history-table {
+    margin-top: 12px;
+  }
+
+  .history-table td:first-child {
+    white-space: nowrap;
+  }
+
+  .season-table {
+    margin-top: 12px;
+  }
+
+  /* The season name takes the spare room; the numbers stay as narrow as they can. */
+  .season-table th:first-child {
     width: 100%;
-    height: auto;
   }
 
-  .history-chart text {
-    font-family: var(--font-led);
+  .season-table th,
+  .season-table td:not(:first-child) {
+    white-space: nowrap;
   }
 
-  .history-chart .line-sp { filter: drop-shadow(0 0 4px var(--glow-teal)); }
-  .history-chart .line-r { filter: drop-shadow(0 0 4px var(--glow-amber)); }
-  .history-chart .line-place { filter: drop-shadow(0 0 4px var(--glow-green)); }
+  /* The match table adds detail as the screen has room for it. */
+  @media (max-width: 900px) {
+    .col-season {
+      display: none;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .col-rating {
+      display: none;
+    }
+
+    .history-table .wind-letter {
+      display: none;
+    }
+
+    .history-table td,
+    .history-table th {
+      padding-left: 5px;
+      padding-right: 5px;
+    }
+  }
 
   @media (max-width: 560px) {
-    .stat-grid--season,
+    .col-delta-r,
+    .col-season-detail {
+      display: none;
+    }
+
     .stat-list {
       grid-template-columns: minmax(0, 1fr);
     }
 
+    .stat-list--long {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    /* Share the first row with the view control instead of taking a row alone. */
+    .history-toolbar > .seg:first-child {
+      order: -2;
+    }
+
+    .history-legend {
+      order: -1;
+    }
+
+    .profile-filter,
+    .profile-filter label,
     .profile-filter select {
+      width: 100%;
       min-width: 0 !important;
+    }
+
+    .profile-controls {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .col-seat {
+      display: none;
+    }
+  }
+
+  /* The whole row opens the match, so its label can go on the smallest phones. */
+  @media (max-width: 360px) {
+    .col-match {
+      display: none;
     }
   }
 
@@ -660,27 +568,24 @@
 {:else}
   {#if !data.isCasualSeason}
     <div class="card" style="margin-bottom:12px;">
-      <div class="stat-grid stat-grid--r">
-        <div class="stat-tile">
-          <div class="stat-label">Current Rating (R)</div>
+      <div class="readouts">
+        <div class="readout">
+          <div class="stat-label">Rating (R)</div>
           <span class="led led-lg led-amber">{fmtFixed(data.currentRating?.rate)}</span>
         </div>
-        <div class="stat-tile">
-          <div class="stat-label">R Rank</div>
-          <span class="led led-lg led-teal">
-            {#if data.currentRatingRank == null}
-              -
-            {:else}
-              #{data.currentRatingRank}
+        <div class="readout">
+          <div class="stat-label">R rank</div>
+          <div class="readout__line">
+            <span class="led led-lg led-teal">{data.currentRatingRank == null ? '—' : `#${data.currentRatingRank}`}</span>
+            {#if data.currentRatingRankTotal}
+              <span class="muted">of {data.currentRatingRankTotal}</span>
             {/if}
-          </span>
-          {#if data.currentRatingRankTotal}
-            <div class="muted">of {data.currentRatingRankTotal}</div>
-          {/if}
+          </div>
         </div>
-      </div>
-      <div class="muted" style="margin-top:10px;">
-        Lifetime games: {data.currentRating?.games_played ?? 0}
+        <div class="readout">
+          <div class="stat-label">Rated games</div>
+          <span class="led led-lg">{data.currentRating?.games_played ?? 0}</span>
+        </div>
       </div>
     </div>
   {/if}
@@ -689,34 +594,47 @@
     <div class="card">
       <div class="title-row">
         <span class="led-tag" lang="ja" aria-hidden="true">成績</span>
-        <h2 class="card-title">{data.isCasualSeason ? 'Casual snapshot' : 'Season snapshot'}</h2>
+        <h2 class="card-title">{data.isLifetime ? 'Lifetime snapshot' : data.isCasualSeason ? 'Casual snapshot' : 'Season snapshot'}</h2>
       </div>
 
-      <div class="stat-grid stat-grid--season">
-        <div class="stat-tile">
-          <div class="stat-label">Rank</div>
-          {#if data.seasonEligibleRank == null}
-            <div class="muted">
-              {data.isCasualSeason ? '(no games)' : '(need more games)'}
-            </div>
-          {:else}
-            <span class="led led-md" class:led-amber={data.seasonEligibleRank === 1} class:led-teal={data.seasonEligibleRank === 2 || data.seasonEligibleRank === 3}>{data.seasonEligibleRank}</span>
-          {/if}
-        </div>
-        <div class="stat-tile">
-          <div class="stat-label">Season Points (SP)</div>
+      <div class="readouts season-readouts">
+        {#if data.lifetime}
+          <div class="readout">
+            <div class="stat-label">Seasons</div>
+            <span class="led led-md">{data.lifetime.seasons.length}</span>
+          </div>
+        {:else}
+          <div class="readout">
+            <div class="stat-label">Rank</div>
+            {#if data.seasonEligibleRank == null}
+              <span class="led led-md">—</span>
+            {:else}
+              <span class="led led-md" class:led-amber={data.seasonEligibleRank === 1} class:led-teal={data.seasonEligibleRank === 2 || data.seasonEligibleRank === 3}>{data.seasonEligibleRank}</span>
+            {/if}
+          </div>
+        {/if}
+        <div class="readout">
+          <div class="stat-label">{data.isLifetime ? 'Total SP' : 'SP'}</div>
           <span class="led led-md" class:led-pos={seasonSpTone === 'pos'} class:led-neg={seasonSpTone === 'neg'}>{fmtSigned(seasonSp, 2)}</span>
         </div>
-        <div class="stat-tile">
+        <div class="readout">
           <div class="stat-label">Games</div>
           <span class="led led-md">{data.stats?.games_played ?? 0}</span>
         </div>
       </div>
 
-      <dl class="stat-list">
+      <dl class="stat-list" class:stat-list--long={data.lifetime}>
         <div><dt>Avg placement</dt><dd>{fmtFixed(data.stats?.avg_placement)}</dd></div>
         <div><dt>Avg SP</dt><dd>{fmtSigned(data.stats?.avg_points, 2)}</dd></div>
-        <div><dt>Top2% (rentai)</dt><dd>{fmtPct(data.stats?.top2_rate)}</dd></div>
+        <div><dt>Top 2%</dt><dd>{fmtPct(data.stats?.top2_rate)}</dd></div>
+        {#if data.lifetime}
+          <div><dt>Win rate</dt><dd>{fmtPct(data.stats?.first_rate)}</dd></div>
+          <div><dt>Last rate</dt><dd>{fmtPct(data.stats?.fourth_rate)}</dd></div>
+          <div><dt>Busts</dt><dd>{data.lifetime.busts}</dd></div>
+          <div><dt>Best finish</dt><dd>{data.lifetime.best_rank == null ? '—' : ordinal(data.lifetime.best_rank)}</dd></div>
+          <div><dt>Titles</dt><dd>{data.lifetime.titles}</dd></div>
+          <div><dt>Peak R</dt><dd>{data.lifetime.peak_rating == null ? '—' : fmtNum(data.lifetime.peak_rating, 0)}</dd></div>
+        {/if}
       </dl>
 
       <div class="place-split">
@@ -724,7 +642,9 @@
         <div class="place-bar" role="img" aria-label={`1st ${placementCounts[0].count}, 2nd ${placementCounts[1].count}, 3rd ${placementCounts[2].count}, 4th ${placementCounts[3].count}`}>
           {#if placementTotal > 0}
             {#each placementCounts as item}
-              <span class={`p${item.place}`} style={`width:${(item.count / placementTotal) * 100}%`}></span>
+              {#if item.count > 0}
+                <span class={`p${item.place}`} style={`width:${(item.count / placementTotal) * 100}%`}></span>
+              {/if}
             {/each}
           {/if}
         </div>
@@ -746,7 +666,9 @@
         <div class="game-line">
           <div>
             <div class="stat-label">Best</div>
-            <div class="muted">{data.bestRawMatch?.played_at ? fmtDateTime(data.bestRawMatch.played_at) : ''}</div>
+            {#if data.bestRawMatch?.played_at}
+              <div class="muted"><DateText value={data.bestRawMatch.played_at} keepYear /></div>
+            {/if}
           </div>
           <div class="game-line__score">
             {#if data.bestRawMatch?.raw_points == null}
@@ -762,7 +684,9 @@
         <div class="game-line">
           <div>
             <div class="stat-label">Worst</div>
-            <div class="muted">{data.worstRawMatch?.played_at ? fmtDateTime(data.worstRawMatch.played_at) : ''}</div>
+            {#if data.worstRawMatch?.played_at}
+              <div class="muted"><DateText value={data.worstRawMatch.played_at} keepYear /></div>
+            {/if}
           </div>
           <div class="game-line__score">
             {#if data.worstRawMatch?.raw_points == null}
@@ -779,13 +703,81 @@
     </div>
   </div>
 
-  <div class="card" style="margin-bottom:12px;">
+  {#if data.lifetime && data.lifetime.seasons.length > 0}
+    <div class="card" style="margin-bottom:12px;">
+      <div class="title-row">
+        <span class="led-tag" lang="ja" aria-hidden="true">シーズン別</span>
+        <h2 class="card-title">Season by season</h2>
+      </div>
+
+      <div class="season-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Season</th>
+              <th>Rank</th>
+              <th class="num">Games</th>
+              <th class="num">SP</th>
+              <th class="num col-season-detail">Avg place</th>
+              <th class="num col-season-detail">Top 2%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each data.lifetime.seasons as s (s.season_id)}
+              {@const href = `/player/${data.player.id}?season=${s.season_id}`}
+              {@const tone = signTone(s.total_points, 1)}
+              <tr use:clickableRow={href}>
+                <td>
+                  <a {href} style="text-decoration:none;">{s.season_name}</a>
+                  {#if s.is_active}
+                    <span class="led-dot is-on is-blink" style="margin-left:4px;" role="img" aria-label="In progress"></span>
+                  {/if}
+                </td>
+                <td>
+                  {#if s.rank == null}
+                    <span class="muted">—</span>
+                  {:else}
+                    <span class="rank-led" data-rank={s.rank}>{s.rank}</span>
+                  {/if}
+                </td>
+                <td class="num">{s.games_played}</td>
+                <td class="num" class:pos={tone === 'pos'} class:neg={tone === 'neg'}>{fmtSigned(s.total_points, 1, true)}</td>
+                <td class="num col-season-detail">{fmtFixed(s.avg_placement, 2)}</td>
+                <td class="num col-season-detail">{fmtPct(s.top2_rate)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {/if}
+
+  <div class="card">
     <div class="title-row">
       <span class="led-tag" lang="ja" aria-hidden="true">成績推移</span>
       <h2 class="card-title">Match history</h2>
     </div>
 
     <div class="history-toolbar">
+      {#if !data.isCasualSeason}
+        <div class="seg" role="group" aria-label="History display">
+          <button
+            type="button"
+            aria-pressed={historyView === 'placement'}
+            on:click={() => (historyView = 'placement')}
+          >
+            Placement
+          </button>
+          <button
+            type="button"
+            aria-pressed={historyView === 'score'}
+            on:click={() => (historyView = 'score')}
+          >
+            SP / R
+          </button>
+        </div>
+      {/if}
+
       <div class="seg" role="group" aria-label="History range">
         {#each historyRangeOptions as opt}
           <button
@@ -798,237 +790,90 @@
         {/each}
       </div>
 
-      <div class="history-legend">
-        {#if !data.isCasualSeason}
-          <div class="seg" role="group" aria-label="History display">
-            <button
-              type="button"
-              aria-pressed={historyView === 'score'}
-              on:click={() => (historyView = 'score')}
-            >
-              SP / R
-            </button>
-            <button
-              type="button"
-              aria-pressed={historyView === 'placement'}
-              on:click={() => (historyView = 'placement')}
-            >
-              Placement
-            </button>
-          </div>
-        {/if}
+      {#if !data.isCasualSeason && selectedSeason}
+        <button
+          type="button"
+          class="switch"
+          role="switch"
+          aria-checked={seasonOnly}
+          on:click={() => (seasonOnly = !seasonOnly)}
+        >
+          <span class="switch__track" aria-hidden="true"></span>
+          {selectedSeason.is_active ? 'Current season only' : `${selectedSeason.name} only`}
+        </button>
+      {/if}
 
-        {#if showPlacementHistory}
-          <span class="legend-item"><span class="legend-dot is-place"></span>Placement (1st at top)</span>
-        {:else}
-          <span class="legend-item"><span class="legend-dot is-sp"></span>SP (left axis)</span>
-          <span class="legend-item"><span class="legend-dot is-r"></span>R (right axis)</span>
-        {/if}
-      </div>
-    </div>
-
-    <div>
-      {#if hasHistoryData}
-        <div class="history-chart screen-panel">
-        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
-          <rect
-            x={plot.left}
-            y={plot.top}
-            width={plotWidth}
-            height={plotHeight}
-            fill="none"
-            stroke="var(--screen-line)"
-            stroke-width="1"
-          />
-
+      {#if !showPlacementHistory || hasBigWin}
+        <div class="history-legend">
           {#if showPlacementHistory}
-            {#each placementAxisTicks as tick}
-              <line
-                x1={plot.left}
-                y1={tick.y}
-                x2={plot.left + plotWidth}
-                y2={tick.y}
-                stroke="var(--led-dim)"
-                stroke-opacity="0.45"
-                stroke-dasharray="3 3"
-              />
-              <text
-                x={plot.left - 8}
-                y={tick.y}
-                text-anchor="end"
-                dominant-baseline="middle"
-                font-size="15"
-                font-weight="700"
-                fill="var(--led-green)"
-              >
-                {tick.placement}
-              </text>
-            {/each}
+            <span class="legend-item"><img class="legend-logo" src="/azrm-logo.png" alt="" width="18" height="18" />{BIG_WIN_MIN_POINTS / 1000}k+ win</span>
           {:else}
-            {#each yGridYs as y}
-              <line
-                x1={plot.left}
-                y1={y}
-                x2={plot.left + plotWidth}
-                y2={y}
-                stroke="var(--led-dim)"
-                stroke-opacity="0.45"
-                stroke-dasharray="3 3"
-              />
-            {/each}
+            <span class="legend-item"><span class="legend-dot is-sp"></span>SP</span>
+            <span class="legend-item"><span class="legend-dot is-r"></span>R</span>
           {/if}
-
-          {#each xAxisTicks as tick}
-            <line
-              x1={xAtIndex(tick.idx, xGameTicks.length)}
-              y1={plot.top}
-              x2={xAtIndex(tick.idx, xGameTicks.length)}
-              y2={plot.top + plotHeight}
-              stroke="var(--led-dim)"
-              stroke-opacity="0.35"
-              stroke-dasharray="3 3"
-            />
-            <text
-              x={xAtIndex(tick.idx, xGameTicks.length)}
-              y={plot.top + plotHeight + 16}
-              text-anchor="middle"
-              dominant-baseline="hanging"
-              font-size="16"
-              fill="var(--led-mid)"
-            >
-              {tick.idx + 1}
-            </text>
-          {/each}
-
-          {#if showPlacementHistory}
-            {#if placementPoints.length > 1}
-              <path class="line-place" d={placementPath} fill="none" stroke="var(--led-green)" stroke-width="2.4" />
-            {/if}
-
-            {#each placementPoints as p}
-              <a href={`/match/${p.row.match_id}`}>
-                <circle cx={p.x} cy={p.y} r="4" fill="var(--led-green)" stroke="var(--screen)" stroke-width="1.5">
-                  <title>{placementPointTooltip(p.row)}</title>
-                </circle>
-              </a>
-            {/each}
-          {:else}
-            {#if spPoints.length > 1}
-              <path class="line-sp" d={spPath} fill="none" stroke="var(--led-teal)" stroke-width="2.4" />
-            {/if}
-            {#if rPoints.length > 1}
-              <path class="line-r" d={rPath} fill="none" stroke="var(--led-amber)" stroke-width="2.4" />
-            {/if}
-
-            {#each spPoints as p}
-              <a href={`/match/${p.row.match_id}`}>
-                <circle cx={p.x} cy={p.y} r="4" fill="var(--led-teal)" stroke="var(--screen)" stroke-width="1.5">
-                  <title>{spPointTooltip(p.row)}</title>
-                </circle>
-              </a>
-            {/each}
-
-            {#each rPoints as p}
-              <a href={`/match/${p.row.match_id}`}>
-                <circle cx={p.x} cy={p.y} r="4" fill="var(--led-amber)" stroke="var(--screen)" stroke-width="1.5">
-                  <title>{rPointTooltip(p.row)}</title>
-                </circle>
-              </a>
-            {/each}
-
-            <text
-              x={plot.left - 8}
-              y={plot.top + 10}
-              text-anchor="end"
-              font-size="15"
-              font-weight="700"
-              fill="var(--led-teal)"
-            >
-              {fmtNum(spRange[1], 0)}
-            </text>
-            <text
-              x={plot.left - 8}
-              y={plot.top + plotHeight}
-              text-anchor="end"
-              dominant-baseline="ideographic"
-              font-size="15"
-              font-weight="700"
-              fill="var(--led-teal)"
-            >
-              {fmtNum(spRange[0], 0)}
-            </text>
-
-            <text
-              x={plot.left + plotWidth + 8}
-              y={plot.top + 10}
-              text-anchor="start"
-              font-size="15"
-              font-weight="700"
-              fill="var(--led-amber)"
-            >
-              {fmtNum(rRange[1], 0)}
-            </text>
-            <text
-              x={plot.left + plotWidth + 8}
-              y={plot.top + plotHeight}
-              text-anchor="start"
-              dominant-baseline="ideographic"
-              font-size="15"
-              font-weight="700"
-              fill="var(--led-amber)"
-            >
-              {fmtNum(rRange[0], 0)}
-            </text>
-          {/if}
-        </svg>
-        </div>
-      {:else}
-        <div class="muted" style="margin-top:12px;">
-          {showPlacementHistory ? 'No placement history yet.' : 'No SP or Rating history yet.'}
         </div>
       {/if}
     </div>
-  </div>
 
-  <div class="card">
-      <div class="title-row">
-        <span class="led-tag" lang="ja" aria-hidden="true">対局履歴</span>
-        <h2 class="card-title">Recent matches</h2>
-      </div>
-      <div class="muted" style="margin-top:4px;">Last 100 matches (most recent first).</div>
+    {#if tableRows.length > 0}
+      <MatchHistoryChart
+        view={showPlacementHistory ? 'placement' : 'score'}
+        {placementRows}
+        {pointRows}
+        ratingRows={history.ratingHistory}
+        totalLabel={isSeasonScope ? 'Season SP' : 'Total SP'}
+      />
 
-      <div style="margin-top:12px; max-height:520px; overflow-y:auto; overflow-x:auto;">
+      <div class="history-table">
         <table>
           <thead>
             <tr>
               <th>Date</th>
-              <th>Match</th>
-              <th style="width:80px;">Seat</th>
-              <th style="width:80px;">Place</th>
-              <th class="num" style="width:110px;">SP Δ</th>
+              <th class="col-match">Match</th>
+              {#if showSeasonColumn}
+                <th class="col-season">Season</th>
+              {/if}
+              <th class="col-seat" style="width:70px;">Seat</th>
+              <th style="width:70px;">Place</th>
+              <th class="num" style="width:84px;">Score</th>
+              <th class="num" style="width:76px;">SP Δ</th>
+              {#if !data.isCasualSeason}
+                <th class="num col-delta-r" style="width:66px;">ΔR</th>
+                <th class="num col-rating" style="width:66px;">R</th>
+              {/if}
             </tr>
           </thead>
           <tbody>
-            {#each data.matchHistory as r}
+            {#each tableRows as r (r.match_id)}
               {@const spTone = signTone(r.club_points)}
+              {@const rating = ratingByMatch.get(r.match_id)}
+              {@const deltaTone = rating ? signTone(rating.delta, 1) : ''}
               <tr use:clickableRow={`/match/${r.match_id}`}>
-                <td>{fmtDateTime(r.played_at)}</td>
-                <td><a href={`/match/${r.match_id}`} style="text-decoration:none;">{r.match_label}</a></td>
-                <td>
+                <td><DateText value={r.played_at} withTime /></td>
+                <td class="col-match"><a href={`/match/${r.match_id}`} style="text-decoration:none;">{r.match_label}</a></td>
+                {#if showSeasonColumn}
+                  <td class="col-season">{seasonNames.get(r.season_id) ?? ''}</td>
+                {/if}
+                <td class="col-seat">
                   <span class="wind-cell">
                     <span class="wind" class:is-lit={r.seat === 'E'} lang="ja" aria-hidden="true">{windKanji(r.seat)}</span>
                     <span class="wind-letter"><span class="sr-only">{windName(r.seat)}</span><span aria-hidden="true">{r.seat}</span></span>
                   </span>
                 </td>
                 <td><span class="place-chip" data-place={r.placement}>{ordinal(r.placement)}</span></td>
-                <td class="num" class:pos={spTone === 'pos'} class:neg={spTone === 'neg'}>{fmtSigned(r.club_points, 2)}</td>
+                <td class="num" class:neg={r.raw_points < 0}>{fmtNum(r.raw_points, 0)}</td>
+                <td class="num" class:pos={spTone === 'pos'} class:neg={spTone === 'neg'}>{fmtSigned(r.club_points, 1)}</td>
+                {#if !data.isCasualSeason}
+                  <td class="num col-delta-r" class:pos={deltaTone === 'pos'} class:neg={deltaTone === 'neg'}>{rating ? fmtSigned(rating.delta, 1) : '—'}</td>
+                  <td class="num col-rating">{rating ? fmtNum(rating.new_rate, 0) : '—'}</td>
+                {/if}
               </tr>
             {/each}
-            {#if data.matchHistory.length === 0}
-              <tr><td colspan="5" class="muted">No matches recorded.</td></tr>
-            {/if}
           </tbody>
         </table>
       </div>
+    {:else}
+      <div class="muted" style="margin-top:12px;">No matches yet.</div>
+    {/if}
   </div>
 {/if}

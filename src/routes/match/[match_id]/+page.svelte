@@ -1,6 +1,7 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
-  import { fmtDateTime, fmtNum, fmtSigned, signTone } from '$lib/ui';
+  import DateText from '$lib/DateText.svelte';
+  import { fmtNum, fmtSigned, signTone } from '$lib/ui';
   import { ordinal, windKanji, windName } from '$lib/mahjong';
   export let data: any;
 
@@ -146,8 +147,8 @@
     white-space: nowrap;
     color: var(--led-teal);
     font-family: var(--font-led);
-    font-size: 0.62rem;
-    letter-spacing: 0.12em;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
@@ -163,8 +164,28 @@
     }
 
     .table-map {
-      max-width: 320px;
+      max-width: 340px;
       margin-inline: auto;
+    }
+
+    .table-seat__name {
+      font-size: 0.9rem;
+    }
+
+    .table-seat__pts {
+      font-size: 1.1rem;
+    }
+  }
+
+  /* The table map above already shows each seat and place. */
+  @media (max-width: 560px) {
+    .col-seat,
+    .col-place {
+      display: none;
+    }
+
+    .col-value {
+      width: auto !important;
     }
   }
 </style>
@@ -177,13 +198,11 @@
         <h1 class="page-title">Match {matchLabel}</h1>
       </div>
       <div class="match-meta">
-        <div class="muted">{data.season?.name ?? 'Unknown season'}{data.isCasual ? ' · Casual' : ''}</div>
-        {#if data.isCasual}
-          <div class="muted">Event: {data.casualEvent?.name ?? 'Uncategorized'}</div>
+        <div class="muted">{data.season?.name ?? 'Unknown season'}{data.casualEvent ? ` · ${data.casualEvent.name}` : ''}</div>
+        <div class="muted"><DateText value={data.match.played_at} withTime keepYear /></div>
+        {#if Number(data.match.extra_sticks) > 0}
+          <div class="muted">Sticks on the table: {fmtNum(data.match.extra_sticks, 0)}</div>
         {/if}
-        <div class="muted">{fmtDateTime(data.match.played_at)}</div>
-        <div class="muted">Tbl: {data.match.table_mode ?? '—'} | Game: {data.match.game_number ?? '—'} | Ex: {data.match.extra_sticks ?? 0}</div>
-        <div class="uuid">UUID: <code>{data.match.id}</code></div>
         {#if data.match.notes}
           <div class="muted">Note: {data.match.notes}</div>
         {/if}
@@ -220,7 +239,7 @@
       {/each}
       <div class="table-center">
         <span class="table-center__kanji" lang="ja">終局</span>
-        <span class="table-center__label">Final · {matchLabel}</span>
+        <span class="table-center__label">{matchLabel}</span>
       </div>
     </div>
 
@@ -228,11 +247,11 @@
       <table>
         <thead>
           <tr>
-            <th style="width:80px;">Seat</th>
+            <th class="col-seat" style="width:80px;">Seat</th>
             <th>Player</th>
-            <th class="num" style="width:110px;">Points</th>
-            <th class="num" style="width:90px;">SP Δ</th>
-            <th style="width:70px;">Place</th>
+            <th class="num col-value" style="width:110px;">Points</th>
+            <th class="num col-value" style="width:90px;">SP Δ</th>
+            <th class="col-place" style="width:70px;">Place</th>
           </tr>
         </thead>
         <tbody>
@@ -240,7 +259,7 @@
             {@const place = displayPlaceBySeat.get(r.seat) ?? r.placement}
             {@const spTone = signTone(r.club_points)}
             <tr use:clickableRow={playerHref(r.player_id)}>
-              <td>
+              <td class="col-seat">
                 <span class="wind-cell">
                   <span class="wind" class:is-lit={r.seat === 'E'} lang="ja" aria-hidden="true">{windKanji(r.seat)}</span>
                   <span class="wind-letter"><span class="sr-only">{windName(r.seat)}</span><span aria-hidden="true">{r.seat}</span></span>
@@ -256,7 +275,7 @@
               </td>
               <td class="num"><span class="led led-red">{fmtNum(r.raw_points, 0)}</span></td>
               <td class="num" class:pos={spTone === 'pos'} class:neg={spTone === 'neg'}>{fmtSigned(r.club_points, 2)}</td>
-              <td><span class="place-chip" data-place={place}>{ordinal(place)}</span></td>
+              <td class="col-place"><span class="place-chip" data-place={place}>{ordinal(place)}</span></td>
             </tr>
           {/each}
         </tbody>
@@ -265,30 +284,21 @@
   </div>
 </div>
 
-<div class="card">
-  {#if data.isCasual}
-    <div class="title-row">
-      <span class="led-tag" lang="ja" aria-hidden="true">カジュアル</span>
-      <h2 class="card-title">Casual match</h2>
-    </div>
-    <div class="muted" style="margin-top:8px;">
-      Scores and placements are recorded, but this match does not change Season Rating (SR) or lifetime Rating (R).
-    </div>
-  {:else}
+{#if data.ratingDeltas.length > 0}
+  <div class="card">
     <div class="title-row">
       <span class="led-tag" lang="ja" aria-hidden="true">レート</span>
-      <h2 class="card-title">Rating (R) deltas</h2>
+      <h2 class="card-title">Rating (R)</h2>
     </div>
-    <div class="muted" style="margin-top:4px;">Lifetime Rating (R) change for this match.</div>
 
     <div style="margin-top:12px; overflow:auto;">
       <table>
         <thead>
           <tr>
             <th>Player</th>
-            <th style="width:80px;">Place</th>
-            <th class="num" style="width:120px;">ΔR</th>
-            <th class="num" style="width:120px;">New R</th>
+            <th class="col-place" style="width:80px;">Place</th>
+            <th class="num col-value" style="width:120px;">ΔR</th>
+            <th class="num col-value" style="width:120px;">New R</th>
           </tr>
         </thead>
         <tbody>
@@ -304,16 +314,13 @@
                   {/if}
                 </a>
               </td>
-              <td><span class="place-chip" data-place={place}>{ordinal(place)}</span></td>
+              <td class="col-place"><span class="place-chip" data-place={place}>{ordinal(place)}</span></td>
               <td class="num" class:pos={deltaTone === 'pos'} class:neg={deltaTone === 'neg'}>{fmtSigned(row.delta, 2)}</td>
               <td class="num">{fmtNum(row.new_rate, 2)}</td>
             </tr>
           {/each}
-          {#if data.ratingDeltas.length === 0}
-            <tr><td colspan="4" class="muted">No Rating (R) events found.</td></tr>
-          {/if}
         </tbody>
       </table>
     </div>
-  {/if}
-</div>
+  </div>
+{/if}

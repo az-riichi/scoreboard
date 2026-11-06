@@ -40,7 +40,6 @@
         <span class="led-tag" lang="ja" aria-hidden="true">雀士</span>
         <h1 class="page-title">Players</h1>
       </div>
-      <div class="muted">View and manage the player roster</div>
     </div>
     <a class="btn" href="/admin">Back</a>
   </div>

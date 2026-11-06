@@ -31,7 +31,6 @@
         <span class="led-tag" lang="ja" aria-hidden="true">対局</span>
         <h1 class="page-title">Matches</h1>
       </div>
-      <div class="muted">Enter and review match results</div>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       {#if canRecomputeRatings}

@@ -9,7 +9,7 @@ Public (no login required):
 - Seasons list
 - Season standings (cumulative points + basic stats) and a full match list for each season
 - Timeless Casual category whose games can be grouped and filtered by event and never change season or lifetime ratings
-- Player page: season/event stats plus togglable SP/R and placement history charts (placement-only for Casual)
+- Player page: season/event stats or a Lifetime view across all competition seasons, plus togglable placement and SP/R history charts covering all competition games, optionally narrowed to one season (placement-only for Casual)
 - Match page: final results (E/S/W/N seats)
 - Hall of Fame: season champions plus match and player records, for any season or all time
 - Open public pages automatically refresh when matches are published

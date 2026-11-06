@@ -1,6 +1,7 @@
 <script lang="ts">
   import { clickableRow } from '$lib/clickable-row';
-  import { fmtDate, fmtNum } from '$lib/ui';
+  import DateText from '$lib/DateText.svelte';
+  import { fmtNum } from '$lib/ui';
   import type { RecentMatchSummary } from '$lib/public-data/types';
 
   export let matches: RecentMatchSummary[];
@@ -32,6 +33,9 @@
   }
   .cell-wrap {
     overflow-wrap: anywhere;
+  }
+  .cell-date {
+    white-space: nowrap;
   }
   @media (max-width: 760px) {
     .col-sp {
@@ -71,7 +75,7 @@
   <tbody>
     {#each matches as m (m.id)}
       <tr use:clickableRow={`/match/${m.id}`}>
-        <td>{fmtDate(m.played_at)}</td>
+        <td class="cell-date"><DateText value={m.played_at} /></td>
         <td class="cell-wrap"><a class="match-cell-link" href={`/match/${m.id}`}>{m.table_label ?? m.id.slice(0, 8)}</a></td>
         <td class="cell-wrap">
           {#if m.winner_player_id}

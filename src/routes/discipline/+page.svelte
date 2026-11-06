@@ -30,16 +30,12 @@
     flex-wrap: wrap;
   }
 
-  .page-heading .muted,
   .section-heading .muted {
     margin-top: 4px;
   }
 
   .summary-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    margin-top: 12px;
+    margin-top: 14px;
   }
 
   .summary-value {
@@ -120,7 +116,6 @@
   }
 
   @media (max-width: 720px) {
-    .summary-grid,
     .action-details {
       grid-template-columns: 1fr;
     }
@@ -134,7 +129,6 @@
         <span class="led-tag" lang="ja" aria-hidden="true">処分</span>
         <h1 class="page-title">My discipline status</h1>
       </div>
-      <div class="muted">Your current competitive-play status and discipline record</div>
     </div>
     <span class="tag">Private to you and authorized club officials</span>
   </div>
@@ -152,7 +146,6 @@
     <div class="section-heading">
       <div>
         <h2 class="card-title title-plain">{player.label}</h2>
-        <div class="muted">Current status</div>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
         <span class={`status-badge ${statusTone(summary?.status)}`}>{statusLabel(summary?.status)}</span>
@@ -160,8 +153,8 @@
       </div>
     </div>
 
-    <div class="summary-grid">
-      <div class="stat-tile">
+    <div class="readouts summary-grid">
+      <div class="readout">
         <div class="stat-label">Competitive play</div>
         {#if statusLabel(summary?.status) === 'Good standing'}
           <span class="led led-md led-pos summary-value">Allowed</span>
@@ -169,11 +162,11 @@
           <span class="led led-md led-neg summary-value">Restricted</span>
         {/if}
       </div>
-      <div class="stat-tile">
+      <div class="readout">
         <div class="stat-label">Active strikes</div>
         <span class="led led-md summary-value" class:led-amber={(summary?.activeStrikeCount ?? 0) > 0}>{summary?.activeStrikeCount ?? 0}</span>
       </div>
-      <div class="stat-tile">
+      <div class="readout">
         <div class="stat-label">Suspensions issued</div>
         <span class="led led-md summary-value" class:led-amber={(summary?.suspensionCount ?? 0) > 0}>{summary?.suspensionCount ?? 0}</span>
       </div>
@@ -236,7 +229,6 @@
     <div class="section-heading">
       <div>
         <h2 id="discipline-history-title" class="card-title">Action history</h2>
-        <div class="muted">This history is visible only to you and authorized club officials.</div>
       </div>
     </div>
 

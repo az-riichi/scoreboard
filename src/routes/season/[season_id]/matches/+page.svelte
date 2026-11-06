@@ -32,7 +32,7 @@
         <span class="led-tag" lang="ja" aria-hidden="true">対局一覧</span>
         <h1 class="page-title">{data.season.name} matches</h1>
       </div>
-      <div class="muted">{count} finalized {count === 1 ? 'match' : 'matches'}, newest first.</div>
+      <div class="muted">{count} {count === 1 ? 'match' : 'matches'}</div>
     </div>
     <div class="matches-controls">
       {#if data.isCasual}

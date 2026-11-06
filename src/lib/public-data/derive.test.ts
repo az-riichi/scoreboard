@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LIFETIME_SEASON_ID,
   deriveLifetimeRatings,
   deriveMatchPage,
   derivePlayerPage,
@@ -350,6 +351,8 @@ describe('public page derivations', () => {
     expect(page!.seasonEligibleRank).toBeNull();
     expect(page!.pointHistory.map((row) => row.cumulative_points)).toEqual([45, 60]);
     expect(page!.placementHistory.map((row) => row.placement)).toEqual([1, 2]);
+    expect(page!.placementHistory[0]).toMatchObject({ raw_points: 40000, club_points: 45 });
+    expect(page!.pointHistory[1]).toMatchObject({ raw_points: 30000, placement: 2 });
     expect(page!.ratingHistory).toHaveLength(2);
     expect(page!.matchHistory.map((row) => row.match_id)).toEqual(['m2', 'm1']);
     expect(page!.bestRawMatch).toEqual({
@@ -358,6 +361,126 @@ describe('public page derivations', () => {
       raw_points: 40000
     });
     expect(page!.worstRawMatch?.raw_points).toBe(30000);
+  });
+
+  it('runs the competition history across seasons and leaves Casual out', () => {
+    const snapshot = fixture();
+    snapshot.seasons.push({
+      id: 'fall',
+      name: 'Fall 2026 League',
+      start_date: '2026-09-01',
+      end_date: '2026-12-31',
+      is_active: false,
+      is_casual: false
+    });
+    snapshot.matches.push(match('m4', 'fall', '2026-09-02T12:00:00Z'));
+    snapshot.match_results.push(...results('m4', ['p1', 'p2', 'p3', 'p4']));
+
+    const { competitionHistory, pointHistory } = derivePlayerPage(snapshot, 'p1', {
+      seasonId: 'fall'
+    })!;
+
+    expect(pointHistory.map((row) => row.match_id)).toEqual(['m4']);
+    expect(competitionHistory.pointHistory.map((row) => row.match_id)).toEqual(['m1', 'm2', 'm4']);
+    expect(competitionHistory.pointHistory.map((row) => row.cumulative_points)).toEqual([45, 60, 105]);
+    expect(competitionHistory.placementHistory.map((row) => row.placement)).toEqual([1, 2, 1]);
+    expect(competitionHistory.ratingHistory.map((row) => row.match_id)).toEqual(['m1', 'm2', 'm4']);
+    expect(competitionHistory.matchHistory.map((row) => row.match_id)).toEqual(['m4', 'm2', 'm1']);
+  });
+
+  describe('lifetime player view', () => {
+    function withFinishedSeason() {
+      const snapshot = fixture();
+      snapshot.seasons.push({
+        id: 'fall',
+        name: 'Fall 2025',
+        start_date: '2025-09-01',
+        end_date: '2025-12-31',
+        is_active: false,
+        is_casual: false
+      });
+      // p1 wins all five games of a finished season, then three more in the active one.
+      for (let game = 1; game <= 5; game += 1) {
+        snapshot.matches.push(match(`f${game}`, 'fall', `2025-10-0${game}T12:00:00Z`));
+        snapshot.match_results.push(...results(`f${game}`, ['p1', 'p2', 'p3', 'p4']));
+      }
+      for (let game = 3; game <= 5; game += 1) {
+        snapshot.matches.push(match(`s${game}`, 'spring', `2026-03-0${game}T12:00:00Z`));
+        snapshot.match_results.push(...results(`s${game}`, ['p1', 'p2', 'p3', 'p4']));
+      }
+      return snapshot;
+    }
+
+    it('covers every competition season and leaves Casual out', () => {
+      const page = derivePlayerPage(withFinishedSeason(), 'p1', { seasonId: LIFETIME_SEASON_ID })!;
+
+      expect(page.isLifetime).toBe(true);
+      expect(page.seasonId).toBe(LIFETIME_SEASON_ID);
+      expect(page.isCasualSeason).toBe(false);
+      expect(page.stats!.games_played).toBe(10);
+      expect(page.matchHistory.map((row) => row.match_id)).not.toContain('m3');
+      expect(page.pointHistory).toHaveLength(10);
+      expect(page.bestRawMatch!.raw_points).toBe(40000);
+    });
+
+    it('summarizes each season, newest first, with its adjusted SP and rank', () => {
+      const { lifetime } = derivePlayerPage(withFinishedSeason(), 'p1', { seasonId: LIFETIME_SEASON_ID })!;
+
+      expect(lifetime!.seasons.map((row) => [row.season_id, row.rank, row.games_played, row.total_points])).toEqual([
+        ['spring', 1, 5, 200],
+        ['fall', 1, 5, 225]
+      ]);
+      expect(lifetime!.total_points).toBe(425);
+      expect(lifetime!.best_rank).toBe(1);
+      expect(lifetime!.peak_rating).toBeGreaterThan(1500);
+    });
+
+    it('counts a title only for a finished season', () => {
+      const { lifetime } = derivePlayerPage(withFinishedSeason(), 'p1', { seasonId: LIFETIME_SEASON_ID })!;
+      expect(lifetime!.seasons[0].is_active).toBe(true);
+      expect(lifetime!.titles).toBe(1);
+    });
+
+    it('leaves a season unranked below the game minimum', () => {
+      const { lifetime } = derivePlayerPage(fixture(), 'p1', { seasonId: LIFETIME_SEASON_ID })!;
+      expect(lifetime!.seasons.map((row) => row.rank)).toEqual([null]);
+      expect(lifetime!.best_rank).toBeNull();
+      expect(lifetime!.titles).toBe(0);
+    });
+
+    it('counts busts and has no rating for a player without rated games', () => {
+      const snapshot = fixture();
+      snapshot.seasons.push({
+        id: 'trial',
+        name: 'Trial',
+        start_date: '2025-09-01',
+        end_date: '2025-12-31',
+        is_active: false,
+        is_casual: false
+      });
+      snapshot.players.push({ ...players[3], id: 'p5', display_name: 'Echo' });
+      snapshot.matches.push(match('t1', 'trial', '2025-10-01T12:00:00Z'));
+      snapshot.match_results.push(
+        ...results('t1', ['p1', 'p2', 'p3', 'p5'], [70000, 20000, 15000, -5000])
+      );
+
+      const { lifetime, stats } = derivePlayerPage(snapshot, 'p5', { seasonId: LIFETIME_SEASON_ID })!;
+      expect(stats!.games_played).toBe(1);
+      expect(lifetime!.busts).toBe(1);
+      expect(lifetime!.peak_rating).toBeNull();
+    });
+
+    it('is off for an ordinary season', () => {
+      const page = derivePlayerPage(fixture(), 'p1', { seasonId: 'spring' })!;
+      expect(page.isLifetime).toBe(false);
+      expect(page.lifetime).toBeNull();
+    });
+  });
+
+  it('keeps the competition history when Casual is the selected season', () => {
+    const page = derivePlayerPage(fixture(), 'p1', { seasonId: 'casual' })!;
+    expect(page.placementHistory.map((row) => row.match_id)).toEqual(['m3']);
+    expect(page.competitionHistory.placementHistory.map((row) => row.match_id)).toEqual(['m1', 'm2']);
   });
 
   it('applies match adjustments only to a selected casual event history', () => {
