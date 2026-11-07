@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fmtNum, fmtSigned, signTone } from '$lib/ui';
+  import { fmtNum, fmtSigned, hundredsFromRawPoints, rawPointsFromHundreds, signTone } from '$lib/ui';
   import { ordinal, windKanji, windName } from '$lib/mahjong';
   import { fmtDateTimeArizona as fmtDateTime, toArizonaDatetimeLocalValue } from '$lib/arizona-time';
   import { ratingGamesAdjustment as gamesAdjustment } from '$lib/rating';
@@ -100,16 +100,11 @@
   let entries = seats.map((seat) => ({
     seat,
     player_id: bySeat[seat]?.player_id ?? '',
-    raw_points: bySeat[seat]?.raw_points ?? ''
+    hundreds: hundredsFromRawPoints(bySeat[seat]?.raw_points)
   }));
   function asNum(v: unknown, fallback = 0) {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
-  }
-
-  function hasRawPointValue(value: unknown) {
-    const text = String(value ?? '').trim();
-    return /^-?\d+$/.test(text) && Number.isSafeInteger(Number(text));
   }
 
   function playerNameParts(player_id: string) {
@@ -175,12 +170,15 @@
     return base + splitUma + okaForPlace(place);
   }
 
-  $: enteredRows = entries.map((row) => ({
-    seat: row.seat,
-    player_id: row.player_id,
-    raw_points: asNum(row.raw_points, 0),
-    has_raw_points: hasRawPointValue(row.raw_points)
-  }));
+  $: enteredRows = entries.map((row) => {
+    const rawPoints = rawPointsFromHundreds(row.hundreds);
+    return {
+      seat: row.seat,
+      player_id: row.player_id,
+      raw_points: rawPoints ?? 0,
+      has_raw_points: rawPoints != null
+    };
+  });
 
   $: allRawPointsEntered = enteredRows.every((row) => row.has_raw_points);
   $: rawTotal = enteredRows.reduce((sum, row) => sum + row.raw_points, 0);
@@ -238,6 +236,7 @@
 
   $: selectedPlayerIds = enteredRows.map((r) => r.player_id).filter(Boolean);
   $: hasFourDistinctPlayers = selectedPlayerIds.length === 4 && new Set(selectedPlayerIds).size === 4;
+  $: canFinalize = totalCheckOk && hasFourDistinctPlayers;
   $: canProjectR = !isCasual && hasFourDistinctPlayers;
   $: avgRate = canProjectR
     ? enteredRows.reduce((sum, row) => sum + ratingState(row.player_id).rate, 0) / enteredRows.length
@@ -284,19 +283,59 @@
 </script>
 
 <style>
-  /* Player and score stay side by side, so four seats fit on a phone screen. */
-  .result-entry-row {
+  /* Each seat is one line, so all four fit on a phone screen. */
+  .seat-entry {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 120px;
-    gap: 10px;
+    grid-template-columns: auto minmax(0, 1fr) 110px;
+    gap: 8px;
     align-items: center;
-    width: 100%;
   }
 
+  /* Reads as one field: the digits run straight into the fixed 00. */
   .seat-points {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding-right: 10px;
+    border: 1px solid var(--field-border);
+    border-radius: 7px;
+    background-color: var(--field-bg);
+  }
+
+  .seat-points:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .seat-points:has(input:disabled) {
+    opacity: 0.6;
+  }
+
+  .seat-points input[type='number'],
+  .seat-points input[type='number']:focus,
+  .seat-points input[type='number']:disabled {
+    flex: 1;
     width: 100%;
     min-width: 0;
-    box-sizing: border-box;
+    padding-right: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    opacity: 1;
+    text-align: right;
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  .seat-points input::-webkit-outer-spin-button,
+  .seat-points input::-webkit-inner-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+  }
+
+  .seat-points__zeros {
+    color: var(--muted);
+    font-size: var(--type-note);
   }
 
   .confirm-anchor {
@@ -334,25 +373,6 @@
     gap: 8px;
     justify-content: flex-end;
     flex-wrap: wrap;
-  }
-
-  .seat-entry {
-    padding: 12px;
-    border: 1px solid var(--card-border);
-    border-radius: 8px;
-    background: var(--pill-bg);
-  }
-
-  .seat-entry__label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    font-size: var(--type-label);
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--muted);
   }
 
   .point-check {
@@ -398,9 +418,16 @@
     }
   }
 
+  /* Matches the 16px that form fields switch to at this width. */
+  @media (max-width: 760px) {
+    .seat-points__zeros {
+      font-size: 16px;
+    }
+  }
+
   @media (max-width: 420px) {
-    .result-entry-row {
-      grid-template-columns: minmax(0, 1fr) 96px;
+    .seat-entry {
+      grid-template-columns: auto minmax(0, 1fr) 96px;
     }
 
     .col-new-r {
@@ -596,31 +623,28 @@
       <form method="POST" action="?/saveResults" style="display:grid; gap:10px; margin-top:12px;" on:submit={closeConfirm}>
         {#each entries as row, i (row.seat)}
           <div class="seat-entry">
-            <div class="seat-entry__label">
-              <span class="wind" class:is-lit={row.seat === 'E'} lang="ja" aria-hidden="true">{windKanji(row.seat)}</span>
-              Seat {row.seat} · {windName(row.seat)}
-            </div>
-            <div class="result-entry-row">
-              <SearchableSelect
-                name={`p_${row.seat}`}
-                inputId={`player-${row.seat}`}
-                options={searchablePlayerOptions}
-                bind:value={entries[i].player_id}
-                placeholder="Search for a player"
-                required
-                disabled={isFinal}
-                ariaLabel={`Player for seat ${row.seat}`}
-              />
+            <span class="wind" class:is-lit={row.seat === 'E'} lang="ja" aria-hidden="true">{windKanji(row.seat)}</span>
+            <SearchableSelect
+              name={`p_${row.seat}`}
+              inputId={`player-${row.seat}`}
+              options={searchablePlayerOptions}
+              bind:value={entries[i].player_id}
+              placeholder="Search players"
+              disabled={isFinal}
+              ariaLabel={`Player for ${windName(row.seat)} seat`}
+            />
+            <div class="seat-points">
               <input
-                name={`raw_${row.seat}`}
                 type="number"
-                step="100"
-                required
-                bind:value={entries[i].raw_points}
+                step="1"
+                min="-999"
+                max="2999"
+                bind:value={entries[i].hundreds}
                 disabled={isFinal}
-                class="seat-points"
-                aria-label={`Raw points for seat ${row.seat}`}
+                aria-label={`${windName(row.seat)} seat points, in hundreds`}
               />
+              <span class="seat-points__zeros" aria-hidden="true">00</span>
+              <input type="hidden" name={`raw_${row.seat}`} value={rawPointsFromHundreds(entries[i].hundreds) ?? ''} />
             </div>
           </div>
         {/each}
@@ -631,7 +655,11 @@
               <button class="btn" type="button" on:click={() => toggleConfirm('finalize')}>Finalize match</button>
               {#if confirmAction === 'finalize'}
                 <div class="confirm-popover align-left" role="dialog" aria-label="Confirm finalize match">
-                  <div class="confirm-popover-text">Finalize this match and publish results?</div>
+                  <div class="confirm-popover-text">
+                    {canFinalize
+                      ? 'Finalize this match and publish results?'
+                      : 'Finalizing needs four different players and a balanced point total.'}
+                  </div>
                   <div class="confirm-popover-actions">
                     <button class="btn" type="button" on:click={closeConfirm}>Cancel</button>
                     <button
@@ -639,7 +667,7 @@
                       type="submit"
                       formmethod="POST"
                       formaction="?/finalize"
-                      disabled={!totalCheckOk || !hasFourDistinctPlayers}
+                      disabled={!canFinalize}
                     >
                       Finalize
                     </button>

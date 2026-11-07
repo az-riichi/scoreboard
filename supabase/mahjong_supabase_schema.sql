@@ -327,13 +327,15 @@ for each row execute function public.guard_season_identity_update();
 create table public.match_results (
   match_id uuid not null references public.matches(id) on delete cascade,
   seat public.seat not null,
-  player_id uuid not null references public.players(id) on delete restrict,
-  raw_points int not null,
+  -- Empty while a draft's score sheet is unfinished; finalizing requires both.
+  player_id uuid references public.players(id) on delete restrict,
+  raw_points int,
   placement smallint,
   club_points numeric,
   tobi boolean not null default false,
   primary key (match_id, seat),
-  unique (match_id, player_id),
+  -- Checked when a statement ends, so one save can swap two players' seats.
+  unique (match_id, player_id) deferrable initially immediate,
   check (raw_points > -100000 and raw_points < 300000),
   check (placement is null or (placement between 1 and 4))
 );
@@ -472,6 +474,33 @@ revoke all on function public.guard_match_status_transition() from public;
 create trigger matches_guard_status_transition
 before insert or update of status on public.matches
 for each row execute function public.guard_match_status_transition();
+
+-- Backstop for the application's own check: nothing incomplete can be published.
+create or replace function public.guard_match_results_complete()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if exists (
+    select 1
+    from public.match_results mr
+    where mr.match_id = new.id
+      and (mr.player_id is null or mr.raw_points is null)
+  ) then
+    raise exception 'match % has seats without a player or score', new.id;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.guard_match_results_complete() from public, anon, authenticated;
+
+create trigger matches_guard_results_complete
+before update of status on public.matches
+for each row
+when (old.status = 'draft' and new.status = 'final')
+execute function public.guard_match_results_complete();
 
 create or replace function public.guard_published_match_delete()
 returns trigger
@@ -2056,6 +2085,7 @@ $$;
 
 revoke all on function public.assert_player_competitive_eligible(uuid, uuid) from public;
 
+-- An empty seat has no player to check.
 create or replace function public.guard_match_result_discipline()
 returns trigger
 language plpgsql
@@ -2063,7 +2093,9 @@ security definer
 set search_path = public
 as $$
 begin
-  perform public.assert_player_competitive_eligible(new.match_id, new.player_id);
+  if new.player_id is not null then
+    perform public.assert_player_competitive_eligible(new.match_id, new.player_id);
+  end if;
   return new;
 end;
 $$;
@@ -2093,6 +2125,7 @@ begin
     select mr.player_id
     from public.match_results mr
     where mr.match_id = new.id
+      and mr.player_id is not null
     order by mr.player_id
   loop
     perform public.assert_player_competitive_eligible(new.id, v_player_id);

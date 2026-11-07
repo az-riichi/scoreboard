@@ -1,5 +1,48 @@
 import { describe, expect, it } from 'vitest';
-import { fmtDate, fmtDateTime, fmtFixed, fmtNum, fmtPct, fmtSegScore, fmtSigned, signTone } from './ui';
+import {
+  fmtDate,
+  fmtDateTime,
+  fmtFixed,
+  fmtNum,
+  fmtPct,
+  fmtSegScore,
+  fmtSigned,
+  hundredsFromRawPoints,
+  rawPointsFromHundreds,
+  signTone
+} from './ui';
+
+describe('score entry in hundreds', () => {
+  it.each([
+    ['253', 25_300],
+    [253, 25_300],
+    ['-2', -200],
+    ['0', 0],
+    [' 15 ', 1_500]
+  ])('turns %j into %d raw points', (hundreds, raw) => {
+    expect(rawPointsFromHundreds(hundreds)).toBe(raw);
+  });
+
+  it('treats -0 as a plain zero', () => {
+    expect(Object.is(rawPointsFromHundreds('-0'), 0)).toBe(true);
+  });
+
+  it.each(['', null, undefined, '12.5', '-', 'abc'])('leaves %j unentered', (hundreds) => {
+    expect(rawPointsFromHundreds(hundreds)).toBeNull();
+  });
+
+  it.each([
+    [25_300, '253'],
+    [-200, '-2'],
+    [0, '0']
+  ])('shows %d raw points as %s', (raw, hundreds) => {
+    expect(hundredsFromRawPoints(raw)).toBe(hundreds);
+  });
+
+  it.each([null, undefined, ''])('shows %j as an empty field', (raw) => {
+    expect(hundredsFromRawPoints(raw)).toBe('');
+  });
+});
 
 describe('fmtSegScore', () => {
   it('uses only digits and a plain minus, which is all a 7-segment display can show', () => {

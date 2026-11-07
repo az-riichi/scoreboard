@@ -69,6 +69,20 @@ export function fmtSegScore(x: unknown) {
   return Number.isFinite(n) ? String(n + 0) : '0';
 }
 
+// Scores move in steps of 100, so an entry field takes "253" and shows a fixed "00" after it.
+export function rawPointsFromHundreds(hundreds: unknown): number | null {
+  const text = String(hundreds ?? '').trim();
+  if (!/^-?\d+$/.test(text)) return null;
+  const raw = Number(text) * 100;
+  return Number.isSafeInteger(raw) ? raw + 0 : null;
+}
+
+export function hundredsFromRawPoints(raw: unknown): string {
+  const n = Number(raw);
+  if (raw == null || raw === '' || !Number.isFinite(n)) return '';
+  return String(n / 100);
+}
+
 function roundsToZero(n: number, digits: number) {
   return Number(Math.abs(n).toFixed(digits)) === 0;
 }

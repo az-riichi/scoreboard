@@ -187,11 +187,13 @@ function getRequiredInt(f: FormData, k: string) {
 type Seat = 'E' | 'S' | 'W' | 'N';
 const SEATS: Seat[] = ['E', 'S', 'W', 'N'];
 
+// A draft can be saved half-filled. Finalizing is what needs four players, four
+// scores, and a balanced total.
 async function validateDraftResults(
   locals: App.Locals,
   match_id: string,
   form: FormData,
-  requireBalanced: boolean
+  forFinalize: boolean
 ) {
   const matchRes = await locals.supabase
     .from('matches')
@@ -206,23 +208,28 @@ async function validateDraftResults(
     return { ok: false as const, status: 409, message: 'Finalized matches cannot be edited.' };
   }
 
-  const rows: Array<{ match_id: string; seat: Seat; player_id: string; raw_points: number }> = [];
+  const rows: Array<{ match_id: string; seat: Seat; player_id: string | null; raw_points: number | null }> = [];
   for (const seat of SEATS) {
-    const player_id = getStr(form, `p_${seat}`);
-    const raw_points = getRequiredInt(form, `raw_${seat}`);
-    if (!player_id) {
-      return { ok: false as const, status: 400, message: `Choose a player for seat ${seat}.` };
-    }
-    if (raw_points == null) {
+    const player_id = getStr(form, `p_${seat}`) || null;
+    const hasPoints = getStr(form, `raw_${seat}`) !== '';
+    const raw_points = hasPoints ? getRequiredInt(form, `raw_${seat}`) : null;
+    if (hasPoints && raw_points == null) {
       return { ok: false as const, status: 400, message: `Seat ${seat} points must be an integer.` };
     }
-    if (raw_points <= -100_000 || raw_points >= 300_000) {
+    if (raw_points != null && (raw_points <= -100_000 || raw_points >= 300_000)) {
       return { ok: false as const, status: 400, message: `Seat ${seat} points are outside the allowed range.` };
+    }
+    if (forFinalize && !player_id) {
+      return { ok: false as const, status: 400, message: `Choose a player for seat ${seat}.` };
+    }
+    if (forFinalize && raw_points == null) {
+      return { ok: false as const, status: 400, message: `Enter the points for seat ${seat}.` };
     }
     rows.push({ match_id, seat, player_id, raw_points });
   }
 
-  if (new Set(rows.map((row) => row.player_id)).size !== 4) {
+  const chosenPlayerIds = rows.flatMap((row) => (row.player_id ? [row.player_id] : []));
+  if (new Set(chosenPlayerIds).size !== chosenPlayerIds.length) {
     return { ok: false as const, status: 400, message: 'Players must be distinct.' };
   }
 
@@ -235,13 +242,9 @@ async function validateDraftResults(
     return { ok: false as const, status: 400, message: 'Season not found.' };
   }
 
-  if (!seasonRes.data.is_casual) {
+  if (!seasonRes.data.is_casual && chosenPlayerIds.length > 0) {
     const matchDay = toArizonaDatetimeLocalValue(matchRes.data.played_at).slice(0, 10);
-    const restrictionRes = await loadEffectiveRestrictions(
-      locals,
-      matchDay,
-      rows.map((row) => row.player_id)
-    );
+    const restrictionRes = await loadEffectiveRestrictions(locals, matchDay, chosenPlayerIds);
 
     if (restrictionRes.error) {
       return { ok: false as const, status: 500, message: 'Could not verify player eligibility.' };
@@ -263,7 +266,7 @@ async function validateDraftResults(
   }
 
   const validated = { ok: true as const, rows, isCasual: seasonRes.data.is_casual === true };
-  if (!requireBalanced) return validated;
+  if (!forFinalize) return validated;
 
   const rulesetRes = await locals.supabase
     .from('rulesets')
@@ -274,7 +277,7 @@ async function validateDraftResults(
     return { ok: false as const, status: 400, message: 'Ruleset not found.' };
   }
 
-  const rawTotal = rows.reduce((sum, row) => sum + row.raw_points, 0);
+  const rawTotal = rows.reduce((sum, row) => sum + (row.raw_points ?? 0), 0);
   const expectedTotal = Number(rulesetRes.data.start_points) * 4;
   const extraPoints = Number(matchRes.data.extra_sticks ?? 0);
   if (!Number.isSafeInteger(expectedTotal) || !Number.isSafeInteger(extraPoints)) {
