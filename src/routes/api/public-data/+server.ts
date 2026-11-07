@@ -12,6 +12,11 @@ const PUBLIC_DATA_SCOPE = 'scoreboard';
 const PAGE_SIZE = 1_000;
 const SNAPSHOT_SCHEMA_VERSION = 1;
 
+// A browser with no copy asks without a revision. The CDN can answer that at once
+// even if it is a little behind, because the browser checks its revision straight
+// after. Checks carry ?revision=, which is a different cache key and never stored.
+const FIRST_VISIT_CDN_CACHE = 'public, durable, s-maxage=60, stale-while-revalidate=604800';
+
 type SerializedSnapshot = { revision: string; body: string };
 
 // Retain at most one complete public snapshot per warm server. The hook uses
@@ -217,7 +222,8 @@ export const GET: RequestHandler = async ({ locals, request, url }) => {
   return new Response(snapshot.body, {
     headers: {
       ...responseHeaders(snapshot.revision),
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      ...(clientRevision === null ? { 'netlify-cdn-cache-control': FIRST_VISIT_CDN_CACHE } : {})
     }
   });
 };

@@ -691,6 +691,13 @@ function summarizeMatches(
   });
 }
 
+export function findActiveSeasonId(snapshot: Pick<PublicDataSnapshot, 'seasons'>): string | null {
+  return (
+    snapshot.seasons.find((season) => season.is_active === true && season.is_casual !== true)?.id ??
+    null
+  );
+}
+
 export function deriveSeasonsPage(source: PublicDataSource): SeasonsPageData {
   const model = modelFor(source);
   return {

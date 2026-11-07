@@ -18,9 +18,12 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Not a plain stylesheet link: that would hold up the first paint until Google answers. -->
     <link
-      rel="stylesheet"
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=DotGothic16&family=Jersey+20&display=swap"
+      onload="this.rel='stylesheet'"
     />
     <style>
       html, body {

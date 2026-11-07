@@ -58,6 +58,10 @@ export function startPublicDataUpdates(
     if (/^\d+$/.test(next) && BigInt(next) > BigInt(displayedRevision())) requestRefresh();
   }
 
+  // The page may have been drawn from the copy this browser kept, so check it
+  // now rather than waiting for the realtime connection to open.
+  requestRefresh();
+
   const stopOtherTabs = onPublicDataRevision(onRevision);
   const channel = supabase
     .channel('public-scoreboard-revision')

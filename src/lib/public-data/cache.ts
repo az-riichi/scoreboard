@@ -29,6 +29,7 @@ type LockManagerLike = {
 let databasePromise: Promise<IDBDatabase> | null = null;
 let memorySnapshot: PublicDataSnapshot | null = null;
 let syncPromise: Promise<PublicDataSnapshot> | null = null;
+let storedSnapshotPromise: Promise<PublicDataSnapshot | null> | null = null;
 let updatesChannel: BroadcastChannel | null = null;
 const revisionListeners = new Set<(revision: string) => void>();
 
@@ -282,14 +283,28 @@ async function synchronizeWithTabLock(startedAt: number): Promise<PublicDataSnap
   return lockManager.request(SYNC_LOCK_NAME, () => synchronize(startedAt));
 }
 
+function readStoredSnapshot(): Promise<PublicDataSnapshot | null> {
+  storedSnapshotPromise ??= readCachedData().then((cached) => {
+    memorySnapshot ??= cached?.snapshot ?? null;
+    return memorySnapshot;
+  });
+  return storedSnapshotPromise;
+}
+
 export async function getPublicSnapshot(options: { check?: boolean } = {}): Promise<PublicDataSnapshot> {
   if (!browser) throw new Error('Public data is only available in the browser.');
   listenForOtherTabs();
 
-  const shouldCheck = options.check !== false;
-  if (!shouldCheck && memorySnapshot) return memorySnapshot;
-  // Even cache-only route loads must check the persisted snapshot once on a
-  // new document. Subsequent loads reuse memory; live updates explicitly sync.
+  if (options.check === false) {
+    if (memorySnapshot) return memorySnapshot;
+    // A new document draws from the copy this browser kept, without waiting on
+    // the network. The live updater checks it in the background and refreshes
+    // the page if it is out of date. Only a first visit has to download here.
+    if (!syncPromise) {
+      const stored = await readStoredSnapshot();
+      if (stored) return stored;
+    }
+  }
 
   if (!syncPromise) {
     const startedAt = Date.now();
@@ -304,4 +319,14 @@ export async function getPublicSnapshot(options: { check?: boolean } = {}): Prom
   }
 
   return syncPromise;
+}
+
+/**
+ * Builds a page from the local copy, asking the server only when that copy does
+ * not have it, such as a shared link to a match published since the last visit.
+ */
+export async function derivePublicPage<T>(
+  derive: (snapshot: PublicDataSnapshot) => T | null
+): Promise<T | null> {
+  return derive(await getPublicSnapshot({ check: false })) ?? derive(await getPublicSnapshot());
 }

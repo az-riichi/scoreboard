@@ -89,6 +89,25 @@ describe('public snapshot endpoint', () => {
     expect(db.readPage).toHaveBeenCalledTimes(7);
   });
 
+  it('lets the CDN keep the download for a browser with no copy', async () => {
+    const get = await handler();
+    const response = await get(database());
+
+    expect(response.headers.get('netlify-cdn-cache-control')).toContain('stale-while-revalidate');
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('never lets the CDN keep the answer to a revision check', async () => {
+    const get = await handler();
+    const unchanged = await get(database(), '?revision=1');
+    const changed = await get(database(['2', '2', '2']), '?revision=1');
+
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.has('netlify-cdn-cache-control')).toBe(false);
+    expect(changed.status).toBe(200);
+    expect(changed.headers.has('netlify-cdn-cache-control')).toBe(false);
+  });
+
   it('coalesces simultaneous downloads for the same revision', async () => {
     const get = await handler();
     const db = database();

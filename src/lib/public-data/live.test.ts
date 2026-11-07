@@ -59,7 +59,7 @@ describe('automatic public data updates', () => {
     realtimeRevision({ new: { revision } });
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
     vi.useFakeTimers();
     pageDocument = Object.assign(new EventTarget(), { visibilityState: 'visible' });
@@ -92,6 +92,8 @@ describe('automatic public data updates', () => {
     removeChannel.mockResolvedValue('ok');
     disposeAuth.mockResolvedValue(undefined);
     stop = startPublicDataUpdates(() => displayedRevision, refreshPage);
+    await vi.advanceTimersByTimeAsync(250);
+    mocks.getPublicSnapshot.mockClear();
   });
 
   afterEach(() => {
@@ -99,6 +101,33 @@ describe('automatic public data updates', () => {
     stop = undefined;
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('checks a page drawn from the stored copy without waiting for realtime', async () => {
+    stop?.();
+    mocks.getPublicSnapshot.mockResolvedValue(snapshot('2'));
+    stop = startPublicDataUpdates(() => displayedRevision, refreshPage);
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(subscriptionStatus).toBeDefined();
+    expect(mocks.getPublicSnapshot).toHaveBeenCalledTimes(1);
+    expect(refreshPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks again after realtime joins so nothing published in between is missed', async () => {
+    stop?.();
+    const beforeJoin = deferredSnapshot();
+    mocks.getPublicSnapshot.mockReturnValueOnce(beforeJoin.promise).mockResolvedValue(snapshot('2'));
+    stop = startPublicDataUpdates(() => displayedRevision, refreshPage);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(mocks.getPublicSnapshot).toHaveBeenCalledTimes(1);
+
+    subscriptionStatus('SUBSCRIBED');
+    beforeJoin.resolve(snapshot('1'));
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(mocks.getPublicSnapshot).toHaveBeenCalledTimes(2);
+    expect(refreshPage).toHaveBeenCalledTimes(1);
   });
 
   it('checks on subscription and reconnect without rerendering unchanged data', async () => {

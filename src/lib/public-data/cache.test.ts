@@ -78,6 +78,76 @@ describe('public snapshot refresh', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it('draws a new document from the stored copy without waiting on the network', async () => {
+    const fetch = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal('fetch', fetch);
+    installStoredSnapshot(snapshot('5'));
+    const { getPublicSnapshot } = await import('./cache');
+
+    const stored = await getPublicSnapshot({ check: false });
+    expect(stored.revision.revision).toBe('5');
+    expect(await getPublicSnapshot({ check: false })).toBe(stored);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('replaces the stored copy once the background check finds a newer one', async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json(snapshot('6')));
+    vi.stubGlobal('fetch', fetch);
+    installStoredSnapshot(snapshot('5'));
+    const { getPublicSnapshot } = await import('./cache');
+    await getPublicSnapshot({ check: false });
+
+    const checked = await getPublicSnapshot();
+    expect(checked.revision.revision).toBe('6');
+    expect(fetch.mock.calls[0][0]).toBe('/api/public-data?revision=5');
+    expect(await getPublicSnapshot({ check: false })).toBe(checked);
+  });
+
+  it('downloads on a first visit, and tries again if that fails', async () => {
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Offline'))
+      .mockResolvedValueOnce(Response.json(snapshot('1')));
+    vi.stubGlobal('fetch', fetch);
+    const { getPublicSnapshot } = await import('./cache');
+
+    await expect(getPublicSnapshot({ check: false })).rejects.toThrow('Offline');
+    expect((await getPublicSnapshot({ check: false })).revision.revision).toBe('1');
+    expect(fetch.mock.calls[0][0]).toBe('/api/public-data');
+  });
+
+  it('asks the server for a page the stored copy does not have', async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json(snapshot('6')));
+    vi.stubGlobal('fetch', fetch);
+    installStoredSnapshot(snapshot('5'));
+    const { derivePublicPage } = await import('./cache');
+
+    const page = await derivePublicPage((data) =>
+      data.revision.revision === '6' ? 'new match' : null
+    );
+    expect(page).toBe('new match');
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('does not contact the server for a page the stored copy has', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    installStoredSnapshot(snapshot('5'));
+    const { derivePublicPage } = await import('./cache');
+
+    expect(await derivePublicPage(() => 'known match')).toBe('known match');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('reports a page missing only after checking the server', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 304 }));
+    vi.stubGlobal('fetch', fetch);
+    installStoredSnapshot(snapshot('5'));
+    const { derivePublicPage } = await import('./cache');
+
+    expect(await derivePublicPage(() => null)).toBeNull();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it('checks on first route load and reuses the refreshed snapshot without another request', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(Response.json(snapshot('1')))

@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import type { Actions, PageServerLoad } from './$types';
+import type { Actions } from './$types';
 import {
   PLAYER_PROFILE_MEDIA_URL_MAX_CHARS,
   PLAYER_PROFILE_MESSAGE_MAX_CHARS,
@@ -15,33 +15,6 @@ function asText(value: unknown) {
 function asBool(value: unknown) {
   return String(value ?? '') === 'on';
 }
-
-// Public profile data comes from the browser's redacted snapshot. This loader
-// only resolves private editable name values for the signed-in owner.
-export const load: PageServerLoad = async ({ locals, params }) => {
-  if (!locals.userId) return { canEditDisplay: false, editablePlayer: null };
-
-  const ownership = await locals.supabase
-    .from('player_accounts')
-    .select('player_id')
-    .eq('auth_user_id', locals.userId)
-    .eq('player_id', params.player_id)
-    .maybeSingle();
-  if (ownership.error || !ownership.data) {
-    return { canEditDisplay: false, editablePlayer: null };
-  }
-
-  const player = await locals.supabase
-    .from('players')
-    .select('id, display_name, real_first_name, real_last_name')
-    .eq('id', params.player_id)
-    .maybeSingle();
-
-  return {
-    canEditDisplay: !player.error && !!player.data,
-    editablePlayer: player.error ? null : player.data
-  };
-};
 
 export const actions: Actions = {
   updateDisplay: async ({ request, locals, params }) => {

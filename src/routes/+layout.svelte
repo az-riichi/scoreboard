@@ -4,7 +4,7 @@
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import { invalidate } from '$app/navigation';
-  import { startPublicDataUpdates } from '$lib/public-data/live';
+  import { confirmSession, session } from '$lib/session';
 
   export let data: import('./$types').LayoutData;
 
@@ -17,10 +17,27 @@
   const SITE_NAME = 'AZRM Scoreboard';
   let pageTitle = SITE_NAME;
 
-  onMount(() => startPublicDataUpdates(
-    () => data.publicDataRevision,
-    () => invalidate('app:public-data')
-  ));
+  onMount(() => {
+    void confirmSession();
+
+    // Imported here to keep the realtime client out of the first download.
+    let unmounted = false;
+    let stopUpdates: (() => void) | undefined;
+    void import('$lib/public-data/live')
+      .then(({ startPublicDataUpdates }) => {
+        if (unmounted) return;
+        stopUpdates = startPublicDataUpdates(
+          () => data.publicDataRevision,
+          () => invalidate('app:public-data')
+        );
+      })
+      .catch(() => {});
+
+    return () => {
+      unmounted = true;
+      stopUpdates?.();
+    };
+  });
 
   function asRecord(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== 'object') return null;
@@ -203,7 +220,7 @@
   <div class="sr-only" role="status" aria-live="polite">Loading page</div>
 {/if}
 
-<header class="app-header" class:has-long-nav={data.user}>
+<header class="app-header" class:has-long-nav={$session.signedIn}>
   <div class="app-header__in">
     <a class="app-brand" href="/" aria-label="AZRM Scoreboard home">
       <img class="app-logo" src="/azrm-logo.png" alt="" width="42" height="42" />
@@ -220,11 +237,11 @@
           <a href={`/season/${data.activeSeasonId}`} class="nav-key" class:is-active={activeNav === 'standings'} aria-current={activeNav === 'standings' ? 'page' : undefined}>Standings</a>
         {/if}
         <a href="/hall-of-fame" class="nav-key" class:is-active={activeNav === 'hall-of-fame'} aria-current={activeNav === 'hall-of-fame' ? 'page' : undefined}>Hall of Fame</a>
-        {#if data.isAdmin}
+        {#if $session.isAdmin}
           <a href="/admin" class="nav-key" class:is-active={activeNav === 'admin'} aria-current={activeNav === 'admin' ? 'page' : undefined}>Admin</a>
         {/if}
 
-        {#if data.user}
+        {#if $session.signedIn}
           <a href="/discipline" class="nav-key" class:is-active={activeNav === 'discipline'} aria-current={activeNav === 'discipline' ? 'page' : undefined}>My discipline</a>
           <form method="POST" action="/logout" class="nav-session">
             <button class="nav-key" type="submit">Sign out</button>
@@ -267,17 +284,17 @@
               <a href={`/season/${data.activeSeasonId}`} class="nav-key" class:is-active={activeNav === 'standings'}>Standings</a>
             {/if}
             <a href="/hall-of-fame" class="nav-key" class:is-active={activeNav === 'hall-of-fame'}>Hall of Fame</a>
-            {#if data.isAdmin}
+            {#if $session.isAdmin}
               <a href="/admin" class="nav-key" class:is-active={activeNav === 'admin'}>Admin</a>
             {/if}
-            {#if data.user}
+            {#if $session.signedIn}
               <a href="/discipline" class="nav-key" class:is-active={activeNav === 'discipline'}>My discipline</a>
             {:else}
               <a href="/login" class="nav-key" class:is-active={activeNav === 'login'}>Sign in</a>
             {/if}
           </nav>
 
-          {#if data.user}
+          {#if $session.signedIn}
             <div class="mobile-nav__auth">
               <form method="POST" action="/logout">
                 <button class="nav-key mobile-nav__signout" type="submit">Sign out</button>
